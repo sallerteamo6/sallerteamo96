@@ -49,6 +49,23 @@ var TrustDB = (function () {
     connected: false,
     lastSync: 0,
 
+    // ---- diagnostics ----------------------------------------------------
+    // Bumped whenever the auth/bootstrap path changes, so a page can prove
+    // which build the browser actually loaded. A stale cached db.js was
+    // indistinguishable from a bug that had not been fixed yet.
+    VERSION: 'v2.3.0-authfix',
+    _diag: [],
+    _diagLog: function (msg) {
+      try {
+        var t = (typeof performance !== 'undefined' && performance.now)
+          ? Math.round(performance.now()) : 0;
+        this._diag.push(t + 'ms  ' + msg);
+        if (this._diag.length > 80) this._diag.shift();
+      } catch (e) {}
+      return msg;
+    },
+    diag: function () { return (this._diag || []).slice(); },
+
     // The signed-in GoTrue user, or null. There is no numeric uid any more.
     _authUser: null,
     isAdmin: false,
@@ -110,24 +127,73 @@ var TrustDB = (function () {
       this._seedFromStash();
 
       var self_ = this;
+      this._diag = [];
+      this._diagLog('init: version=' + this.VERSION);
+      this._diagLog('init: url=' + (this.url || '*** MISSING ***'));
+      this._diagLog('init: anon key ' + (this.anon ? 'present (' + String(this.anon).slice(0, 12) + '...)' : '*** MISSING ***'));
+      this._diagLog('init: SITE_CONFIG=' + (typeof SITE_CONFIG !== 'undefined' ? 'found' : '*** UNDEFINED ***'));
+      this._diagLog('init: window.supabase ' + (window.supabase ? 'already present' : 'not loaded yet'));
+      this._diagLog('init: starting (waiting for Supabase client)');
+
       this._initPromise = new Promise(function (resolve) {
+        // Wrap resolve so the first outcome wins. The timeout below and the
+        // init chain can both fire, and resolving twice is a no-op that would
+        // otherwise hide whichever one lost the race.
+        var settle = (function () {
+          var done = false;
+          return function (v) { if (!done) { done = true; resolve(v); } };
+        })();
+
+        // Hard ceiling on startup. Everything below is a network call with no
+        // timeout of its own -- auth.getSession() and each table read. A
+        // stalled request left this promise unsettled forever, so every
+        // page that awaited ready() waited forever too, and the sign-in
+        // button sat on "Loading..." with no way back. Whatever happens,
+        // this promise settles.
+        var guard = setTimeout(function () {
+          self_._diagLog('init TIMED OUT after 20s (connected=' + self_.connected + '); giving up');
+          settle(false);
+        }, 20000);
+
         // The session has to resolve before the first load: a query issued with
         // no JWT returns nothing, and under RLS "nothing" is a successful empty
         // result rather than an error, so a premature load would look like an
         // empty database and leave the page blank.
         self_._awaitClientAndSession().then(function () {
+          self_._diagLog('supabase client ready, session resolved; loading tables');
           // Must be awaited. Resolving this promise before the first load
           // finished reported "ready" while connected was still false, so a
           // caller gating on ready() then had to wait on the separate 'ready'
           // event -- against a timeout that had already started counting.
           return self_._bootstrap();
-        }).then(function () {
+        }).then(function (ok) {
+          // Pass the bootstrap result through. This callback used to end with
+          // _startRealtime() and return undefined, so the final handler
+          // received undefined and settled ready() as FALSE even when every
+          // table had loaded. Callers that gate on that boolean therefore
+          // treated a healthy backend as unavailable.
+          self_._diagLog('tables loaded, starting realtime');
           self_._startRealtime();
-          resolve(true);
+          return ok;
         }).catch(function (e) {
+          self_._diagLog('INIT PROBLEM: ' + (e && e.message ? e.message : String(e)));
           console.warn('TrustDB init problem:', e && e.message);
-          self_._bootstrap();
-          resolve(false);
+          // A second throw in here used to leave _initPromise permanently
+          // unsettled. Nothing could ever await ready(), connected stayed
+          // false, so every page reported the database unconfigured and the
+          // sign-in buttons hung. Never rethrow out of this handler.
+          try { return self_._bootstrap(); } catch (e2) {
+            self_._diagLog('second bootstrap also threw: ' + (e2 && e2.message));
+            return null;
+          }
+        }).then(function (ok) {
+          clearTimeout(guard);
+          self_._diagLog('init settled (connected=' + self_.connected + ')');
+          settle(!!ok);
+        }, function (e2) {
+          clearTimeout(guard);
+          self_._diagLog('init rejected: ' + (e2 && e2.message));
+          settle(false);
         });
       });
 
@@ -136,6 +202,30 @@ var TrustDB = (function () {
 
     ready: function () {
       return this._initPromise || Promise.resolve(false);
+    },
+
+    // Signing in needs the Supabase client, not the table cache. Gating login
+    // on the full bootstrap meant any slow, blocked or failed table load also
+    // froze the sign-in button, even though sign-in would have worked fine.
+    // This waits only for window.supabase, and always settles.
+    authReady: function (ms) {
+      var self_ = this;
+      ms = ms || 20000;
+      return new Promise(function (resolve) {
+        var t0 = Date.now();
+        (function poll() {
+          if (window.supabase && window.supabase.auth) {
+            self_._diagLog('authReady: Supabase client available');
+            return resolve(true);
+          }
+          if (Date.now() - t0 > ms) {
+            self_._diagLog('authReady: TIMED OUT after ' + ms + 'ms -- window.supabase is ' +
+              (window.supabase ? 'present but has no .auth' : 'undefined (script blocked?)'));
+            return resolve(false);
+          }
+          setTimeout(poll, 100);
+        })();
+      });
     },
 
     isReady: function () { return this.connected; },
@@ -272,7 +362,20 @@ var TrustDB = (function () {
           options: { data: extra || {} }
         });
       }).then(function (res) {
-        if (res.error) throw new Error(res.error.message);
+        if (res.error) {
+          var e = res.error;
+          // GoTrue reports any trigger failure with this one generic string,
+          // so pass on the reference and where to actually read the cause
+          // instead of leaving a dead end.
+          if (/database error saving new user/i.test(e.message || '')) {
+            throw new Error(
+              'The database rejected the new account: the on_auth_user_created ' +
+              'trigger raised an error. Open Dashboard -> Logs -> Postgres Logs ' +
+              'and read the entry at this time. (ref ' + (e.error_id || e.id || 'n/a') + ')'
+            );
+          }
+          throw new Error(e.message);
+        }
 
         // With "Confirm email" on, GoTrue returns a user but no session. Say so
         // rather than letting the caller treat it as a successful sign-in and
@@ -529,23 +632,38 @@ var TrustDB = (function () {
       var tables = signedIn ? publicTables.concat(privateTables) : publicTables;
 
       var jobs = tables.map(function (t) {
-        return self_._loadTable(t).then(function () {
-          self_._dispatchTrustSync(t);
-        }).catch(function (e) {
-          // A refused table is normal, not fatal: RLS rejecting a read returns
-          // an empty set, and a genuine network error should not stop the rest
-          // of the page from rendering.
-          if (e && /HTTP 40[13]/.test(e.message)) return;
-          console.warn('TrustDB load failed for ' + t + ':', e.message || e);
-        });
+        // A synchronous throw in _loadTable escapes .map, rejecting the whole
+        // _bootstrap before a single promise exists. Wrapping it keeps one bad
+        // table from taking down the connection for every other table.
+        try {
+          return Promise.resolve(self_._loadTable(t)).then(function () {
+            self_._dispatchTrustSync(t);
+          }).catch(function (e) {
+            // A refused table is normal, not fatal: RLS rejecting a read returns
+            // an empty set, and a genuine network error should not stop the rest
+            // of the page from rendering.
+            if (e && /HTTP 40[13]/.test(e.message)) return;
+            console.warn('TrustDB load failed for ' + t + ':', e.message || e);
+          });
+        } catch (e) {
+          console.warn('TrustDB load threw for ' + t + ':', e && (e.message || e));
+          return Promise.resolve();
+        }
       });
 
       return Promise.all(jobs).then(function () {
-        self_.connected = true;
-        self_.lastSync = Date.now();
-        self_._adoptSession(self_._session);
-        self_._notify('ready');
+        self_._markConnected();
       });
+    },
+
+    // True once the first load attempt has finished, either way. Callers that
+    // gate on this must never be left waiting: a data layer that reports
+    // itself unconfigured forever strands every page.
+    _markConnected: function () {
+      this.connected = true;
+      this.lastSync = Date.now();
+      try { this._adoptSession(this._session); } catch (e) {}
+      this._notify('ready');
     },
 
     _loadTable: function (table, keyField) {

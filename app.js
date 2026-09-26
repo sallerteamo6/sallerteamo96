@@ -1396,6 +1396,32 @@
     return typeof DB !== 'undefined' && DB && DB.connected === true;
   }
 
+  // Resolve once the data layer has finished booting, instead of refusing
+  // immediately when it has not. Bootstrap downloads the Supabase client, so a
+  // click in the first second used to land before connected was true and was
+  // rejected as "Database not configured" even though the backend was fine.
+  //
+  // The timeout is the important part: this must never leave a caller hanging,
+  // because login() and register() sit directly on top of it and a hang there
+  // freezes the submit button with no way back for the user.
+  function whenDbReady(ms) {
+    if (dbActive()) return Promise.resolve(true);
+    if (typeof DB === 'undefined' || !DB || !DB.ready) return Promise.resolve(false);
+    return new Promise(function (resolve) {
+      var settled = false;
+      function finish(v) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(v);
+      }
+      var timer = setTimeout(function () { finish(false); }, ms || 25000);
+      try {
+        DB.ready().then(function () { finish(true); }, function () { finish(false); });
+      } catch (e) { finish(false); }
+    });
+  }
+
   // Read-only variant: cache is usable as soon as ANY snapshot is present
   // (localStorage mirror seed at init, or a table that arrived mid-bootstrap),
   // so pages paint instantly instead of waiting for the full bootstrap.
@@ -1621,47 +1647,58 @@
   function register(account, password, referralCode) {
     account = trim(account);
     if (!account || !password) return { ok: false, msg: 'Please fill in all fields' };
-    if (typeof DB !== 'undefined' && DB.register && dbActive()) {
-      var lang = getLang();
-      // v1 converted a guest row into a real account here, hashing the password
-      // in the browser. v2 has no client-created accounts and no browser-side
-      // hashing, and GoTrue will not re-key an existing identity, so the
-      // conversion is gone: every account is created through Supabase Auth.
-      return DB.register(account, password).then(function (res) {
-        if (res.ok && res.user) {
-          var user = res.user;
-          var code = trim(referralCode || '');
-          if (code) {
-            var inv = DB.getUserByReferralCode ? DB.getUserByReferralCode(code) : null;
-            return Promise.resolve(inv).then(function (inviter) {
-              if (!inviter) return { ok: false, msg: 'Invalid referral code' };
-              user.referredBy = inviter.uid;
-              return DB.addBalance(user.uid, 'USDT', 5).then(function () {
-                return DB.addBalance(inviter.uid, 'USDT', 5).then(function () {
-                  return { ok: true, user: user };
-                });
+    if (typeof DB === 'undefined' || !DB.register) {
+      return Promise.resolve({ ok: false, msg: 'Database not configured' });
+    }
+    var lang = getLang();
+    // v1 converted a guest row into a real account here, hashing the password
+    // in the browser. v2 has no client-created accounts and no browser-side
+    // hashing, and GoTrue will not re-key an existing identity, so the
+    // conversion is gone: every account is created through Supabase Auth.
+    return whenDbReady().then(function (ready) {
+      if (!ready) return { ok: false, msg: 'Database not configured. Check your connection and reload.' };
+      return DB.register(account, password);
+    }).then(function (res) {
+      if (res.ok && res.user) {
+        var user = res.user;
+        var code = trim(referralCode || '');
+        if (code) {
+          var inv = DB.getUserByReferralCode ? DB.getUserByReferralCode(code) : null;
+          return Promise.resolve(inv).then(function (inviter) {
+            if (!inviter) return { ok: false, msg: 'Invalid referral code' };
+            user.referredBy = inviter.uid;
+            return DB.addBalance(user.uid, 'USDT', 5).then(function () {
+              return DB.addBalance(inviter.uid, 'USDT', 5).then(function () {
+                return { ok: true, user: user };
               });
             });
-          }
-          return { ok: true, user: user };
+          });
         }
-        return res;
-      }).then(function (res) {
-        if (res.ok && res.user) {
-          _notifyChange('users');
-          return _activateSession(res.user.uid, false, !!res.user.is_admin, lang).then(function () { return res; });
-        }
-        return res;
-      }).catch(function (e) { return { ok: false, msg: e.message }; });
-    }
-    return { ok: false, msg: 'Database not configured' };
+        return { ok: true, user: user };
+      }
+      return res;
+    }).then(function (res) {
+      if (res.ok && res.user) {
+        _notifyChange('users');
+        return _activateSession(res.user.uid, false, !!res.user.is_admin, lang).then(function () { return res; });
+      }
+      return res;
+    }).catch(function (e) { return { ok: false, msg: e.message }; });
+    // Always a Promise. Returning a plain object made callers do
+    // result.then(...), which threw "then is not a function" and left the
+    // Register button disabled on "Registering..." forever -- the catch never
+    // ran because the throw happened at the call site, not inside the chain.
   }
 
   function login(account, password) {
     account = trim(account);
-    if (!account || !password) return { ok: false, msg: 'Please enter account and password' };
-    if (typeof DB !== 'undefined' && DB.login && dbActive()) {
-      var lang = getLang();
+    if (!account || !password) return Promise.resolve({ ok: false, msg: 'Please enter account and password' });
+    if (typeof DB === 'undefined' || !DB.login) {
+      return Promise.resolve({ ok: false, msg: 'Database not configured' });
+    }
+    var lang = getLang();
+    return whenDbReady().then(function (ok) {
+      if (!ok) return { ok: false, msg: 'Database not configured. Check your connection and reload.' };
       return DB.login(account, password).then(function (res) {
         if (res.ok && res.user) {
           return _activateSession(res.user.uid, false, !!res.user.is_admin, lang).then(function () {
@@ -1670,9 +1707,8 @@
           });
         }
         return res;
-      }).catch(function (e) { return { ok: false, msg: e.message }; });
-    }
-    return { ok: false, msg: 'Database not configured' };
+      });
+    }).catch(function (e) { return { ok: false, msg: e.message }; });
   }
 
   function walletLogin(address) {

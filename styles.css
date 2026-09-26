@@ -1243,3 +1243,24 @@ body.nav-open-lock{overflow:hidden}
 .img-lightbox-overlay img{max-width:92vw;max-height:88vh;border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,.45);object-fit:contain;cursor:default}
 .img-lightbox-close{position:fixed;top:16px;right:20px;width:38px;height:38px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10000;transition:background .15s}
 .img-lightbox-close:hover{background:rgba(255,255,255,.3)}
+
+/* ---- auth page status (login / register) ---------------------------------
+   A pending network call used to leave the submit button reading "Loading..."
+   with no explanation and no way back. These give the page a persistent,
+   readable state instead of a 2.5s toast that vanishes before a slow failure
+   can be understood. */
+.auth-msg{display:none;margin-top:12px;padding:11px 13px;border-radius:6px;font-size:13.5px;line-height:1.5;word-break:break-word;white-space:pre-wrap}
+.auth-msg.on{display:block}
+.auth-msg-error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.35);color:#b91c1c}
+.auth-msg-info{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);color:#1d4ed8}
+.auth-msg-warn{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);color:#92400e}
+.auth-msg-ok{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.35);color:#15803d}
+.auth-retry{margin-top:9px;padding:7px 14px;background:#fff;border:1px solid currentColor;border-radius:5px;font-size:13px;cursor:pointer;font-weight:600}
+.backend-state{margin-top:14px;font-size:12px;color:#6b7280;text-align:center;line-height:1.6}
+.backend-state b{color:#374151}
+.backend-state .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#9ca3af;margin-right:5px;vertical-align:middle}
+.backend-state.ok .dot{background:#22c55e}
+.backend-state.bad .dot{background:#ef4444}
+.backend-state.wait .dot{background:#f59e0b}
+.backend-diag{display:none;margin-top:8px;padding:9px;background:#111827;color:#d1fae5;border-radius:5px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.55;text-align:left;max-height:230px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+.backend-diag.on{display:block}

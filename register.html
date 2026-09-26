@@ -10,10 +10,10 @@
   <link rel="apple-touch-icon" href="img/logo.png">
   <title>Trust</title>
   <link rel="stylesheet" href="styles.css">
-  <script src="scripts/config.js"></script>
-  <script src="scripts/supabase-client.js"></script>
-    <script src="scripts/db.js"></script>
-  <script src="app.js"></script>
+  <script src="scripts/config.js?v=20260926c"></script>
+  <script src="scripts/supabase-client.js?v=20260926c"></script>
+  <script src="scripts/db.js?v=20260926c"></script>
+  <script src="app.js?v=20260926c"></script>
 </head>
 <body>
   <div id="app">
@@ -41,14 +41,17 @@
           <div class="logo"><img src="img/logo.png" alt="Logo" class="logo-image"></div>
           <form class="register-form" onsubmit="return doRegister(event)">
             <div class="register-type-selector">
-              <button type="button" class="type-button active" data-i18n="reg.phoneNumber" onclick="setType(this,'phone')">Phone Number</button>
-              <button type="button" class="type-button" data-i18n="reg.email" onclick="setType(this,'email')">Email</button>
+              <button type="button" class="type-button active" data-i18n="reg.email" onclick="setType(this,'email')">Email</button>
             </div>
-            <div class="input-group"><input type="tel" placeholder="Enter your phone number" class="input-field" id="account" data-i18n-ph="reg.phonePlaceholder" required></div>
+            <div class="auth-msg auth-msg-info on" style="display:block;margin-bottom:12px">Accounts are created by email. Phone sign-in is not enabled on this deployment.</div>
+            <div class="input-group"><input type="email" placeholder="Enter your email" class="input-field" id="account" data-i18n-ph="reg.emailPlaceholder" required></div>
             <div class="input-group"><input type="password" placeholder="Password" class="input-field" id="password" data-i18n-ph="reg.password" required></div>
             <div class="input-group"><input type="password" placeholder="Confirm Password" class="input-field" id="confirm" data-i18n-ph="reg.confirm" required></div>
             <div class="input-group"><input type="text" placeholder="Referral code (optional)" class="input-field" id="referral" data-i18n-ph="reg.referral"></div>
             <button type="submit" class="register-button" id="regBtn" data-i18n="reg.register">Register</button>
+            <div class="auth-msg" id="authMsg"></div>
+            <div class="backend-state" id="backendState"><span class="dot"></span><span id="backendText">Checking backend...</span></div>
+            <div class="backend-diag" id="backendDiag"></div>
             <div class="links">
               <a href="login.html" class="link">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
@@ -70,7 +73,6 @@
   <script>
     var fields = document.querySelectorAll('.register-form .input-field');
     var btn = document.getElementById('regBtn');
-    var currentType = 'phone';
     function updateBtn() {
       var empty = !fields[0].value || !fields[1].value || !fields[2].value;
       btn.disabled = empty;
@@ -80,44 +82,119 @@
     updateBtn();
 
     function setType(el, type) {
-      currentType = type;
       document.querySelectorAll('.type-button').forEach(function (b) { b.classList.remove('active'); });
-      el.classList.add('active');
-      fields[0].type = type === 'phone' ? 'tel' : 'email';
-      fields[0].placeholder = type === 'phone' ? t('reg.phonePlaceholder') : t('reg.emailPlaceholder');
+      if (el) el.classList.add('active');
+      fields[0].type = 'email';
+      fields[0].placeholder = t('reg.emailPlaceholder');
+    }
+
+    function say(kind, text, retryLabel) {
+      var box = document.getElementById('authMsg');
+      if (!box) return;
+      box.className = 'auth-msg' + (kind ? ' on auth-msg-' + kind : '');
+      box.textContent = '';
+      if (!text) return;
+      box.appendChild(document.createTextNode(text));
+      if (retryLabel) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'auth-retry';
+        b.textContent = retryLabel;
+        b.onclick = function () { say('', ''); doRegister({ preventDefault: function () {} }); };
+        box.appendChild(b);
+      }
+    }
+
+    // See login.html. Guarantees the button always comes back, even if the
+    // call rejects, throws synchronously, or never settles at all.
+    function runAuth(fn, ms, label) {
+      return new Promise(function (resolve) {
+        var settled = false;
+        function finish(v) {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(v);
+        }
+        var timer = setTimeout(function () {
+          finish({ ok: false, msg: label + ' timed out after ' + (ms / 1000) +
+            's. The server did not respond. It is still running, so please wait a moment and try again.' });
+        }, ms);
+        var p;
+        try { p = fn(); } catch (e) { return finish({ ok: false, msg: (e && e.message) || (label + ' failed') }); }
+        Promise.resolve(p).then(finish, function (e) {
+          finish({ ok: false, msg: (e && e.message) || (label + ' failed') });
+        });
+      });
     }
 
     function doRegister(e) {
-      e.preventDefault();
+      if (e && e.preventDefault) e.preventDefault();
       var account = fields[0].value;
-      if (currentType === 'phone') {
-        if (!/^[\d+\-\s]{6,20}$/.test(account)) { toast('error', 'Please enter a valid phone number'); return false; }
-      } else {
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(account)) { toast('error', 'Please enter a valid email'); return false; }
-      }
-      if (fields[1].value.length < 6) { toast('error', 'Password must be at least 6 characters'); return false; }
-      if (fields[1].value !== fields[2].value) { toast('error', 'Passwords do not match'); return false; }
-      btn.disabled = true; btn.textContent = 'Registering...';
-      TrustApp.register(account, fields[1].value, fields[3] ? fields[3].value : '').then(function (res) {
-        btn.disabled = false; btn.textContent = 'Register';
-        if (!res.ok) { toast('error', res.msg || 'Registration failed'); return; }
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(account)) { say('error', 'Please enter a valid email address'); return false; }
+      if (fields[1].value.length < 6) { say('error', 'Password must be at least 6 characters'); return false; }
+      if (fields[1].value !== fields[2].value) { say('error', 'Passwords do not match'); return false; }
+      say('', '');
+      btn.disabled = true; btn.textContent = 'Creating account...';
+      return runAuth(function () {
+        return TrustApp.register(account, fields[1].value, fields[3] ? fields[3].value : '');
+      }, 40000, 'Registration').then(function (res) {
+        btn.disabled = false; btn.textContent = 'Register'; updateBtn();
+        if (!res || !res.ok) {
+          say('error', (res && res.msg) || 'Registration failed', 'Try again');
+          return false;
+        }
         // "Confirm email" is enabled on this project, so a new account comes
         // back ok:true with NO user and no session. Navigating here went to
         // index.html with nothing signed in, and the page guard bounced the
         // user straight back to the login screen.
         if (res.needsEmailConfirm) {
-          toast('info', res.message || 'Check your email to confirm the account, then sign in.', 6000);
-          btn.textContent = 'Confirm your email, then sign in';
-          return;
+          say('warn', res.message || 'Check your email to confirm the account, then sign in.');
+          return false;
         }
-        toast('success', 'Registration successful. Your UID: ' + res.user.uid, 4500);
-        setTimeout(function () { location.href = 'index.html'; }, 150);
-      }).catch(function (err) {
-        btn.disabled = false; btn.textContent = 'Register';
-        toast('error', err.message || 'Registration failed');
+        say('ok', 'Account created. Signing you in...');
+        btn.disabled = true; btn.textContent = 'Signing in...';
+        setTimeout(function () { location.href = 'index.html'; }, 500);
+        return false;
       });
-      return false;
     }
+
+    (function backendReadout() {
+      var wrap = document.getElementById('backendState');
+      var text = document.getElementById('backendText');
+      var diag = document.getElementById('backendDiag');
+      if (!wrap || !text || typeof DB === 'undefined') return;
+      var tries = 0;
+      function paintDiag() {
+        var lines = [];
+        try { lines = DB.diag(); } catch (err) { lines = ['diag unavailable: ' + err.message]; }
+        diag.className = 'backend-diag on';
+        diag.textContent = lines.length ? lines.join('\n') : '(no diagnostics recorded)';
+      }
+      function paint() {
+        var v = DB.VERSION || '?';
+        if (DB.connected) {
+          wrap.className = 'backend-state ok';
+          text.innerHTML = 'Backend connected &middot; build <b>' + v + '</b>';
+        } else if (tries > 24) {
+          wrap.className = 'backend-state bad';
+          text.innerHTML = 'Backend NOT connected &middot; build <b>' + v + '</b> &middot; ' +
+            '<a href="#" id="showDiag">details</a>';
+          var a = document.getElementById('showDiag');
+          if (a) a.onclick = function (ev) { ev.preventDefault(); paintDiag(); return false; };
+        } else {
+          wrap.className = 'backend-state wait';
+          text.innerHTML = 'Connecting to backend... &middot; build <b>' + v + '</b>';
+        }
+        tries++;
+      }
+      paint();
+      var iv = setInterval(function () {
+        paint();
+        if (DB.connected || tries > 24) clearInterval(iv);
+      }, 1000);
+      wrap.onclick = function () { if (diag.className.indexOf('on') === -1) paintDiag(); };
+    })();
 
     function toast(type, msg, duration) {
       var box = document.getElementById('toastBox');

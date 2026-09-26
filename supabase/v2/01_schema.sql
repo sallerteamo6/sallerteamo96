@@ -416,11 +416,17 @@ create trigger users_version before update on public.users
 
 -- Referral code + account normalisation, assigned on insert.
 create or replace function public.prepare_user() returns trigger
-language plpgsql as $$
+language plpgsql set search_path = public as $$
 begin
   new.account := lower(trim(new.account));
   if new.referral_code is null then
-    new.referral_code := upper(substr(encode(gen_random_bytes(8), 'hex'), 1, 10));
+    -- gen_random_uuid() is built into pg_catalog on PostgreSQL 13+. The
+    -- obvious gen_random_bytes() lives in pgcrypto, which Supabase installs
+    -- into the `extensions` schema -- not `public`. This trigger is reached
+    -- through a SECURITY DEFINER function pinned to search_path = public, so
+    -- the pgcrypto call could not be resolved and every sign-up failed with
+    -- "Database error saving new user". The uuid needs no extension at all.
+    new.referral_code := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 10));
   end if;
   return new;
 end $$;
