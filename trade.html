@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <title>Trade - Trust</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+</head>
+<body>
+  <div id="app">
+    <div class="business">
+      <header class="header-nav">
+        <button class="back-btn" onclick="location.href='index.html?tab=' + tab" aria-label="Back">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </button>
+        <span class="coin-title" id="coinTitle">BTC/USDT</span>
+        <div class="header-placeholder">
+          <button class="icon-btn" onclick="location.href='orders.html'" aria-label="Record">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#131f30" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="trade-pro-info">
+        <div class="trade-base-info">
+          <div class="trade-coin-icon-wrap" id="tradeCoinIconWrap">
+            <span class="trade-coin-letter">B</span>
+          </div>
+          <div>
+            <div class="trade-coin-name" id="tradeCoinName">BTC</div>
+            <div class="trade-short-code" id="tradeShortCode">USDT</div>
+          </div>
+        </div>
+        <div class="trade-value-info">
+          <div class="price" id="curPrice">US$63,090.84</div>
+          <div class="change rise" id="curChange">+0.56%</div>
+        </div>
+      </div>
+
+      <section class="pro-trend">
+        <div class="time-select" id="timeSelect">
+          <button class="time-item active" data-t="1" onclick="setTime(this,'1')">1M</button>
+          <button class="time-item" data-t="5" onclick="setTime(this,'5')">5M</button>
+          <button class="time-item" data-t="15" onclick="setTime(this,'15')">15M</button>
+          <button class="time-item" data-t="30" onclick="setTime(this,'30')">30M</button>
+          <button class="time-item" data-t="60" onclick="setTime(this,'60')">1H</button>
+          <button class="time-item" data-t="d" onclick="setTime(this,'d')">1D</button>
+        </div>
+
+        <div class="kline-container">
+          <canvas id="kline" style="width:100%;height:100%;display:block;"></canvas>
+          <div class="ohlc-panel" id="ohlcPanel"></div>
+          <div class="price-display up" id="priceOverlay">63,090.84</div>
+        </div>
+
+        <div class="submit-container">
+          <button class="submit-btn" onclick="openSubmit()">Start Trading</button>
+        </div>
+
+        <div class="trade-records">
+          <div class="trade-records-header">
+            <span class="trade-records-title">Record</span>
+            <button class="trade-records-link" onclick="location.href='orders.html'">View Orders</button>
+          </div>
+          <div id="tradeRecords"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- SUBMIT MODAL -->
+  <div class="popup-overlay" id="submitOverlay" style="display:none;">
+    <div class="deal">
+      <div class="submit-modal">
+        <header>
+          <span id="submitTitle">BTC/USDT Trade</span>
+          <button class="close-btn" onclick="closeSubmit()">×</button>
+        </header>
+        <div class="summary-card">
+          <div class="time-select-container">
+            <button class="type-btn up" id="btnUp" onclick="setDirection('up')"><span>Up</span></button>
+            <button class="type-btn down" id="btnDown" onclick="setDirection('down')"><span>Down</span></button>
+          </div>
+          <div>
+            <span class="modal-row-label">Duration</span>
+            <button class="time-display" style="width:100%;max-width:100%;" onclick="openSheet('timeSheet')"><span id="durationLabel">60s</span><span class="odds" id="oddsLabel" style="color:#5b616e;font-weight:600;margin-left:8px;">20%</span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#8b93a6" stroke-width="2"><path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          </div>
+          <div>
+            <span class="modal-row-label">Wallet</span>
+            <button class="wallet-display" onclick="openSheet('walletSheet')"><span id="walletLabel">USDT</span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#8b93a6" stroke-width="2"><path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          </div>
+          <div class="coin-select-container">
+            <input type="number" class="amount-input" id="amountInput" placeholder="Min 10" min="0" step="0.01" value="100">
+            <div style="flex:0 0 calc(50% - 6px);max-width:calc(50% - 6px);text-align:right;">
+              <div class="modal-row-label">Balance: <b id="walletBalanceLabel">0.00</b> USDT</div>
+            </div>
+          </div>
+          <div class="amt-pct-row">
+            <button class="amt-pct-btn" onclick="setAmtPct(25)">25%</button>
+            <button class="amt-pct-btn" onclick="setAmtPct(50)">50%</button>
+            <button class="amt-pct-btn" onclick="setAmtPct(75)">75%</button>
+            <button class="amt-pct-btn" onclick="setAmtPct(100)">100%</button>
+          </div>
+        </div>
+        <button class="submit-popup" onclick="confirmOrder()">Confirm Order</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TIME SHEET -->
+  <div class="sheet-overlay" id="timeSheet" style="display:none;" onclick="this.style.display='none'">
+    <div class="sheet" onclick="event.stopPropagation()">
+      <div class="sheet-header"><h3>Select Duration</h3><button onclick="document.getElementById('timeSheet').style.display='none'">×</button></div>
+      <div class="sheet-item active" onclick="pickDuration(60,20)"><span>60s</span><span class="odds">20%</span></div>
+      <div class="sheet-item" onclick="pickDuration(120,30)"><span>120s</span><span class="odds">30%</span></div>
+      <div class="sheet-item" onclick="pickDuration(300,40)"><span>300s</span><span class="odds">40%</span></div>
+    </div>
+  </div>
+
+  <!-- WALLET SHEET -->
+  <div class="sheet-overlay" id="walletSheet" style="display:none;" onclick="this.style.display='none'">
+    <div class="sheet" onclick="event.stopPropagation()">
+      <div class="sheet-header"><h3>Select Wallet</h3><button onclick="document.getElementById('walletSheet').style.display='none'">×</button></div>
+      <div class="sheet-item active" onclick="pickWallet('USDT')"><span>USDT</span><span class="odds">0.00</span></div>
+      <div class="sheet-item" onclick="pickWallet('BTC')"><span>BTC</span><span class="odds">0.00</span></div>
+    </div>
+  </div>
+
+  <!-- COUNTDOWN MODAL -->
+  <div class="popup-overlay popup-overlay-center" id="countdownOverlay" style="display:none;">
+    <div class="countdown-modal">
+      <header style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <span style="font-size:18px;font-weight:600;color:#131f30;">Order Countdown</span>
+        <button class="close-btn" onclick="closeCountdown()">×</button>
+      </header>
+      <div class="order-info-card" id="countdownInfo"></div>
+      <div style="display:flex;justify-content:center;margin:24px 0;">
+        <div class="countdown-circle"><span class="countdown-number" id="countdownNum">60</span></div>
+      </div>
+      <div class="settling-container" id="settlingBox" style="display:none;">
+        <div class="spinner"></div>
+        <div style="font-size:18px;color:#131f30;font-weight:600;">Settling...</div>
+      </div>
+      <div class="profit-preview" id="countdownPreview"></div>
+    </div>
+  </div>
+
+  <!-- RESULT MODAL -->
+  <div class="popup-overlay popup-overlay-center" id="resultOverlay" style="display:none;">
+    <div class="result-modal">
+      <header style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:18px;font-weight:600;color:#131f30;">Settlement Result</span>
+        <button class="close-btn" onclick="document.getElementById('resultOverlay').style.display='none'">×</button>
+      </header>
+      <div class="result-icon win" id="resultIcon">✓</div>
+      <div class="result-amount profit" id="resultAmount">+80.00</div>
+      <div class="result-info" id="resultInfo"></div>
+      <div class="result-btns">
+        <button class="result-btn primary" onclick="document.getElementById('resultOverlay').style.display='none'">Continue Trading</button>
+        <button class="result-btn secondary" onclick="location.href='orders.html'">View Orders</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    var params = new URLSearchParams(location.search);
+    var symbol = (params.get('s') || 'BTC').toUpperCase().trim();
+    var tab = params.get('tab') || 'crypto';
+    var market = TrustApp.findCoin(symbol);
+    if (!market) {
+      market = { s: symbol, alias: 'USDT', n: 'USDT', price: parseFloat(params.get('p')) || 63500, change: 0, dec: 2, i: null, tab: tab };
+    }
+    var pParam = parseFloat(params.get('p'));
+    if (isFinite(pParam) && pParam > 0) market.price = pParam;
+    var alias = market.n || market.alias || 'USDT';
+    var dec = market.dec || 2;
+    var quoteUnit = symbol.indexOf('/') >= 0 ? symbol.split('/')[1] : alias;
+    var pricePre = (quoteUnit === 'USDT' || quoteUnit === 'USD') ? 'US$' : '';
+    var coinTitle = symbol.indexOf('/') >= 0 ? symbol : symbol + '/' + alias;
+    document.getElementById('coinTitle').textContent = coinTitle;
+    document.getElementById('submitTitle').textContent = coinTitle + ' Trade';
+    document.getElementById('tradeCoinName').textContent = symbol;
+    document.getElementById('tradeShortCode').textContent = alias;
+    var iconWrap = document.getElementById('tradeCoinIconWrap');
+    if (market.i) {
+      iconWrap.innerHTML = '<img class="trade-coin-icon" src="img/' + market.i + '" alt="">';
+    } else {
+      iconWrap.innerHTML = '<span class="trade-coin-letter">' + symbol.charAt(0) + '</span>';
+    }
+
+    var currentInterval = '1';
+    var INTERVAL_MS = { '1': 60000, '5': 300000, '15': 900000, '30': 1800000, '60': 3600000, 'd': 86400000 };
+    var seriesByInterval = {};
+    function seriesFor(t) {
+      if (seriesByInterval[t]) return seriesByInterval[t];
+      var candles = (t === '1' || t === '5') ? 90 : (t === 'd' ? 120 : 120);
+      var drift = (coinSeed % 401 - 100) / 20000 + ((seedFrom(t + symbol) % 101) - 50) / 30000;
+      seriesByInterval[t] = buildSeries(candles, priceBase, 0.004, drift, coinSeed * 31 + seedFrom(t + symbol));
+      return seriesByInterval[t];
+    }
+    var direction = 'up';
+    var durationSec = 60;
+    var odds = 20;
+    var wallet = 'USDT';
+    var price = market.price;
+    var priceBase = price;
+    var change = market.change;
+    var buyPrice = price;
+    var currentOrderId = null;
+    var countdownTimer = null;
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+    function fmtTime(ts) {
+      var d = new Date(ts);
+      return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+    }
+
+    function loadRecords() {
+      var trades = (TrustApp.getTrades ? TrustApp.getTrades() : []) || [];
+      var out = [];
+      for (var i = 0; i < trades.length; i++) {
+        var t = trades[i];
+        var pair = t.pair || (symbol + '/' + quoteUnit);
+        if (pair.split('/')[0].toUpperCase() !== symbol.toUpperCase()) continue;
+        var won = t.status === 'win';
+        var lost = t.status === 'loss';
+        out.push({
+          coin: pair,
+          alias: alias,
+          unit: quoteUnit,
+          dir: t.side === 'down' ? 'down' : 'up',
+          amount: (parseFloat(t.amount) || 0).toFixed(2),
+          status: won ? 'win' : lost ? 'loss' : 'open',
+          time: fmtTime(t.createdAt),
+          profit: won ? '+' + (parseFloat(t.profit) || 0).toFixed(2) : lost ? '-' + Math.abs(parseFloat(t.profit) || 0).toFixed(2) : '--'
+        });
+      }
+      out.sort(function (a, b) { return b.time.localeCompare(a.time); });
+      return out;
+    }
+    var records = loadRecords();
+
+    function fmt(n, dec) {
+      return TrustApp.fmtPrice(n, dec);
+    }
+
+    var curPriceEl = document.getElementById('curPrice');
+    var curChangeEl = document.getElementById('curChange');
+    var overlayEl = document.getElementById('priceOverlay');
+        curPriceEl.textContent = pricePre + fmt(price, dec);
+    curChangeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+    curChangeEl.className = 'change ' + (change >= 0 ? 'rise' : 'fall');
+    overlayEl.textContent = fmt(price, dec);
+
+    var tradeCfg = TrustApp.getConfig ? TrustApp.getConfig() : AppConfig;
+    var amtInputEl = document.getElementById('amountInput');
+    if (amtInputEl) amtInputEl.placeholder = tradeCfg.showMinOrderAmount ? 'Min 10' : 'Amount';
+
+    function setTime(el, t) {
+      document.querySelectorAll('#timeSelect .time-item').forEach(function (b) { b.classList.remove('active'); });
+      el.classList.add('active');
+      currentInterval = t;
+      series = seriesFor(t);
+      initChart();
+    }
+
+    function openSheet(id) { document.getElementById(id).style.display = 'flex'; }
+
+    function pickDuration(sec, o) {
+      durationSec = sec; odds = o;
+      document.getElementById('durationLabel').textContent = sec + 's';
+      document.getElementById('oddsLabel').textContent = o + '%';
+      document.querySelectorAll('#timeSheet .sheet-item').forEach(function (it) { it.classList.remove('active'); });
+      event.target.closest('.sheet-item').classList.add('active');
+      document.getElementById('timeSheet').style.display = 'none';
+    }
+
+    function setAmtPct(pct) {
+      var bal = TrustApp.getBalance(TrustApp.getUserId(), 'USDT') || 0;
+      var val = Math.floor(bal * pct / 100 * 100) / 100;
+      document.getElementById('amountInput').value = val || 0;
+    }
+    function setDirection(d) {
+      direction = d;
+      document.getElementById('btnUp').classList.toggle('active', d === 'up');
+      document.getElementById('btnDown').classList.toggle('active', d === 'down');
+      document.getElementById('oddsLabel').textContent = odds + '%';
+    }
+
+    function pickWallet(w) {
+      wallet = w;
+      document.getElementById('walletLabel').textContent = w;
+      document.querySelectorAll('#walletSheet .sheet-item').forEach(function (it) { it.classList.remove('active'); });
+      event.target.closest('.sheet-item').classList.add('active');
+      document.getElementById('walletSheet').style.display = 'none';
+    }
+
+    function openSubmit() {
+      if (TrustApp.weekendTradingEnabled && !TrustApp.weekendTradingEnabled(coinTitle)) {
+        toast('error', 'Trading for ' + coinTitle + ' is suspended on weekends.');
+        return;
+      }
+      var b = document.getElementById('walletBalanceLabel');
+      if (b) b.textContent = TrustApp.getBalance(TrustApp.getUserId(), 'USDT').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      setDirection(direction);
+      document.getElementById('submitOverlay').style.display = 'flex';
+    }
+    function closeSubmit() { document.getElementById('submitOverlay').style.display = 'none'; }
+
+    function confirmOrder() {
+      var amt = parseFloat(document.getElementById('amountInput').value) || 0;
+      if (TrustApp.weekendTradingEnabled && !TrustApp.weekendTradingEnabled(coinTitle)) {
+        toast('error', 'Trading for ' + coinTitle + ' is suspended on weekends.');
+        closeSubmit();
+        return;
+      }
+      if (amt <= 0) { toast('error', 'Please enter a valid amount.'); return; }
+      if (amt < 10) { toast('error', 'Amount must be at least 10'); return; }
+      var uid = TrustApp.getUserId();
+      var bal = TrustApp.getBalance(uid, 'USDT');
+      if (amt > bal) { toast('error', 'Insufficient USDT balance'); return; }
+      TrustApp.addBalance(uid, 'USDT', -amt);
+      var u = TrustApp.accountByUid(uid);
+      var t = TrustApp.addTrade({ uid: uid, pair: coinTitle, side: direction, amount: amt, price: price, user: u ? u.account : ('ID ' + uid), duration: durationSec });
+      currentOrderId = t ? t.id : null;
+      document.getElementById('submitOverlay').style.display = 'none';
+      buyPrice = price;
+      startCountdown(amt);
+    }
+
+    function startCountdown(amt) {
+      if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+      var profitMode = TrustApp.getProfitMode ? TrustApp.getProfitMode(TrustApp.getUserId()) : false;
+      var finalWin = profitMode || Math.random() < 0.2;
+      document.getElementById('countdownOverlay').style.display = 'flex';
+      document.getElementById('countdownOverlay').querySelector('.countdown-circle').style.display = '';
+      document.getElementById('settlingBox').style.display = 'none';
+      document.getElementById('countdownInfo').innerHTML =
+        '<div class="row"><span class="label">Direction</span><span class="value ' + (direction === 'up' ? 'up-text' : 'down-text') + '">' + (direction === 'up' ? 'Up' : 'Down') + '</span></div>'
+        + '<div class="row"><span class="label">Amount</span><span class="value">' + amt.toFixed(2) + '</span></div>'
+        + '<div class="row"><span class="label">Buy Price</span><span class="value">' + fmt(buyPrice, dec) + '</span></div>'
+        + '<div class="row"><span class="label">Current Price</span><span class="value" id="countdownCurPrice">' + fmt(price, dec) + '</span></div>'
+        + '<div class="row"><span class="label">Duration</span><span class="value">' + durationSec + 's</span></div>';
+      var total = durationSec;
+      var left = total;
+      var num = document.getElementById('countdownNum');
+      num.textContent = left;
+      updateCountdownPreview(amt, finalWin, total, left);
+      countdownTimer = setInterval(function () {
+        left--;
+        num.textContent = Math.max(left, 0);
+        updateCountdownPreview(amt, finalWin, total, Math.max(left, 0));
+        if (left <= 0) {
+          clearInterval(countdownTimer); countdownTimer = null;
+          document.getElementById('countdownOverlay').querySelector('.countdown-circle').style.display = 'none';
+          document.getElementById('settlingBox').style.display = 'flex';
+          setTimeout(function () {
+            document.getElementById('countdownOverlay').style.display = 'none';
+            showResult(amt, finalWin);
+          }, 1800);
+        }
+      }, 1000);
+    }
+
+    function updateCountdownPreview(amt, finalWin, total, left) {
+      var curPriceEl = document.getElementById('countdownCurPrice');
+      if (curPriceEl) curPriceEl.textContent = fmt(price, dec);
+      var previewEl = document.getElementById('countdownPreview');
+      if (!previewEl) return;
+      if (!tradeCfg.showCountdownCurrentStatus) { previewEl.innerHTML = ''; return; }
+      var pct = amt * odds / 100;
+      var progress = total > 0 ? (total - left) / total : 1;
+      var pv = (finalWin ? 1 : -1) * pct * (0.3 + 0.7 * progress) * (0.9 + Math.random() * 0.2);
+      previewEl.innerHTML = '<div style="font-size:13px;color:#8a94a6;margin-bottom:4px;">Current Status</div><div class="preview-value ' + (pv >= 0 ? 'profit' : 'loss') + '">' + (pv >= 0 ? '+' : '') + pv.toFixed(2) + '</div>';
+    }
+
+    function closeCountdown() {
+      if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+      document.getElementById('countdownOverlay').style.display = 'none';
+    }
+
+    function showResult(amt, win) {
+      var pct = amt * odds / 100;
+      var profit = win ? pct : -pct;
+      if (win) {
+        TrustApp.addBalance(TrustApp.getUserId(), 'USDT', profit + amt);
+      } else {
+        TrustApp.addBalance(TrustApp.getUserId(), 'USDT', amt - pct);
+      }
+      if (currentOrderId) {
+        TrustApp.updateTrade(currentOrderId, {
+          status: win ? 'win' : 'loss',
+          sellPrice: price * (win ? 1.001 : 0.999),
+          settledAt: new Date().toISOString(),
+          profit: profit
+        });
+      }
+      var icon = document.getElementById('resultIcon');
+      var amtEl = document.getElementById('resultAmount');
+      icon.className = 'result-icon ' + (win ? 'win' : 'lose');
+      icon.textContent = win ? '✓' : 'X';
+      amtEl.className = 'result-amount ' + (win ? 'profit' : 'loss');
+      amtEl.textContent = (win ? '+' : '') + profit.toFixed(2);
+      document.getElementById('resultInfo').innerHTML =
+        '<div class="row"><span class="label">Purchase Amount</span><span class="value">' + amt.toFixed(2) + '</span></div>'
+        + '<div class="row"><span class="label">Direction</span><span class="value">' + (direction === 'up' ? 'Up' : 'Down') + '</span></div>'
+        + '<div class="row"><span class="label">Contract</span><span class="value">' + durationSec + 's</span></div>'
+        + '<div class="row"><span class="label">Purchase Price</span><span class="value">' + fmt(price, dec) + '</span></div>'
+        + '<div class="row"><span class="label">Selling Price</span><span class="value">' + fmt(price * (win ? 1.001 : 0.999), dec) + '</span></div>';
+      document.getElementById('resultOverlay').style.display = 'flex';
+      records.unshift({ coin: symbol, alias: alias, unit: quoteUnit, dir: direction, amount: amt.toFixed(2), status: win ? 'win' : 'loss', time: new Date().toISOString().slice(0, 19).replace('T', ' '), profit: (win ? '+' : '') + profit.toFixed(2) });
+      renderRecords();
+    }
+
+    function renderRecords() {
+      var box = document.getElementById('tradeRecords');
+      if (!records.length) { box.innerHTML = '<div class="trade-records-empty">No records yet</div>'; return; }
+      var html = '';
+      for (var i = 0; i < Math.min(records.length, 3); i++) {
+        var r = records[i];
+        var st = r.status === 'win' ? 'status-win' : r.status === 'loss' ? 'status-loss' : 'status-open';
+        var stText = r.status === 'win' ? 'Profit' : r.status === 'loss' ? 'Loss' : 'Open';
+        var dirCls = r.dir === 'up' ? 'up-text' : 'down-text';
+        var recLabel = r.coin.indexOf('/') >= 0 ? r.coin : r.coin + '/' + (r.alias || 'USDT');
+        var recUnit = r.unit || r.alias || 'USDT';
+        html += '<div class="trade-record-item">'
+          + '<div class="trade-record-cell"><span class="record-label">' + recLabel + ' · ' + r.time + '</span>'
+          + '<div style="display:flex;justify-content:space-between;align-items:center;">'
+          + '<span class="trade-record-direction ' + dirCls + '">' + (r.dir === 'up' ? 'Up' : 'Down') + '</span>'
+          + '<span class="trade-record-status ' + st + '">' + stText + '</span></div>'
+          + '<div class="row"><span class="label">Amount</span><span class="value">' + r.amount + ' ' + recUnit + '</span></div>'
+          + '<div class="row"><span class="label">Profit/Loss</span><span class="value ' + (r.profit.indexOf('-') === 0 ? 'down-text' : 'up-text') + '">' + r.profit + '</span></div>'
+          + '</div></div>';
+      }
+      box.innerHTML = html;
+    }
+
+    /* ================= KLINE ================= */
+    function rng(seed) { return function () { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }; }
+
+    function seedFrom(sym) {
+      var h = 0;
+      for (var i = 0; i < sym.length; i++) h = ((h * 31 + sym.charCodeAt(i)) >>> 0);
+      return h;
+    }
+
+    function buildSeries(n, base, step, drift, sd) {
+      var r = rng(sd || 42 + n);
+      var s = [];
+      var p = base;
+      for (var i = 0; i < n; i++) {
+        var o = p;
+        var c = o * (1 + (r() - 0.47 + drift) * step);
+        var h = Math.max(o, c) * (1 + r() * step * 0.5);
+        var l = Math.min(o, c) * (1 - r() * step * 0.5);
+        s.push({ o: o, h: h, l: l, c: c, v: 100 + r() * 900 });
+        p = c;
+      }
+      return s;
+    }
+
+    var coinSeed = seedFrom(symbol);
+    var series = seriesFor('1');
+    var lastClose = series[series.length - 1].c;
+
+    var chartState = { data: [], cw: 1, CH: 0, W: 0, min: 0, max: 0, H: 0, hover: -1, VOL: 56 };
+
+    function initChart() {
+      var data = series.slice(-60);
+      var min = Infinity, max = -Infinity, vmax = 0;
+      for (var i = 0; i < data.length; i++) {
+        if (data[i].l < min) min = data[i].l;
+        if (data[i].h > max) max = data[i].h;
+        if (data[i].v > vmax) vmax = data[i].v;
+      }
+      var pad = (max - min) * 0.12 || max * 0.01;
+      min -= pad; max += pad;
+      var cv = document.getElementById('kline');
+      if (!cv) return;
+      var dpr = window.devicePixelRatio || 1;
+      var rect = cv.parentElement.getBoundingClientRect();
+      if (!rect.width || !rect.height) { setTimeout(initChart, 150); return; }
+      cv.width = rect.width * dpr;
+      cv.height = rect.height * dpr;
+      var ctx = cv.getContext('2d');
+      ctx.scale(dpr, dpr);
+      var W = rect.width, H = rect.height;
+      var VOL = Math.min(56, Math.round(H * 0.15));
+      var CH = H - VOL;
+      var cw = W / data.length;
+      var bodyW = Math.max(cw * 0.6, 1);
+      function yOf(p) { return CH - ((p - min) / (max - min)) * CH; }
+      chartState.data = data; chartState.cw = cw; chartState.CH = CH;
+      chartState.W = W; chartState.min = min; chartState.max = max; chartState.H = H; chartState.VOL = VOL;
+      chartState.yOf = yOf;
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = '#eef1f7';
+      ctx.lineWidth = 1;
+      var rows = 5;
+      for (var r = 0; r <= rows; r++) {
+        var y = Math.round((CH / rows) * r) + 0.5;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(fmt(max - (max - min) * (r / rows), dec), 4, y - 3);
+      }
+      var ma5 = sma(data, 5), ma10 = sma(data, 10), ma30 = sma(data, 30);
+      for (var i = 0; i < data.length; i++) {
+        var d = data[i];
+        var x = (i + 0.5) * cw;
+        var yO = yOf(d.o), yC = yOf(d.c), yH = yOf(d.h), yL = yOf(d.l);
+        var up = d.c >= d.o;
+        ctx.strokeStyle = up ? '#26a69a' : '#ef5350';
+        ctx.beginPath(); ctx.moveTo(x, yH); ctx.lineTo(x, yL); ctx.stroke();
+        ctx.fillStyle = up ? '#26a69a' : '#ef5350';
+        var top = Math.min(yO, yC);
+        var bh = Math.max(Math.abs(yC - yO), 1);
+        ctx.fillRect(x - bodyW / 2, top, bodyW, bh);
+      }
+      drawMA(ctx, data, ma5, W, CH, min, max, cw, '#ff9800');
+      drawMA(ctx, data, ma10, W, CH, min, max, cw, '#3f51b5');
+      drawMA(ctx, data, ma30, W, CH, min, max, cw, '#4caf50');
+      ctx.fillStyle = '#f7f9fc';
+      ctx.fillRect(0, CH, W, VOL);
+      ctx.strokeStyle = '#e0e0e0';
+      ctx.beginPath(); ctx.moveTo(0, CH + 0.5); ctx.lineTo(W, CH + 0.5); ctx.stroke();
+      var vTop = CH + 8;
+      var vBarH = VOL - 28;
+      for (var i = 0; i < data.length; i++) {
+        var d = data[i];
+        var x = (i + 0.5) * cw;
+        var vh = Math.max((d.v / vmax) * vBarH, 1);
+        ctx.fillStyle = d.c >= d.o ? 'rgba(38,166,154,.45)' : 'rgba(239,83,80,.45)';
+        ctx.fillRect(x - bodyW / 2, vTop + vBarH - vh, bodyW, vh);
+      }
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      var stepN = Math.max(1, Math.round(data.length / 5));
+      var now2 = Date.now();
+      var intervalMs = (INTERVAL_MS[currentInterval] || 60000);
+      for (var i = 0; i < data.length; i += stepN) {
+        var t = new Date(now2 - (data.length - i) * intervalMs);
+        var tlabel = intervalMs >= 86400000
+          ? (t.getMonth() + 1) + '/' + t.getDate()
+          : pad2(t.getHours()) + ':' + pad2(t.getMinutes());
+        ctx.fillText(tlabel, (i + 0.5) * cw, H - 5);
+      }
+      var last = data[data.length - 1];
+      var lastY = yOf(last.c);
+      ctx.strokeStyle = 'rgba(19,31,48,.35)';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(0, lastY); ctx.lineTo(W, lastY); ctx.stroke();
+      ctx.setLineDash([]);
+      var tagColor = last.c >= data[data.length - 2].c ? '#26a69a' : '#ef5350';
+      var tagTxt = fmt(last.c, dec);
+      var tw = ctx.measureText(tagTxt).width;
+      ctx.fillStyle = tagColor;
+      ctx.fillRect(W - tw - 16, lastY - 9, tw + 12, 18);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(tagTxt, W - tw - 11, lastY + 3);
+      if (chartState.hover >= 0 && chartState.hover < data.length) {
+        var hd = new Date(now2 - (data.length - 1 - chartState.hover) * intervalMs);
+        drawCrosshair(ctx, data[chartState.hover], (chartState.hover + 0.5) * cw, hd);
+      }
+      updateOhlc(last);
+    }
+
+    function drawCrosshair(ctx, d, cx, hd) {
+      var st = chartState;
+      var y = st.yOf(d.c);
+      ctx.strokeStyle = 'rgba(19,31,48,.25)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, st.CH); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(st.W, y); ctx.stroke();
+      var txt = fmt(d.c, dec) + '  ' + ((INTERVAL_MS[currentInterval] || 60000) >= 86400000
+        ? (hd.getMonth() + 1) + '/' + hd.getDate() + ' ' + pad2(hd.getHours()) + ':' + pad2(hd.getMinutes())
+        : pad2(hd.getHours()) + ':' + pad2(hd.getMinutes()));
+      ctx.font = '10px sans-serif';
+      var tw = ctx.measureText(txt).width;
+      var bx = Math.max(0, Math.min(cx - tw / 2, st.W - tw - 4));
+      var by = y - 26 < 4 ? y + 4 : y - 26;
+      ctx.fillStyle = 'rgba(19,31,48,.75)';
+      ctx.fillRect(bx, by, tw + 8, 18);
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'left';
+      ctx.fillText(txt, bx + 4, by + 13);
+    }
+
+    (function () {
+      var cv = document.getElementById('kline');
+      if (!cv) return;
+      cv.addEventListener('mousemove', function (e) {
+        var r = cv.getBoundingClientRect();
+        var x = e.clientX - r.left;
+        var idx = Math.floor(x / chartState.cw);
+        if (idx < 0 || idx >= chartState.data.length) idx = -1;
+        chartState.hover = idx;
+        initChart();
+      });
+      cv.addEventListener('mouseleave', function () {
+        chartState.hover = -1;
+        initChart();
+      });
+    })();
+
+    function sma(arr, n) {
+      var out = [];
+      for (var i = 0; i < arr.length; i++) {
+        if (i < n - 1) { out.push(null); continue; }
+        var s = 0;
+        for (var j = i - n + 1; j <= i; j++) s += arr[j].c;
+        out.push(s / n);
+      }
+      return out;
+    }
+
+    function drawMA(ctx, data, ma, W, H, min, max, cw, color) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      var started = false;
+      for (var i = 0; i < data.length; i++) {
+        if (ma[i] === null) continue;
+        var x = (i + 0.5) * cw;
+        var y = H - ((ma[i] - min) / (max - min)) * H;
+        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    function updateOhlc(last) {
+      var box = document.getElementById('ohlcPanel');
+      var now = new Date();
+      box.innerHTML = '<div>Time: <span class="val">' + now.toTimeString().slice(0, 8) + '</span></div>'
+        + '<div>Open: <span class="val">' + fmt(last.o, dec) + '</span></div>'
+        + '<div>High: <span class="val">' + fmt(last.h, dec) + '</span></div>'
+        + '<div>Low: <span class="val">' + fmt(last.l, dec) + '</span></div>'
+        + '<div>Close: <span class="val">' + fmt(last.c, dec) + '</span></div>'
+        + '<div>Volume: <span class="val">' + last.v.toFixed(0) + '</span></div>';
+    }
+
+    function tick() {
+      var live = TrustApp.findCoin ? TrustApp.findCoin(symbol) : null;
+      var lv = live ? live.price : 0;
+      var last = series[series.length - 1];
+      var nv = lv > 0 ? lv : last.c * (1 + (Math.random() - 0.5) * 0.002);
+      var pv = series[series.length - 2] ? series[series.length - 2].c : last.c;
+      if (Math.random() < 0.18) {
+        series.push({ o: nv, h: nv, l: nv, c: nv, v: 40 + Math.random() * 160 });
+        if (series.length > 120) series.shift();
+      } else {
+        last.c = nv;
+        last.h = Math.max(last.h, nv);
+        last.l = Math.min(last.l, nv);
+        last.v += Math.random() * 25;
+      }
+      price = nv;
+      priceBase = nv;
+      var el = document.getElementById('curPrice');
+      var chEl = document.getElementById('curChange');
+      el.textContent = pricePre + fmt(nv, dec);
+      var ch = (nv - pv) / pv * 100;
+      var cls = ch >= 0 ? 'rise' : 'fall';
+      chEl.className = 'change ' + cls;
+      chEl.textContent = (ch >= 0 ? '+' : '') + ch.toFixed(2) + '%';
+      var ov = document.getElementById('priceOverlay');
+      ov.textContent = fmt(nv, dec);
+      ov.className = 'price-display ' + (ch >= 0 ? 'up' : 'down');
+      initChart();
+    }
+
+    renderRecords();
+    initChart();
+    window.addEventListener('load', function () { initChart(); });
+    window.addEventListener('resize', function () { initChart(); });
+    var mainTickInterval = setInterval(tick, 2000);
+    var cleanupIntervals = [];
+    cleanupIntervals.push(mainTickInterval);
+    var recordsInterval = setInterval(function () { records = loadRecords(); renderRecords(); }, 4000);
+    cleanupIntervals.push(recordsInterval);
+    window.addEventListener('beforeunload', function () {
+      cleanupIntervals.forEach(function (id) { clearInterval(id); });
+      if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+    });
+
+    function toast(type, msg) { TrustApp.toast(type, msg); }
+
+    TrustApp.fetchMarket(function () {
+      var refreshed = TrustApp.findCoin(symbol);
+      if (refreshed) {
+        market.price = refreshed.price;
+        market.change = refreshed.change;
+        price = market.price;
+        priceBase = price;
+        change = market.change;
+    curPriceEl.textContent = pricePre + fmt(price, dec);
+        curChangeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+        curChangeEl.className = 'change ' + (change >= 0 ? 'rise' : 'fall');
+        overlayEl.textContent = fmt(price, dec);
+      }
+    });
+  </script>
+</body>
+</html>

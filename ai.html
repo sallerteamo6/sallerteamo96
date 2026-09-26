@@ -1,0 +1,586 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <title>AI Quantitative Trading - Trust</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+</head>
+<body class="ai-quant-page">
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <header class="header">
+    <button class="back-btn" onclick="location.href='index.html'" aria-label="Back">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M15 18L9 12L15 6" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <h1 class="header-title" data-i18n="ai.title">AI Quantitative Trading</h1>
+    <button class="orders-btn" onclick="toggleOrders()" aria-label="Orders">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3 12h18M3 6h18M3 18h18" stroke="#333" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+  </header>
+
+  <div id="productsView">
+    <div class="content" style="padding-top:0;">
+      <div class="banner">
+        <div class="banner-content">
+          <h2 data-i18n="ai.bannerTitle">AI Smart Quantitative</h2>
+          <p data-i18n="ai.bannerSub">Professional quantitative strategy, stable returns</p>
+        </div>
+      </div>
+      <div class="products-section">
+        <h3 class="section-title"></h3>
+        <div class="products-grid">
+
+          <div class="product-card" onclick="openBuy(5)">
+            <div class="product-header">
+              <h4 data-i18n="ai.p1Name">AI Quant Demo</h4>
+              <span class="product-tag">1Days</span>
+            </div>
+            <div class="product-return">
+              <div class="return-range">
+                <span class="return-value">2%</span>
+                <span class="return-label" data-i18n="ai.dailyReturn">Daily Return</span>
+              </div>
+            </div>
+            <div class="product-info">
+              <div class="info-item"><span class="label" data-i18n="ai.minInvestment">Min Investment</span><span class="value">10.00 USDT</span></div>
+              <div class="info-item"><span class="label" data-i18n="ai.settlement">Settlement</span><span class="value" data-i18n="ai.dailySettle">Daily Settle</span></div>
+            </div>
+            <p class="product-desc" data-i18n="ai.p1Desc">1-day demo plan, daily return 2.0%</p>
+            <button class="buy-btn" onclick="event.stopPropagation();openBuy(5)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-7-7v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> <span data-i18n="ai.buyNow">Buy Now</span>
+            </button>
+          </div>
+
+          <div class="product-card" onclick="openBuy(1)">
+            <div class="product-header">
+              <h4 data-i18n="ai.p2Name">AI Quant Trial</h4>
+              <span class="product-tag">7Days</span>
+            </div>
+            <div class="product-return">
+              <div class="return-range">
+                <span class="return-value">2.5%</span>
+                <span class="return-label" data-i18n="ai.dailyReturn">Daily Return</span>
+              </div>
+            </div>
+            <div class="product-info">
+              <div class="info-item"><span class="label" data-i18n="ai.minInvestment">Min Investment</span><span class="value">100.00 USDT</span></div>
+              <div class="info-item"><span class="label" data-i18n="ai.settlement">Settlement</span><span class="value" data-i18n="ai.dailySettle">Daily Settle</span></div>
+            </div>
+            <p class="product-desc" data-i18n="ai.p2Desc">7-day trial plan, daily return 2.5%</p>
+            <button class="buy-btn" onclick="event.stopPropagation();openBuy(1)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-7-7v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> <span data-i18n="ai.buyNow">Buy Now</span>
+            </button>
+          </div>
+
+          <div class="product-card" onclick="openBuy(2)">
+            <div class="product-header">
+              <h4 data-i18n="ai.p3Name">AI Quant Standard</h4>
+              <span class="product-tag">30Days</span>
+            </div>
+            <div class="product-return">
+              <div class="return-range">
+                <span class="return-value">3%</span>
+                <span class="return-label" data-i18n="ai.dailyReturn">Daily Return</span>
+              </div>
+            </div>
+            <div class="product-info">
+              <div class="info-item"><span class="label" data-i18n="ai.minInvestment">Min Investment</span><span class="value">1000.00 USDT</span></div>
+              <div class="info-item"><span class="label" data-i18n="ai.settlement">Settlement</span><span class="value" data-i18n="ai.dailySettle">Daily Settle</span></div>
+            </div>
+            <p class="product-desc" data-i18n="ai.p3Desc">30-day standard plan, daily return 3.0%</p>
+            <button class="buy-btn" onclick="event.stopPropagation();openBuy(2)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-7-7v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> <span data-i18n="ai.buyNow">Buy Now</span>
+            </button>
+          </div>
+
+          <div class="product-card" onclick="openBuy(3)">
+            <div class="product-header">
+              <h4 data-i18n="ai.p4Name">AI Quant Professional</h4>
+              <span class="product-tag">90Days</span>
+            </div>
+            <div class="product-return">
+              <div class="return-range">
+                <span class="return-value">4%</span>
+                <span class="return-label" data-i18n="ai.dailyReturn">Daily Return</span>
+              </div>
+            </div>
+            <div class="product-info">
+              <div class="info-item"><span class="label" data-i18n="ai.minInvestment">Min Investment</span><span class="value">5000.00 USDT</span></div>
+              <div class="info-item"><span class="label" data-i18n="ai.settlement">Settlement</span><span class="value" data-i18n="ai.dailySettle">Daily Settle</span></div>
+            </div>
+            <p class="product-desc" data-i18n="ai.p4Desc">90-day professional plan, daily return 4.0%</p>
+            <button class="buy-btn" onclick="event.stopPropagation();openBuy(3)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-7-7v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> <span data-i18n="ai.buyNow">Buy Now</span>
+            </button>
+          </div>
+
+          <div class="product-card" onclick="openBuy(4)">
+            <div class="product-header">
+              <h4 data-i18n="ai.p5Name">AI Quant Premium</h4>
+              <span class="product-tag">180Days</span>
+            </div>
+            <div class="product-return">
+              <div class="return-range">
+                <span class="return-value">5%</span>
+                <span class="return-label" data-i18n="ai.dailyReturn">Daily Return</span>
+              </div>
+            </div>
+            <div class="product-info">
+              <div class="info-item"><span class="label" data-i18n="ai.minInvestment">Min Investment</span><span class="value">10000.00 USDT</span></div>
+              <div class="info-item"><span class="label" data-i18n="ai.settlement">Settlement</span><span class="value" data-i18n="ai.dailySettle">Daily Settle</span></div>
+            </div>
+            <p class="product-desc" data-i18n="ai.p5Desc">180-day premium plan, daily return 5.0%</p>
+            <button class="buy-btn" onclick="event.stopPropagation();openBuy(4)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-7-7v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> <span data-i18n="ai.buyNow">Buy Now</span>
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="ordersView" style="display:none;">
+    <div class="orders-content">
+      <h3 class="section-title" data-i18n="ai.myPositions">My Positions</h3>
+      <div class="orders-list" id="ordersList"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="buyOverlay" style="display:none;" onclick="closeBuy()">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3 id="buyTitle">Buy AI Quant Trial</h3>
+        <button class="close-btn" onclick="closeBuy()" aria-label="Close">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#333" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="product-summary">
+          <div class="summary-row"><span data-i18n="ai.period">Period</span><span id="mPeriod">7 Days</span></div>
+          <div class="summary-row"><span data-i18n="ai.dailyReturn">Daily Return</span><span class="highlight" id="mRate">0.3% - 0.8%</span></div>
+          <div class="summary-row"><span data-i18n="ai.profitMethod">Profit Method</span><span id="mMethod">Daily Settle</span></div>
+        </div>
+        <div class="amount-input-section">
+          <label data-i18n="ai.investmentAmount">Investment Amount (USDT)</label>
+          <div class="input-group">
+            <input type="number" id="buyAmount" placeholder="Enter investment amount" min="100">
+            <button class="max-btn" onclick="setMaxAmount()" data-i18n="ai.all">All</button>
+          </div>
+          <div class="input-tips">
+            <span id="tipMin">Min: 100.00</span>
+            <span id="tipMax" style="display:none;">Max: 10000.00</span>
+            <span id="tipAvail">Available: 1025.00</span>
+          </div>
+        </div>
+        <div class="estimate-section">
+          <h4 data-i18n="ai.estimatedProfit">Estimated Profit</h4>
+          <div class="estimate-row"><span data-i18n="ai.estDailyProfit">Est. Daily Profit</span><span class="estimate-value" id="estDaily">0.80 USDT</span></div>
+          <div class="estimate-row"><span data-i18n="ai.estTotalProfit">Est. Total Profit</span><span class="estimate-value" id="estTotal">5.60 USDT</span></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="confirm-btn" onclick="confirmBuy()" data-i18n="ai.confirmPurchase">Confirm Purchase</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="detailOverlay" style="display:none;" onclick="closeDetail()">
+    <div class="modal-content detail-modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3 data-i18n="ai.orderDetails">Order Details</h3>
+        <button class="close-btn" onclick="closeDetail()" aria-label="Close">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#333" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="detail-section">
+          <h4 data-i18n="ai.basicInfo">Basic Info</h4>
+          <div class="detail-row"><span data-i18n="ai.product">Product</span><span id="dProduct">AI Quant Standard</span></div>
+          <div class="detail-row"><span data-i18n="ai.investment">Investment</span><span id="dAmount">1000.00 USDT</span></div>
+          <div class="detail-row"><span data-i18n="ai.currentPrincipal">Current Principal</span><span id="dPrincipal">1008.00 USDT</span></div>
+          <div class="detail-row"><span data-i18n="ai.cumulativeProfit">Cumulative Profit</span><span class="profit" id="dProfit">+8.00 USDT</span></div>
+          <div class="detail-row"><span data-i18n="ai.startTime">Start Time</span><span id="dStart">2026-07-29 12:00</span></div>
+          <div class="detail-row"><span data-i18n="ai.endTime">End Time</span><span id="dEnd">2026-08-28 12:00</span></div>
+        </div>
+        <div class="detail-section">
+          <h4 data-i18n="ai.profitPlan">Profit Plan</h4>
+          <div class="schedules-list" id="schedulesList">
+            <div class="schedule-item settled">
+              <div class="schedule-day">Day 1</div>
+              <div class="schedule-info">
+                <div><div>Profit Rate: 0.8%</div><div>Profit: 8.00 USDT</div></div>
+                <div class="schedule-time">2026-07-30 12:00</div>
+              </div>
+              <div class="schedule-status">Settled</div>
+            </div>
+            <div class="schedule-item settled">
+              <div class="schedule-day">Day 2</div>
+              <div class="schedule-info">
+                <div><div>Profit Rate: 1.2%</div><div>Profit: 12.00 USDT</div></div>
+                <div class="schedule-time">2026-07-31 12:00</div>
+              </div>
+              <div class="schedule-status">Settled</div>
+            </div>
+            <div class="schedule-item pending">
+              <div class="schedule-day">Day 3</div>
+              <div class="schedule-info"><div class="schedule-time">2026-08-01 12:00</div></div>
+              <div class="schedule-status">Pending</div>
+            </div>
+            <div class="schedule-item pending">
+              <div class="schedule-day">Day 4</div>
+              <div class="schedule-info"><div class="schedule-time">2026-08-02 12:00</div></div>
+              <div class="schedule-status">Pending</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function toast(type, msg) {
+      var box = document.getElementById('toastBox');
+      var el = document.createElement('div');
+      el.className = 'toast-message toast-' + type;
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, 2000);
+    }
+
+    function fmt(n) { return (parseFloat(n) || 0).toFixed(2); }
+
+    var products = [
+      { id: 5, name: 'AI Quant Demo', period: 1, rateMin: 2.0, rateMax: 2.0, min: 10, max: 1000, desc: '1-day demo plan, daily return 2.0%' },
+      { id: 1, name: 'AI Quant Trial', period: 7, rateMin: 2.5, rateMax: 2.5, min: 100, max: 10000, desc: '7-day trial plan, daily return 2.5%' },
+      { id: 2, name: 'AI Quant Standard', period: 30, rateMin: 3.0, rateMax: 3.0, min: 1000, max: 50000, desc: '30-day standard plan, daily return 3.0%' },
+      { id: 3, name: 'AI Quant Professional', period: 90, rateMin: 4.0, rateMax: 4.0, min: 5000, max: 100000, desc: '90-day professional plan, daily return 4.0%' },
+      { id: 4, name: 'AI Quant Premium', period: 180, rateMin: 5.0, rateMax: 5.0, min: 10000, max: 0, desc: '180-day premium plan, daily return 5.0%' }
+    ];
+    var uid = TrustApp.getUserId();
+    var userBalance = TrustApp.getBalance(uid, 'USDT');
+    var _brt = 0;
+    function curUid() { uid = TrustApp.getUserId ? TrustApp.getUserId() : uid; return uid; }
+    function refreshBalance() {
+      curUid();
+      userBalance = TrustApp.getBalance(uid, 'USDT');
+      var el = document.getElementById('tipAvail');
+      if (el) el.textContent = TrustApp.t('ai.available') + ': ' + fmt(userBalance);
+      // If the session/balance is still settling (slow first load), re-read a
+      // few times so the modal never stays stuck on 0.
+      if ((!uid || userBalance <= 0) && _brt < 12) {
+        _brt++;
+        setTimeout(refreshBalance, 250);
+      } else {
+        _brt = 0;
+      }
+    }
+    var current = null;
+
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
+    function fmtTime(ts) {
+      if (!ts) return '--';
+      var d = new Date(ts);
+      return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+    }
+    function myOrders() {
+      return (TrustApp.getAIOrders ? TrustApp.getAIOrders() : []).filter(function (o) { return String(o.uid) === String(curUid()); });
+    }
+    function findOrder(id) {
+      var list = myOrders();
+      for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+      return null;
+    }
+
+    function toggleOrders() {
+      var pv = document.getElementById('productsView');
+      var ov = document.getElementById('ordersView');
+      var show = pv.style.display !== 'none';
+      pv.style.display = show ? 'none' : '';
+      ov.style.display = show ? '' : 'none';
+      if (show) loadOrders();
+    }
+
+    function loadOrders() {
+      var list = myOrders();
+      var box = document.getElementById('ordersList');
+      if (!list.length) {
+        box.innerHTML = '<div style="text-align:center;color:#999;padding:40px 0;">' + TrustApp.t('ai.noPositions') + '</div>';
+        return;
+      }
+      var cfg = TrustApp.getConfig ? (TrustApp.getConfig() || {}) : {};
+      var approveMin = parseFloat(cfg.aiQuantAutoApproveMin);
+      if (!isFinite(approveMin) || approveMin < 0) approveMin = 1;
+      box.innerHTML = list.map(function (o) {
+        var statusCls = 'pending', statusTxt = TrustApp.t('ai.pending');
+        if (o.status === 'running') { statusCls = 'running'; statusTxt = TrustApp.t('ai.running'); }
+        else if (o.status === 'completed') { statusCls = 'completed'; statusTxt = TrustApp.t('ai.completed'); }
+        else if (o.status === 'rejected') { statusCls = 'rejected'; statusTxt = TrustApp.t('ai.rejected'); }
+        var pct = o.period > 0 ? Math.round(o.settledDays / o.period * 100) : 0;
+        var countdownHtml = '';
+        var progressHtml;
+        if (o.status === 'running') {
+          var next = null;
+          var scheds = o.schedules || [];
+          for (var k = 0; k < scheds.length; k++) {
+            if (scheds[k].status === 0) { next = scheds[k]; break; }
+          }
+          if (next) {
+            var st = new Date(next.time).getTime();
+            countdownHtml = '<div class="order-countdown" data-settle="' + st + '" data-day="' + next.day + '">' + TrustApp.t('ai.settlesIn') + ' --:--:--</div>';
+          } else {
+            countdownHtml = '<div class="order-countdown" data-day="0">' + TrustApp.t('ai.finalizing') + '</div>';
+          }
+          var stTs = o.startAt ? new Date(o.startAt).getTime() : 0;
+          var enTs = o.endAt ? new Date(o.endAt).getTime() : 0;
+          var livePct = (enTs > stTs) ? Math.min(100, Math.max(0, Math.round((Date.now() - stTs) / (enTs - stTs) * 100))) : pct;
+          progressHtml = '<div class="order-progress">'
+            + '<div class="progress-info"><span>' + TrustApp.t('ai.running') + ' ' + o.settledDays + '/' + o.period + ' ' + TrustApp.t('ai.days') + ' &middot; <span class="order-progress-pct">' + livePct + '%</span></span><span class="order-progress-left">' + fmtLeft(enTs - Date.now()) + '</span></div>'
+            + '<div class="progress-bar"><div class="progress-fill order-progress-fill" style="width:' + livePct + '%;" data-start="' + stTs + '" data-end="' + enTs + '"></div></div></div>';
+        } else if (o.status === 'pending') {
+          var startTs = new Date(o.createdAt).getTime() + approveMin * 60000;
+          countdownHtml = '<div class="order-countdown" data-start="' + startTs + '">' + TrustApp.t('ai.startsIn') + ' --:--</div>';
+          progressHtml = '<div class="order-progress"><div class="progress-info"><span>' + TrustApp.t('ai.awaitingApproval') + '</span><span>0%</span></div><div class="progress-bar"><div class="progress-fill" style="width:0%;"></div></div></div>';
+        } else if (o.status === 'completed') {
+          progressHtml = '<div class="order-progress"><div class="progress-info"><span>' + TrustApp.t('ai.completed') + '</span><span>100%</span></div><div class="progress-bar"><div class="progress-fill" style="width:100%;"></div></div></div>';
+        } else {
+          progressHtml = '<div class="order-progress"><div class="progress-info"><span>' + TrustApp.t('ai.rejected') + '</span><span>0%</span></div><div class="progress-bar"><div class="progress-fill" style="width:0%;"></div></div></div>';
+        }
+        var profitTxt = (o.status === 'rejected' ? '0.00' : (o.profit > 0 ? '+' : '') + fmt(o.profit)) + ' USDT';
+        var timeTxt = o.startAt ? fmtTime(o.startAt) : fmtTime(o.createdAt);
+        return '<div class="order-card" onclick="openDetail(\'' + o.id + '\')">'
+          + '<div class="order-header"><h4>' + o.product + '</h4><span class="status-badge ' + statusCls + '">' + statusTxt + '</span></div>'
+          + '<div class="order-stats">'
+          + '<div class="stat-item"><span class="stat-label">' + TrustApp.t('ai.investment') + '</span><span class="stat-value">' + fmt(o.amount) + ' USDT</span></div>'
+          + '<div class="stat-item"><span class="stat-label">' + TrustApp.t('ai.totalProfit') + '</span><span class="stat-value ' + (o.profit > 0 ? 'profit' : '') + '">' + profitTxt + '</span></div>'
+          + '</div>'
+          + countdownHtml
+          + progressHtml
+          + '<div class="order-time"><span>' + timeTxt + '</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="#999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>'
+          + '</div>';
+      }).join('');
+    }
+
+    function findProduct(id) {
+      for (var i = 0; i < products.length; i++) if (products[i].id === id) return products[i];
+      return null;
+    }
+
+    function openBuy(id) {
+      current = findProduct(id);
+      if (!current) return;
+      document.getElementById('buyTitle').textContent = TrustApp.t('ai.buy') + ' ' + current.name;
+      document.getElementById('mPeriod').textContent = current.period + ' ' + TrustApp.t('ai.days');
+      document.getElementById('mRate').textContent = current.rateMin + '% - ' + current.rateMax + '%';
+      document.getElementById('mMethod').textContent = TrustApp.t('ai.dailySettle');
+      var amt = document.getElementById('buyAmount');
+      amt.value = current.min;
+      amt.min = current.min;
+      amt.max = current.max || 999999999;
+      document.getElementById('tipMin').textContent = TrustApp.t('ai.minimum') + ': ' + fmt(current.min);
+      var tipMax = document.getElementById('tipMax');
+      if (current.max > 0) { tipMax.style.display = ''; tipMax.textContent = TrustApp.t('ai.maximum') + ': ' + fmt(current.max); }
+      else { tipMax.style.display = 'none'; }
+      refreshBalance();
+      updBuy();
+      document.getElementById('buyOverlay').style.display = 'flex';
+    }
+
+    function updBuy() {
+      if (!current) return;
+      var amt = parseFloat(document.getElementById('buyAmount').value) || 0;
+      document.getElementById('estDaily').textContent = (amt * current.rateMax / 100).toFixed(2) + ' USDT';
+      document.getElementById('estTotal').textContent = (amt * current.rateMax / 100 * current.period).toFixed(2) + ' USDT';
+    }
+    document.getElementById('buyAmount').addEventListener('input', updBuy);
+
+function setMaxAmount() {
+      if (!current) return;
+      refreshBalance();
+      var m = current.max || 999999999;
+      document.getElementById('buyAmount').value = Math.min(userBalance, m);
+      updBuy();
+    }
+
+    function confirmBuy() {
+      if (!current) return;
+      refreshBalance();
+      var amt = parseFloat(document.getElementById('buyAmount').value) || 0;
+      if (!amt || amt <= 0) { toast('error', TrustApp.t('ai.enterInvestment')); return; }
+      if (amt < current.min) { toast('error', TrustApp.t('ai.errMin')); return; }
+      if (current.max > 0 && amt > current.max) { toast('error', TrustApp.t('ai.errMax')); return; }
+      if (amt > userBalance) { toast('error', TrustApp.t('funds.insufficient').replace('{c}', 'USDT')); return; }
+      TrustApp.addBalance(uid, 'USDT', -amt);
+      userBalance -= amt;
+      TrustApp.addAIOrder({
+        uid: uid,
+        account: (TrustApp.accountByUid(uid) || {}).account || ('ID ' + uid),
+        productId: current.id,
+        product: current.name,
+        period: current.period,
+        rateMin: current.rateMin,
+        rateMax: current.rateMax,
+        amount: amt,
+        status: 'pending'
+      });
+      closeBuy();
+      toggleOrders();
+      toast('success', TrustApp.t('ai.buySuccess'));
+    }
+    function closeBuy() { document.getElementById('buyOverlay').style.display = 'none'; }
+
+    function openDetail(id) {
+      var o = findOrder(id);
+      if (!o) return;
+      document.getElementById('dProduct').textContent = o.product;
+      document.getElementById('dAmount').textContent = fmt(o.amount) + ' USDT';
+      document.getElementById('dPrincipal').textContent = fmt(o.principal) + ' USDT';
+      document.getElementById('dProfit').textContent = (o.status === 'rejected' ? '' : (o.profit > 0 ? '+' : '')) + fmt(o.profit) + ' USDT';
+      document.getElementById('dStart').textContent = o.startAt ? fmtTime(o.startAt) : fmtTime(o.createdAt);
+      document.getElementById('dEnd').textContent = o.endAt ? fmtTime(o.endAt) : '--';
+      var list = document.getElementById('schedulesList');
+      list.innerHTML = '';
+      var scheds = o.schedules || [];
+      for (var j = 0; j < scheds.length; j++) {
+        var s = scheds[j];
+        var item = document.createElement('div');
+        item.className = 'schedule-item ' + (s.status === 1 ? 'settled' : 'pending');
+        var day = document.createElement('div');
+        day.className = 'schedule-day';
+        day.textContent = TrustApp.t('ai.day') + ' ' + s.day;
+        var info = document.createElement('div');
+        info.className = 'schedule-info';
+        if (s.status === 1) {
+          var wrap = document.createElement('div');
+          var r = document.createElement('div');
+          r.textContent = TrustApp.t('ai.profitRate') + ': ' + s.rate + '%';
+          var p = document.createElement('div');
+          p.textContent = TrustApp.t('ai.profit') + ': ' + fmt(s.profit) + ' USDT';
+          wrap.appendChild(r);
+          wrap.appendChild(p);
+          info.appendChild(wrap);
+        }
+        var time = document.createElement('div');
+        time.className = 'schedule-time';
+        time.textContent = s.time;
+        info.appendChild(time);
+        if (s.status === 0) {
+          var cd = document.createElement('div');
+          cd.className = 'schedule-countdown';
+          cd.setAttribute('data-settle', String(new Date(s.time).getTime()));
+          cd.textContent = TrustApp.t('ai.settlesIn') + ' --:--:--';
+          info.appendChild(cd);
+        }
+        var st = document.createElement('div');
+        st.className = 'schedule-status';
+        st.textContent = s.status === 1 ? TrustApp.t('ai.settled') : TrustApp.t('ai.pending');
+        item.appendChild(day);
+        item.appendChild(info);
+        item.appendChild(st);
+        list.appendChild(item);
+      }
+      document.getElementById('detailOverlay').style.display = 'flex';
+    }
+    function closeDetail() { document.getElementById('detailOverlay').style.display = 'none'; }
+
+    function fmtCountdown(ms) {
+      ms = Math.max(0, ms);
+      var s = Math.floor(ms / 1000);
+      var h = Math.floor(s / 3600); s %= 3600;
+      var m = Math.floor(s / 60); s %= 60;
+      return pad2(h) + ':' + pad2(m) + ':' + pad2(s);
+    }
+    function fmtClockShort(ms) {
+      ms = Math.max(0, ms);
+      var s = Math.floor(ms / 1000);
+      var m = Math.floor(s / 60); s %= 60;
+      return pad2(m) + ':' + pad2(s);
+    }
+    function fmtLeft(ms) {
+      if (!isFinite(ms) || ms <= 0) return '0d 00:00:00 ' + TrustApp.t('ai.left');
+      var s = Math.floor(ms / 1000);
+      var d = Math.floor(s / 86400); s %= 86400;
+      var h = Math.floor(s / 3600); s %= 3600;
+      var m = Math.floor(s / 60); s %= 60;
+      return (d > 0 ? d + 'd ' : '') + pad2(h) + ':' + pad2(m) + ':' + pad2(s) + ' ' + TrustApp.t('ai.left');
+    }
+
+    setInterval(function () {
+      if (TrustApp.aiProcess) { try { TrustApp.aiProcess(); } catch (e) {} }
+      refreshBalance();
+      var ov = document.getElementById('ordersView');
+      if (ov && ov.style.display !== 'none') loadOrders();
+    }, 10000);
+
+    setInterval(function () {
+      var now = Date.now();
+      var needReload = false;
+      var fills = document.querySelectorAll('.order-progress-fill[data-start]');
+      for (var f = 0; f < fills.length; f++) {
+        var fl = fills[f];
+        var sts = parseInt(fl.getAttribute('data-start'), 10);
+        var ets = parseInt(fl.getAttribute('data-end'), 10);
+        if (!isFinite(sts) || !isFinite(ets) || ets <= sts) continue;
+        var fPct = Math.min(100, Math.max(0, (now - sts) / (ets - sts) * 100));
+        fl.style.width = fPct.toFixed(2) + '%';
+        var prog = fl.closest('.order-progress');
+        if (prog) {
+          var pctEl = prog.querySelector('.order-progress-pct');
+          if (pctEl) pctEl.textContent = Math.round(fPct) + '%';
+          var leftEl = prog.querySelector('.order-progress-left');
+          if (leftEl) leftEl.textContent = fmtLeft(ets - now);
+        }
+      }
+      var els = document.querySelectorAll('.order-countdown, .schedule-countdown');
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        var st = parseInt(el.getAttribute('data-settle'), 10);
+        if (isFinite(st)) {
+          var remain = st - now;
+          var day = el.getAttribute('data-day');
+          if (remain <= 0) { el.textContent = TrustApp.t('ai.settling'); needReload = true; }
+          else el.textContent = (day && day !== '0' ? TrustApp.t('ai.day') + ' ' + day + ' ' + TrustApp.t('ai.settlesIn') + ' ' : TrustApp.t('ai.settlesIn') + ' ') + fmtCountdown(remain);
+        } else {
+          var startTs = parseInt(el.getAttribute('data-start'), 10);
+          if (isFinite(startTs)) {
+            var rem2 = startTs - now;
+            if (rem2 <= 0) { el.textContent = TrustApp.t('ai.starting'); needReload = true; }
+            else el.textContent = TrustApp.t('ai.startsIn') + ' ' + fmtClockShort(rem2);
+          }
+        }
+      }
+      if (needReload) {
+        refreshBalance();
+        var ov2 = document.getElementById('ordersView');
+        if (ov2 && ov2.style.display !== 'none') loadOrders();
+      }
+    }, 1000);
+
+    window.addEventListener('trustsync:user_balances', refreshBalance);
+    window.addEventListener('trustsync:balances', refreshBalance);
+    window.addEventListener('trustsync:ai_orders', function () {
+      var ov = document.getElementById('ordersView');
+      if (ov && ov.style.display !== 'none') loadOrders();
+    });
+    if (TrustApp.restoreSession) TrustApp.restoreSession().then(refreshBalance);
+    if (window.DB && DB.ready) DB.ready().then(refreshBalance);
+    // Safety net: session/balance can settle slightly after the events above;
+    // a short re-read guarantees the real balance is shown even then.
+    setTimeout(refreshBalance, 700);
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) refreshBalance();
+    });
+  </script>
+</body>
+</html>
+

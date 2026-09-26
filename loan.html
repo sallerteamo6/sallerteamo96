@@ -1,0 +1,186 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>Trust</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+</head>
+<body class="auth-page loan-page" style="background:#f5f7fa;">
+
+  <header class="sub-header">
+    <button class="back-btn" onclick="location.href='account.html'" aria-label="Back">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M15 18L9 12L15 6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <h1 class="header-title" data-i18n="loan.title">Loan</h1>
+  </header>
+
+  <main class="page" style="max-width:560px;">
+    <div class="loan-form">
+      <div class="limit">
+        <p data-i18n="loan.limit">Loan Limit</p>
+        <span>$200,000<span class="currency">USD</span></span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" data-i18n="loan.period">Loan Period</label>
+        <select class="form-select" id="planSelect">
+          <option value="" data-i18n="loan.selectPeriod">Please select loan period</option>
+          <option value="7" data-min="100" data-max="5000" data-rate="1" data-i18n="loan.plan7">7 Days - [100-5,000]</option>
+          <option value="14" data-min="1000" data-max="10000" data-rate="2" data-i18n="loan.plan14">14 Days - [1,000-10,000]</option>
+          <option value="30" data-min="10000" data-max="50000" data-rate="3" data-i18n="loan.plan30">30 Days - [10,000-50,000]</option>
+          <option value="60" data-min="20000" data-max="200000" data-rate="5" data-i18n="loan.plan60">60 Days - [20,000-200,000]</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" data-i18n="loan.amount">Amount</label>
+        <input type="number" class="form-input" id="loanAmount" data-i18n-ph="loan.enterAmount" placeholder="Please enter loan amount" step="any" value="2000">
+        <p class="password-hint" id="amountRange">Amount Range: 100 - 5,000</p>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" data-i18n="loan.rate">Overall Rate</label>
+        <input type="text" class="form-input readonly" id="dailyRate" value="1%" readonly>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" data-i18n="loan.totalInterest">Total Interest</label>
+        <input type="text" class="form-input readonly" id="totalInterest" value="$20.00" readonly>
+      </div>
+
+      <button class="submit-btn" id="applyBtn" data-i18n="loan.applyNow" onclick="applyLoan()">Apply Now</button>
+    </div>
+
+    <div class="loan-history">
+      <h3 class="section-title" style="margin-bottom:12px;" data-i18n="loan.history">Loan History</h3>
+      <div id="loanRecords"></div>
+    </div>
+  </main>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    function toast(type, msg) {
+      var box = document.getElementById('toastBox');
+      var el = document.createElement('div');
+      el.className = 'toast-message toast-' + type;
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, 2000);
+    }
+
+var plans = {
+      '7': { min: 100, max: 5000, rate: 1 },
+      '14': { min: 1000, max: 10000, rate: 2 },
+      '30': { min: 10000, max: 50000, rate: 3 },
+      '60': { min: 20000, max: 200000, rate: 5 }
+    };
+    var selected = '7';
+
+    function upd() {
+      var opt = document.getElementById('planSelect').selectedOptions[0];
+      var days = opt.value;
+      var amt = parseFloat(document.getElementById('loanAmount').value) || 0;
+      if (days) {
+        var p = plans[days];
+        selected = days;
+        document.getElementById('amountRange').textContent = TrustApp.t('loan.amountRange') + ': ' + p.min + ' - ' + p.max.toLocaleString();
+        document.getElementById('dailyRate').value = p.rate + '%';
+        document.getElementById('totalInterest').value = '$' + (amt * (p.rate / 100)).toFixed(2);
+        document.getElementById('applyBtn').disabled = !(amt >= p.min && amt <= p.max);
+      } else {
+        selected = '';
+        document.getElementById('dailyRate').value = '0%';
+        document.getElementById('totalInterest').value = '$0.00';
+        document.getElementById('applyBtn').disabled = true;
+      }
+    }
+
+    document.getElementById('planSelect').onchange = upd;
+    document.getElementById('loanAmount').addEventListener('input', upd);
+
+    function fmtMoney(n) {
+      return (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function stText(s) { return s === 'approved' ? TrustApp.t('funds.statusApproved') : s === 'rejected' ? TrustApp.t('funds.statusRejected') : TrustApp.t('funds.statusPending'); }
+    function stCls(s) { return s === 'approved' ? 'status-1' : s === 'rejected' ? 'status-2' : 'status-0'; }
+
+    function renderRecords() {
+      var box = document.getElementById('loanRecords');
+      if (!box) return;
+      var uid = TrustApp.getUserId();
+      var loans = uid ? TrustApp.getLoansForUser(uid) : [];
+      if (!loans.length) {
+        box.innerHTML = '<div style="text-align:center;color:#8a94a6;padding:20px 0;">' + TrustApp.t('loan.noRecords') + '</div>';
+        return;
+      }
+      box.innerHTML = loans.map(function (t) {
+        var tm = (t.createdAt || '').replace('T', ' ').slice(0, 16);
+        return '<div class="record-item">'
+          + '<div class="record-header"><span class="record-amount debit">' + TrustApp.t('loan.amountLabel') + fmtMoney(t.amount) + '</span><span class="status-pill ' + stCls(t.status) + '">' + stText(t.status) + '</span></div>'
+          + '<div class="loan-field"><span class="l-label">' + TrustApp.t('loan.period') + '</span><span class="l-value">' + t.days + ' ' + TrustApp.t('loan.days') + '</span></div>'
+          + '<div class="loan-field"><span class="l-label">' + TrustApp.t('loan.rate') + '</span><span class="l-value">' + t.rate + '%</span></div>'
+          + '<div class="loan-field"><span class="l-label">' + TrustApp.t('loan.totalInterest') + '</span><span class="l-value">$' + fmtMoney(t.interest) + '</span></div>'
+          + '<div class="loan-field"><span class="l-label">' + TrustApp.t('loan.time') + '</span><span class="l-value">' + tm + '</span></div>'
+          + '</div>';
+      }).join('');
+    }
+
+    function applyLoan() {
+      var uid = TrustApp.getUserId();
+      if (!uid) { toast('error', 'Please login first'); return; }
+      var amt = parseFloat(document.getElementById('loanAmount').value) || 0;
+      if (!selected) { toast('error', TrustApp.t('loan.selectPeriod')); return; }
+      var p = plans[selected];
+      if (amt < p.min || amt > p.max) { toast('error', TrustApp.t('loan.outOfRange')); return; }
+      var acc = uid;
+      var u = TrustApp.accountByUid && TrustApp.accountByUid(uid);
+      if (u && u.account) acc = u.account;
+      TrustApp.addLoan({
+        uid: uid,
+        account: acc,
+        amount: amt,
+        days: parseInt(selected, 10),
+        rate: p.rate,
+        interest: Math.round(amt * (p.rate / 100) * 100) / 100
+      });
+      toast('success', TrustApp.t('loan.submitted'));
+      renderRecords();
+    }
+
+upd();
+    renderRecords();
+    function refreshAll() {
+      try { renderRecords(); } catch (e) {}
+    }
+    // Re-render once the async session restore finishes and whenever the DB
+    // loads its loans table, so a logged-in user's records always appear.
+    if (TrustApp.restoreSession) TrustApp.restoreSession().then(refreshAll);
+    if (DB && DB.onReady) DB.onReady(refreshAll);
+    setInterval(refreshAll, 3000);
+    window.addEventListener('trustsync:loans', refreshAll);
+    window.addEventListener('storage', function (e) {
+      if (e.key === 'trustLoans' || e.key === null) refreshAll();
+    });
+    var loanSyncBusy = false;
+    var loanSyncDone = function () { loanSyncBusy = false; };
+    setInterval(function () {
+      if (document.hidden || loanSyncBusy) return;
+      if (typeof DB === 'undefined' || !DB.pullBlob || !DB.ENABLED) return;
+      loanSyncBusy = true;
+      DB.pullBlob('loans').then(refreshAll).then(loanSyncDone, loanSyncDone);
+    }, 1000);
+  </script>
+</body>
+</html>
+

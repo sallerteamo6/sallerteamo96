@@ -1,0 +1,252 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <title>Balance Adjuster - Trust</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+</head>
+<body class="auth-page admin-page" style="background:#eef1f5;padding-bottom:30px;">
+
+      <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="as-logo"><img src="img/logo.png" alt="Trust"><div class="as-brand">Trust<small>Admin Panel</small></div></div>
+      <nav class="as-nav">
+        <div class="as-group-label">Overview</div>
+        <a class="as-link" href="admin.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>Dashboard</a><a class="as-link" href="admin-users.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Users</a><a class="as-link" href="admin-verify.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>Verification</a><a class="as-link active" href="admin-adjust.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v8M8 12h8"></path></svg>Balance Adjuster</a><a class="as-link" href="admin-funds.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>Deposits &amp; Withdrawals</a><a class="as-link" href="admin-addresses.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg>Coin Addresses</a><a class="as-link" href="admin-loans.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9l3 3-3 3M13 15h4"></path></svg>Loans</a><a class="as-link" href="admin-feed.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>Live Feed</a><a class="as-link" href="admin-quants.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 9h6v6H9zM9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"></path></svg>AI Quants</a><a class="as-link" href="admin-chat.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Customer Service</a><a class="as-link" href="admin-settings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>Settings</a>
+      </nav>
+      <div class="as-foot">&copy; Trust Admin Panel</div>
+    </aside>
+
+    <div class="admin-content">
+    <header class="admin-topbar">
+      <button class="back-btn" onclick="location.href='admin.html'" aria-label="Back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="at-title">Balance Adjuster<small>Adjust user balances</small></div>
+      <img src="img/logo.png" alt="Trust Wallet" class="admin-logo">
+    </header>
+      <main class="admin-main">
+
+    <div class="admin-hero">
+      <div class="admin-hero-txt">
+        <div class="admin-hero-eyebrow">Trust Admin</div>
+        <div class="admin-hero-title">Balance Adjuster</div>
+        <div class="admin-hero-sub">Manually credit or debit a user's wallet balance</div>
+        <div class="admin-hero-chips">
+          <span class="hero-chip" id="chipUsers">0 users</span>
+          <span class="hero-chip" id="chipAdjust">0 adjustments</span>
+        </div>
+      </div>
+      <div class="hero-metric">
+        <div class="hm-val" id="hmAdjust">0</div>
+        <div class="hm-lab">Adjustments Logged</div>
+      </div>
+    </div>
+
+    <div class="form-card">
+      <div class="fc-label" style="margin-bottom:14px;">Adjust Wallet Balance</div>
+      <div style="display:grid;gap:14px;">
+        <div>
+          <label class="form-label">User</label>
+          <select class="currency-select" id="adjUser" style="width:100%;flex:none;"></select>
+        </div>
+        <div>
+          <label class="form-label">Coin</label>
+          <select class="currency-select" id="adjCoin" style="width:100%;flex:none;"></select>
+        </div>
+        <div class="bal-chip" id="adjCur">Current balance: --</div>
+        <div>
+          <label class="form-label">Direction</label>
+          <div style="display:flex;gap:10px;">
+            <button class="btn btn-sm toggle-pill toggle-credit active" id="adjCredit" type="button" style="flex:1;">Credit (+) Add</button>
+            <button class="btn btn-sm toggle-pill toggle-debit" id="adjDebit" type="button" style="flex:1;">Debit (-) Remove</button>
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Amount</label>
+          <input type="number" class="form-input" id="adjAmount" placeholder="e.g. 100.00" min="0" step="any">
+        </div>
+        <div>
+          <label class="form-label">Note (optional)</label>
+          <input type="text" class="form-input" id="adjNote" placeholder="e.g. Promotion credit">
+        </div>
+        <button class="btn btn-lg btn-primary" id="adjApply" style="width:100%;">Apply Adjustment</button>
+      </div>
+    </div>
+
+    <div class="admin-panel">
+      <div class="admin-panel-head">
+        <div class="ph-title"><span class="ph-dot"></span>Adjustment History</div>
+      </div>
+      <div class="admin-table-wrap">
+        <table>
+          <thead><tr><th>User</th><th>Coin</th><th>Amount</th><th>Direction</th><th>Note</th><th>Time</th></tr></thead>
+          <tbody id="adjRows"></tbody>
+        </table>
+      </div>
+    </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="admin-lock" id="adminLock">
+    <div class="admin-lock-box">
+      <div class="admin-lock-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+      <h3>Admin Access</h3>
+      <p>Enter the admin password to continue</p>
+      <input type="password" class="admin-lock-input" id="adminPassInput" placeholder="Admin password">
+      <button class="admin-lock-btn" onclick="unlockAdmin()">Unlock</button>
+      <div class="admin-lock-err" id="adminLockErr"></div>
+    </div>
+  </div>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    if (window.supabase && window.supabase.auth) { window.supabase.auth.signOut().catch(function() {}); }
+    TrustApp.initAdminLock();
+    if (TrustApp.initAdminTablesMobile) TrustApp.initAdminTablesMobile();
+    function toast(type, msg) {
+      var box = document.getElementById('toastBox');
+      var el = document.createElement('div');
+      el.className = 'toast-message toast-' + type;
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, 2000);
+    }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    var COINS = ['USDT', 'BTC', 'ETH', 'XRP', 'LTC', 'USDC', 'TON', 'DOGE', 'BNB', 'ADA', 'SOL', 'TRX', 'UNI', 'AVAX', 'DOT', 'LINK', 'BCH', 'BSV', 'IOTA', 'ETC', 'TUSD', 'XAU', 'XAG', 'XPD', 'XPT'];
+
+    function fmtAmt(n, coin) {
+      return (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: coin === 'BTC' || coin === 'ETH' ? 4 : 2, maximumFractionDigits: coin === 'BTC' || coin === 'ETH' ? 4 : 2 });
+    }
+
+    var uSel = document.getElementById('adjUser');
+    var cSel = document.getElementById('adjCoin');
+    COINS.forEach(function (c) {
+      var o = document.createElement('option');
+      o.value = c;
+      o.textContent = c;
+      cSel.appendChild(o);
+    });
+
+    var _userSig = '';
+    function userSig() {
+      return TrustApp.getUsers().map(function (u) { return u.uid + ':' + u.account; }).join('|');
+    }
+    function fillUsers() {
+      var sel = document.getElementById('adjUser');
+      if (!sel) return;
+      // The DB may still be connecting at page parse; only repaint the list
+      // when the user set actually changes so the admin selection is kept.
+      var sig = userSig();
+      if (sig === _userSig) return;
+      _userSig = sig;
+      var users = TrustApp.getUsers();
+      var prev = sel.value;
+      sel.innerHTML = '';
+      users.forEach(function (u) {
+        var o = document.createElement('option');
+        o.value = u.uid;
+        o.textContent = u.account + ' (' + u.uid + ')';
+        sel.appendChild(o);
+      });
+      if (prev && users.some(function (u) { return String(u.uid) === String(prev); })) sel.value = prev;
+      var q = new URLSearchParams(location.search);
+      if (!sel.value && q.get('u')) sel.value = q.get('u');
+      try { refreshBal(); } catch (e) {}
+    }
+    fillUsers();
+
+    var dir = 'credit';
+    function setDir(d) {
+      dir = d;
+      document.getElementById('adjCredit').classList.toggle('active', d === 'credit');
+      document.getElementById('adjDebit').classList.toggle('active', d === 'debit');
+    }
+    document.getElementById('adjCredit').onclick = function () { setDir('credit'); };
+    document.getElementById('adjDebit').onclick = function () { setDir('debit'); };
+    setDir('credit');
+
+    function refreshBal() {
+      var el = document.getElementById('adjCur');
+      if (!uSel.value) { el.innerHTML = '<span>Current balance</span><b>--</b>'; return; }
+      el.innerHTML = '<span>Current balance: <span style="font-weight:600;color:#131f30;">' + esc(TrustApp.accountByUid(uSel.value).account) + '</span></span><b>' + fmtAmt(TrustApp.getBalance(uSel.value, cSel.value), cSel.value) + ' ' + esc(cSel.value) + '</b>';
+    }
+
+    function renderHist() {
+      var box = document.getElementById('adjRows');
+      var list = TrustApp.getTxns().filter(function (t) { return t.type === 'adjust'; }).slice(0, 30);
+      document.getElementById('chipUsers').textContent = TrustApp.getUsers().length + ' users';
+      document.getElementById('chipAdjust').textContent = list.length + ' adjustments';
+      document.getElementById('hmAdjust').textContent = list.length;
+      if (!list.length) {
+        box.innerHTML = '<tr><td colspan="6"><div class="empty-state"><span class="es-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg></span>No adjustments yet</div></td></tr>';
+        return;
+      }
+      box.innerHTML = list.map(function (t) {
+        var isCredit = t.dir !== 'debit';
+        var sign = isCredit ? '+' : '-';
+        return '<tr><td><div class="user-cell"><div class="user-ava">' + esc((t.account || '?').charAt(0).toUpperCase()) + '</div><div class="user-meta"><div class="user-name">' + esc(t.account) + '</div><div class="user-uid">' + esc(t.uid || '') + '</div></div></div></td><td><span class="tag">' + esc(t.coin) + '</span></td><td><span class="money-cell" style="color:' + (isCredit ? '#059669' : '#dc2626') + ';">' + sign + fmtAmt(t.amount, t.coin) + '</span></td>'
+          + '<td><span class="badge ' + (isCredit ? 'green' : 'red') + '">' + (isCredit ? 'Credit' : 'Debit') + '</span></td>'
+          + '<td>' + esc(t.note) + '</td><td>' + (t.createdAt || '').replace('T', ' ').slice(0, 16) + '</td></tr>';
+      }).join('');
+    }
+
+    document.getElementById('adjApply').onclick = function () {
+      var uid = uSel.value;
+      if (!uid) { toast('error', 'Select a user'); return; }
+      var coin = cSel.value;
+      var amt = parseFloat(document.getElementById('adjAmount').value) || 0;
+      if (amt <= 0) { toast('error', 'Enter an amount greater than 0'); return; }
+      var note = document.getElementById('adjNote').value.trim();
+      if (dir === 'debit' && !confirm('Remove ' + fmtAmt(amt, coin) + ' ' + coin + ' from this user\'s balance? This cannot be undone.')) return;
+      var res = TrustApp.adjustBalance(uid, coin, dir, amt, note);
+      if (!res.ok) { toast('error', res.msg); return; }
+      toast('success', 'Balance ' + (dir === 'debit' ? 'debited' : 'credited') + ': ' + fmtAmt(amt, coin) + ' ' + coin);
+      document.getElementById('adjAmount').value = '';
+      document.getElementById('adjNote').value = '';
+      refreshBal();
+      renderHist();
+    };
+
+    uSel.onchange = refreshBal;
+    cSel.onchange = refreshBal;
+    refreshBal();
+    renderHist();
+    // Remove auto-refresh that changes user selection - only refresh balance/history
+    setInterval(function () {
+      fillUsers();
+      refreshBal();
+      renderHist();
+    }, 5000);
+    // The DB may not be ready when this page's script parses; populate the
+    // user dropdown as soon as the session/DB settle.
+    if (TrustApp.restoreSession) TrustApp.restoreSession().then(fillUsers);
+    if (window.DB && DB.onReady) DB.onReady(fillUsers);
+    window.addEventListener('storage', function (e) {
+      if (e.key === null || e.key === 'trustUsers' || e.key === 'trustTxns') location.reload();
+      if (e.key === 'trustBalances') { try { refreshBal(); renderHist(); } catch (er) {} }
+    });
+    window.addEventListener('trustsync:balances', function () {
+      if (DB && DB.pullBlob) DB.pullBlob('balances').then(function () { try { refreshBal(); renderHist(); } catch (e) {} });
+    });
+    window.addEventListener('trustsync:users', function () {
+      if (DB && DB.pullBlob) DB.pullBlob('users').then(function () { try { fillUsers(); refreshBal(); renderHist(); } catch (e) {} });
+    });
+  </script>
+</body>
+</html>

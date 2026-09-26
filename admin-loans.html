@@ -1,0 +1,235 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <title>Loans - Trust</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+</head>
+<body class="auth-page admin-page" style="background:#eef1f5;padding-bottom:30px;">
+
+      <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="as-logo"><img src="img/logo.png" alt="Trust"><div class="as-brand">Trust<small>Admin Panel</small></div></div>
+      <nav class="as-nav">
+        <div class="as-group-label">Overview</div>
+        <a class="as-link" href="admin.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>Dashboard</a><a class="as-link" href="admin-users.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Users</a><a class="as-link" href="admin-verify.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>Verification</a><a class="as-link" href="admin-adjust.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v8M8 12h8"></path></svg>Balance Adjuster</a><a class="as-link" href="admin-funds.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>Deposits &amp; Withdrawals</a><a class="as-link" href="admin-addresses.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg>Coin Addresses</a><a class="as-link active" href="admin-loans.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9l3 3-3 3M13 15h4"></path></svg>Loans</a><a class="as-link" href="admin-feed.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>Live Feed</a><a class="as-link" href="admin-quants.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 9h6v6H9zM9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"></path></svg>AI Quants</a><a class="as-link" href="admin-chat.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Customer Service</a><a class="as-link" href="admin-settings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>Settings</a>
+      </nav>
+      <div class="as-foot">&copy; Trust Admin Panel</div>
+    </aside>
+
+    <div class="admin-content">
+    <header class="admin-topbar">
+      <button class="back-btn" onclick="location.href='admin.html'" aria-label="Back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="at-title">Loans<small>Review loan requests</small></div>
+      <img src="img/logo.png" alt="Trust Wallet" class="admin-logo">
+    </header>
+      <main class="admin-main">
+
+    <div class="admin-hero">
+      <div class="admin-hero-txt">
+        <div class="admin-hero-eyebrow">Trust Admin</div>
+        <div class="admin-hero-title">Loans</div>
+        <div class="admin-hero-sub">Review loan applications and process approvals</div>
+        <div class="admin-hero-chips">
+          <span class="hero-chip" id="chipPending">0 pending</span>
+          <span class="hero-chip" id="chipApproved">0 approved</span>
+          <span class="hero-chip" id="chipValue">$0.00 outstanding</span>
+        </div>
+      </div>
+      <div class="hero-metric">
+        <div class="hm-val" id="hmPending">0</div>
+        <div class="hm-lab">Awaiting Review</div>
+      </div>
+    </div>
+
+    <div class="admin-stats grid-4">
+      <div class="stat-card sc-amber">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Pending Loans</div><div class="s-value" id="stPending">0</div></div>
+      </div>
+      <div class="stat-card sc-green">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><path d="M22 4L12 14.01l-3-3"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Approved</div><div class="s-value" id="stApproved">0</div></div>
+      </div>
+      <div class="stat-card sc-blue">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Total Applications</div><div class="s-value" id="stTotal">0</div></div>
+      </div>
+      <div class="stat-card sc-purple">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Approved Value</div><div class="s-value" id="stValue">$0.00</div></div>
+      </div>
+    </div>
+
+    <div class="admin-panel">
+      <div class="admin-panel-head">
+        <div class="ph-title"><span class="ph-dot" style="background:#d97706;"></span>Pending Loan Requests <span class="ph-sub">&#183; approving credits USDT to the user</span></div>
+      </div>
+      <div class="admin-table-wrap">
+        <table>
+          <thead><tr><th>User</th><th>Amount</th><th>Period</th><th>Overall Rate</th><th>Total Interest</th><th>Action</th></tr></thead>
+          <tbody id="pendingRows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="admin-panel">
+      <div class="admin-panel-head">
+        <div class="ph-title"><span class="ph-dot"></span>Loan History</div>
+      </div>
+      <div class="admin-table-wrap">
+        <table>
+          <thead><tr><th>User</th><th>Amount</th><th>Period</th><th>Interest</th><th>Status</th><th>Time</th></tr></thead>
+          <tbody id="historyRows"></tbody>
+        </table>
+      </div>
+    </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="admin-lock" id="adminLock">
+    <div class="admin-lock-box">
+      <div class="admin-lock-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+      <h3>Admin Access</h3>
+      <p>Enter the admin password to continue</p>
+      <input type="password" class="admin-lock-input" id="adminPassInput" placeholder="Admin password">
+      <button class="admin-lock-btn" onclick="unlockAdmin()">Unlock</button>
+      <div class="admin-lock-err" id="adminLockErr"></div>
+    </div>
+  </div>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    if (window.supabase && window.supabase.auth) { window.supabase.auth.signOut().catch(function() {}); }
+    TrustApp.initAdminLock();
+    if (TrustApp.initAdminTablesMobile) TrustApp.initAdminTablesMobile();
+    function toast(type, msg) {
+      var box = document.getElementById('toastBox');
+      var el = document.createElement('div');
+      el.className = 'toast-message toast-' + type;
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, 2000);
+    }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function fmtMoney(n) {
+      return '$' + (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function badgeFor(l) {
+      if (l.status === 'approved') return '<span class="badge green">Approved</span><button class="action-btn ab-green" style="margin-left:8px;" onclick="markPaid(this,\'' + esc(l.id) + '\')">Mark Paid</button>';
+      if (l.status === 'rejected') return '<span class="badge red">Rejected</span>';
+      if (l.status === 'paid') return '<span class="badge blue">Paid</span>';
+      return '<span class="badge amber">Pending</span>';
+    }
+    function markPaid(btn, id) {
+      var found = TrustApp.setLoanStatus(id, 'paid');
+      if (found) toast('success', 'Loan marked as paid');
+      renderAll();
+    }
+    var approveBtns = '<span class="wd-actions ab-group"><button class="action-btn ab-green" onclick="setLoan(this,\'approved\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Approve</button><button class="action-btn ab-red" onclick="setLoan(this,\'rejected\')">Reject</button></span>';
+
+    function setLoan(btn, status) {
+      var tr = btn.closest('tr, .admin-row-card');
+      var id = tr.getAttribute('data-id');
+      var loan = null;
+      TrustApp.getLoans().forEach(function (l) { if (String(l.id) === String(id)) loan = l; });
+      if (!loan) { toast('error', 'Loan not found'); renderAll(); return; }
+      var wasPending = loan.status === 'pending';
+      var found = TrustApp.setLoanStatus(id, status);
+      if (found && status === 'approved' && wasPending && loan.uid != null && (parseFloat(loan.amount) || 0) > 0) {
+        TrustApp.addBalance(loan.uid, 'USDT', parseFloat(loan.amount));
+      }
+      toast(status === 'approved' ? 'success' : 'error', 'Loan ' + (status === 'approved' ? 'approved' : 'rejected'));
+      renderAll();
+    }
+    function renderStats() {
+      var loans = TrustApp.getLoans();
+      var pending = 0, approved = 0, value = 0;
+      loans.forEach(function (l) {
+        if (l.status === 'pending') pending++;
+        if (l.status === 'approved') { approved++; value += parseFloat(l.amount) || 0; }
+      });
+      document.getElementById('stPending').textContent = pending;
+      document.getElementById('stApproved').textContent = approved;
+      document.getElementById('stTotal').textContent = loans.length;
+      document.getElementById('stValue').textContent = fmtMoney(value);
+      document.getElementById('hmPending').textContent = pending;
+      document.getElementById('chipPending').textContent = pending + ' pending';
+      document.getElementById('chipApproved').textContent = approved + ' approved';
+      document.getElementById('chipValue').textContent = fmtMoney(value) + ' approved';
+    }
+    function byNew(a, b) {
+      var ta = a.createdAt || a.created_at || '', tb = b.createdAt || b.created_at || '';
+      if (ta && tb && ta !== tb) return ta < tb ? 1 : -1;
+      var ia = parseFloat(a.id) || 0, ib = parseFloat(b.id) || 0;
+      if (ia !== ib) return ia > ib ? -1 : 1;
+      return 0;
+    }
+    function renderAll() {
+      var loans = TrustApp.getLoans().slice().sort(byNew);
+      renderStats();
+      var pend = loans.filter(function (l) { return l.status === 'pending'; });
+      var pendBox = document.getElementById('pendingRows');
+      if (!pend.length) {
+        pendBox.innerHTML = '<tr><td colspan="6"><div class="empty-state"><span class="es-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg></span>No pending loan requests</div></td></tr>';
+      } else {
+        pendBox.innerHTML = pend.map(function (l) {
+          return '<tr data-id="' + esc(l.id) + '"><td><div class="user-cell"><div class="user-ava">' + esc((l.account || '?').charAt(0).toUpperCase()) + '</div><div class="user-meta"><div class="user-name">' + esc(l.account) + '</div><div class="user-uid">' + esc(l.uid || '') + '</div></div></div></td><td><span class="money-cell">' + fmtMoney(l.amount) + '</span></td><td>' + l.days + ' Days</td><td>' + l.rate + '%</td><td><span class="money-cell">' + fmtMoney(l.interest) + '</span></td><td>' + approveBtns + '</td></tr>';
+        }).join('');
+      }
+      var histBox = document.getElementById('historyRows');
+      if (!loans.length) {
+        histBox.innerHTML = '<tr><td colspan="6"><div class="empty-state"><span class="es-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path><path d="M14 2v6h6"></path></svg></span>No loan applications yet</div></td></tr>';
+      } else {
+        histBox.innerHTML = loans.slice(0, 30).map(function (l) {
+          var tm = (l.createdAt || '').replace('T', ' ').slice(0, 16);
+          return '<tr><td><div class="user-cell"><div class="user-ava">' + esc((l.account || '?').charAt(0).toUpperCase()) + '</div><div class="user-meta"><div class="user-name">' + esc(l.account) + '</div><div class="user-uid">' + esc(l.uid || '') + '</div></div></div></td><td><span class="money-cell">' + fmtMoney(l.amount) + '</span></td><td>' + l.days + ' Days</td><td><span class="money-cell">' + fmtMoney(l.interest) + '</span></td><td>' + badgeFor(l) + '</td><td>' + tm + '</td></tr>';
+        }).join('');
+      }
+    }
+    // Wait for DB to be ready before initial render
+    if (window.DB && DB.ready) {
+      DB.ready().then(function () { renderAll(); });
+    } else {
+      renderAll();
+    }
+    if (TrustApp.watchStorage) {
+      TrustApp.watchStorage(['trustLoans'], function () { renderAll(); });
+    }
+    window.addEventListener('trustsync:loans', renderAll);
+    window.addEventListener('trustsync:users', function () {
+      if (DB && DB.pullBlob) DB.pullBlob('users').then(function () { renderAll(); });
+    });
+    window.addEventListener('trustsync:balances', function () {
+      if (DB && DB.pullBlob) DB.pullBlob('balances').then(function () { renderAll(); });
+    });
+    // fast loans channel: new requests and status changes show up in ~1s
+    var loanSyncBusy = false;
+    var loanSyncDone = function () { loanSyncBusy = false; };
+    setInterval(function () {
+      if (document.hidden || loanSyncBusy) return;
+      if (typeof DB === 'undefined' || !DB.pullBlob || !DB.ENABLED) return;
+      loanSyncBusy = true;
+      DB.pullBlob('loans').then(renderAll).then(loanSyncDone, loanSyncDone);
+    }, 1000);
+    setInterval(function () { if (!document.hidden) renderAll(); }, 4000);
+  </script>
+</body>
+</html>

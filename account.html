@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>Trust</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+</head>
+<body class="account-page">
+
+  <header class="sub-header">
+    <button class="back-btn" onclick="location.href='index.html'" aria-label="Back">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M15 18L9 12L15 6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <h1 class="header-title" data-i18n="acc.title">My Account</h1>
+  </header>
+
+  <section class="title-section">
+    <div class="title-info">
+      <h2 class="title" data-i18n="acc.cryptoWallet">Crypto Wallet</h2>
+      <p class="subtitle" data-i18n="acc.manageAssets">Manage Your Digital Assets</p>
+      <div class="vip-badge" id="vipBadge" style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;"></div>
+    </div>
+    <div class="title-icon">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="white" stroke-width="2"/><path d="M2 10h20" stroke="white" stroke-width="2"/><circle cx="17" cy="14" r="1.5" fill="white"/></svg>
+    </div>
+  </section>
+
+  <section class="action-buttons">
+    <button class="action-btn deposit" onclick="location.href='funds.html?t=recharge'">
+      <div class="btn-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 2v20m0-20l-4 4m4-4l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 12H3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>
+      <span data-i18n="acc.deposit">Deposit</span>
+    </button>
+    <button class="action-btn withdraw" onclick="location.href='funds.html?t=withdraw'">
+      <div class="btn-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 22V2m0 20l-4-4m4 4l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 12H3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>
+      <span data-i18n="acc.withdraw">Withdraw</span>
+    </button>
+    <button class="action-btn exchange" onclick="location.href='exchange.html'">
+      <div class="btn-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M7 16V4m0 0L3 8m4-4l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 8v12m0 0l4-4m-4 4l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <span data-i18n="acc.exchange">Exchange</span>
+    </button>
+    <button class="action-btn loan" onclick="location.href='loan.html'">
+      <div class="btn-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2"/></svg></div>
+      <span data-i18n="acc.loan">Loan</span>
+    </button>
+  </section>
+
+  <section class="wallet-section">
+    <div class="section-header">
+      <div class="select-line"></div>
+      <h3 class="section-title" data-i18n="acc.yourWallets">Your Wallets</h3>
+    </div>
+
+    <div class="total-balance">
+      <div class="total-label" data-i18n="acc.estimatedTotal">Estimated Total Value</div>
+      <div class="total-value" id="balTotal">$ 0.00</div>
+    </div>
+
+    <div class="wallet-list" id="walletList"></div>
+  </section>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    TrustApp.updateMenuUser && TrustApp.updateMenuUser();
+    function setTxt(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; }
+    function fmt(n, dec) { return (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }); }
+
+    var COIN_NAMES = {
+      USDT: 'Tether USD', USDC: 'USD Coin', TUSD: 'TrueUSD', BTC: 'Bitcoin', ETH: 'Ethereum',
+      LTC: 'Litecoin', XRP: 'Ripple', DOGE: 'Dogecoin', TON: 'Toncoin', ADA: 'Cardano',
+      BNB: 'BNB', SOL: 'Solana', TRX: 'TRON', UNI: 'Uniswap', AVAX: 'Avalanche',
+      DOT: 'Polkadot', LINK: 'Chainlink', BCH: 'Bitcoin Cash', BSV: 'Bitcoin SV',
+      IOTA: 'IOTA', ETC: 'Ethereum Classic'
+    };
+    var COIN_COLOR = {
+      USDT: '#26a17b', BTC: '#f7931a', ETH: '#627eea', LTC: '#345d9d', XRP: '#23292f',
+      DOGE: '#c2a633', TON: '#0098ea', ADA: '#0033ad', BNB: '#f3ba2f', SOL: '#14f195',
+      TRX: '#ef0029', UNI: '#ff007a', AVAX: '#e84142', DOT: '#e6007a', LINK: '#2a5ada',
+      BCH: '#8dc351', BSV: '#eab304', IOTA: '#101010', ETC: '#328332', USDC: '#2775ca', TUSD: '#002868'
+    };
+    var COIN_ORDER = ['USDT', 'BTC', 'ETH', 'XRP', 'LTC', 'USDC', 'TON', 'DOGE', 'BNB', 'ADA', 'SOL', 'TRX', 'UNI', 'AVAX', 'DOT', 'LINK', 'BCH', 'BSV', 'IOTA', 'ETC', 'TUSD'];
+    var IS_CRYPTO = {};
+    COIN_ORDER.forEach(function (c) { IS_CRYPTO[c] = 1; });
+
+    // Cache for instant rendering
+    var _balanceCache = null;
+    var _priceCache = {};
+    var _renderScheduled = false;
+
+    function walletCoins(b) {
+      var list = COIN_ORDER.slice();
+      if (b) Object.keys(b).forEach(function (c) { if (IS_CRYPTO[c] && list.indexOf(c) === -1) list.push(c); });
+      return list;
+    }
+
+    function coinIcon(c) {
+      var d = TrustApp.findCoin ? TrustApp.findCoin(c) : null;
+      var src = (d && d.i) ? 'img/' + d.i : 'img/' + c.toLowerCase() + '.png';
+      var color = COIN_COLOR[c] || '#64748b';
+      return '<div class="wallet-icon"><img src="' + src + '" alt="' + c + '" onerror="this.style.display=\'none\';this.parentNode.style.background=\'' + color + '\';this.parentNode.style.color=\'#fff\';this.parentNode.style.fontWeight=\'800\';this.parentNode.textContent=\'' + c.charAt(0) + '\';"></div>';
+    }
+
+    function getCachedPrice(sym) {
+      if (_priceCache[sym] !== undefined) return _priceCache[sym];
+      var d = TrustApp.findCoin ? TrustApp.findCoin(sym) : null;
+      var price = d ? (parseFloat(d.price) || 0) : 0;
+      _priceCache[sym] = price;
+      return price;
+    }
+
+    function renderBalances() {
+      var uid = TrustApp.getUserId();
+      // Render the coin list immediately even before the session restores; zeros
+      // get replaced the moment the balances table arrives (trustsync:user_balances).
+      var b = uid ? (TrustApp.getBalances ? TrustApp.getBalances(uid) : {}) : {};
+      _balanceCache = b;
+      function usdOf(sym, bal) {
+        if (sym === 'USDT') return parseFloat(bal) || 0;
+        var price = getCachedPrice(sym);
+        return (parseFloat(bal) || 0) * price;
+      }
+      var coins = walletCoins(b);
+      var total = 0;
+      var html = coins.map(function (c) {
+        var bal = parseFloat(b[c]) || 0;
+        var usd = usdOf(c, bal);
+        total += usd;
+        var dec = (c === 'BTC' || c === 'ETH') ? 4 : 2;
+        return '<div class="wallet-item' + (c === 'USDT' ? ' main-wallet' : '') + '" onclick="location.href=\'funds.html?t=recharge\'">'
+          + '<div class="wallet-info">' + coinIcon(c)
+          + '<div class="wallet-details"><h4 class="coin-name">' + c + '</h4>'
+          + '<p class="coin-subtitle">' + (COIN_NAMES[c] || (c + ' Coin')) + '</p></div></div>'
+          + '<div class="wallet-balance">'
+          + '<p class="balance-usd">$ ' + fmt(usd, 2) + '</p>'
+          + '<p class="balance-coin">' + fmt(bal, dec) + ' ' + c + '</p>'
+          + '</div></div>';
+      }).join('');
+      var listEl = document.getElementById('walletList');
+      if (listEl) listEl.innerHTML = html;
+      setTxt('balTotal', '$ ' + fmt(total, 2));
+      var vb = document.getElementById('vipBadge');
+      if (vb && TrustApp.guessVip && uid) {
+        var v = TrustApp.guessVip(uid);
+        vb.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;background:' + v.color + '1a;color:' + v.color + ';font-weight:700;font-size:12.5px;border:1px solid ' + v.color + '55;">'
+          + '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + v.color + '"><path d="M12 15l-5.5 3 1.5-6L2.5 7l6-.5L12 1l3.5 5.5 6 .5-5.5 5 1.5 6z"/></svg>'
+          + v.label + '</span>';
+      }
+    }
+
+    function scheduleRender() {
+      if (_renderScheduled) return;
+      _renderScheduled = true;
+      requestAnimationFrame(function () {
+        _renderScheduled = false;
+        renderBalances();
+      });
+    }
+
+    // Instant initial render from cache if available
+    if (TrustApp.getBalances) {
+      var uid = TrustApp.getUserId();
+      if (uid) {
+        var b = TrustApp.getBalances(uid);
+        if (b && Object.keys(b).length) {
+          _balanceCache = b;
+          renderBalances();
+        }
+      }
+    }
+
+    renderBalances();
+
+    // re-render once the async session restore resolves (uid is unknown until
+    // then) and again when the DB finishes loading its tables.
+    if (TrustApp.restoreSession) TrustApp.restoreSession().then(scheduleRender);
+    if (window.DB && DB.onReady) DB.onReady(scheduleRender);
+
+    // Real-time updates via trustsync
+    window.addEventListener('trustsync:user_balances', scheduleRender);
+    window.addEventListener('trustsync:transactions', scheduleRender);
+    window.addEventListener('trustsync:users', scheduleRender);
+
+    // Fallback polling
+    window.addEventListener('storage', function (e) {
+      if (e.key === 'trustBalances' || e.key === null) scheduleRender();
+    });
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) scheduleRender();
+    });
+    setInterval(scheduleRender, 10000);
+  </script>
+</body>
+</html>

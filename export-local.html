@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trust — export data</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+    .card { max-width: 640px; margin: 48px auto; background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 28px; }
+    h1 { margin: 0 0 6px; font-size: 22px; color: #fff; }
+    p { margin: 6px 0 18px; color: #94a3b8; line-height: 1.5; }
+    button { padding: 10px 16px; border: 0; border-radius: 8px; background: #2563eb; color: #fff; font-size: 14px; cursor: pointer; margin-right: 8px; }
+    #status { margin-top: 14px; font-size: 13px; color: #4ade80; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Export database data</h1>
+    <p>Downloads all Trust data currently held in Supabase (users, balances, transactions, loans, trades, AI orders, chat, verifications, settings…) as a <code>trust-backup.json</code> file.</p>
+    <button onclick="download()">Download trust-backup.json</button>
+    <div id="status"></div>
+  </div>
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+  <script src="scripts/db.js"></script>
+  <script>
+    function download() {
+      var st = document.getElementById('status');
+      st.textContent = 'Waiting for database…';
+      if (typeof DB !== 'undefined' && DB && DB.onReady) {
+        DB.onReady(function () { doDownload(st); });
+      } else {
+        doDownload(st);
+      }
+    }
+    function doDownload(st) {
+      if (typeof DB === 'undefined' || !DB.connected) {
+        st.textContent = 'Database is not connected. Check scripts/config.js and the SQL setup.';
+        st.style.color = '#f87171';
+        return;
+      }
+      try {
+        var bals = {};
+        (DB.usersList() || []).forEach(function (u) {
+          var m = DB.getAllBalances(u.uid) || {};
+          var out = {};
+          Object.keys(m).forEach(function (c) { var v = parseFloat(m[c]); if (v) out[c] = v; });
+          bals[u.uid] = out;
+        });
+        var data = {
+          users: DB.usersList() || [],
+          balances: bals,
+          transactions: DB.getTransactions() || [],
+          loans: DB.getLoans() || [],
+          trades: DB.getTrades() || [],
+          ai_orders: DB.getAIOrders() || [],
+          chat: function () { var m = {}; (DB.getChatUsers() || []).forEach(function (u) { m[u] = DB.getChat(u) || []; }); return m; }(),
+          verifications: DB.getAllVerifications() || [],
+          coin_addresses: DB.getCoinAddresses() || {},
+          admin_settings: (DB._cache && DB._cache.adminSettings) || {}
+        };
+        var blob = new Blob([JSON.stringify({ app: 'trustcom-clone', exportedAt: new Date().toISOString(), data: data }, null, 2)], { type: 'application/json' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'trust-backup.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        st.textContent = 'Exported tables with ' + (data.users || []).length + ' users.';
+        st.style.color = '#4ade80';
+      } catch (e) {
+        st.textContent = 'Export failed: ' + e.message;
+        st.style.color = '#f87171';
+      }
+    }
+  </script>
+</body>
+</html>

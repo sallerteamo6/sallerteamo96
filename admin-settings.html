@@ -1,0 +1,128 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <title>Admin Settings - Trust</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+</head>
+<body class="auth-page admin-page" style="background:#eef1f5;padding-bottom:30px;">
+
+      <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="as-logo"><img src="img/logo.png" alt="Trust"><div class="as-brand">Trust<small>Admin Panel</small></div></div>
+      <nav class="as-nav">
+        <div class="as-group-label">Overview</div>
+        <a class="as-link" href="admin.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>Dashboard</a><a class="as-link" href="admin-users.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Users</a><a class="as-link" href="admin-verify.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>Verification</a><a class="as-link" href="admin-adjust.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v8M8 12h8"></path></svg>Balance Adjuster</a><a class="as-link" href="admin-funds.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>Deposits &amp; Withdrawals</a><a class="as-link" href="admin-addresses.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg>Coin Addresses</a><a class="as-link" href="admin-loans.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9l3 3-3 3M13 15h4"></path></svg>Loans</a><a class="as-link" href="admin-feed.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>Live Feed</a><a class="as-link" href="admin-quants.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 9h6v6H9zM9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"></path></svg>AI Quants</a><a class="as-link" href="admin-chat.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Customer Service</a><a class="as-link active" href="admin-settings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>Settings</a>
+      </nav>
+      <div class="as-foot">&copy; Trust Admin Panel</div>
+    </aside>
+
+    <div class="admin-content">
+    <header class="admin-topbar">
+      <button class="back-btn" onclick="location.href='admin.html'" aria-label="Back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="at-title">Admin Settings<small>Configure the platform</small></div>
+      <img src="img/logo.png" alt="Trust Wallet" class="admin-logo">
+    </header>
+      <main class="admin-main">
+
+    <div class="admin-hero">
+      <div class="admin-hero-txt">
+        <div class="admin-hero-eyebrow">Trust Admin</div>
+        <div class="admin-hero-title">Settings</div>
+        <div class="admin-hero-sub">Manage admin security preferences</div>
+        <div class="admin-hero-chips">
+          <span class="hero-chip" id="chipApp">App: --</span>
+        </div>
+      </div>
+      <div class="hero-metric">
+        <div class="hm-val" id="hmAuth">Locked</div>
+        <div class="hm-lab">Admin Access</div>
+      </div>
+    </div>
+
+    <div class="admin-panel">
+      <div class="admin-panel-head">
+        <div class="ph-title"><span class="ph-dot"></span>Admin Password</div>
+      </div>
+      <div class="form-card" style="margin-top:0;border:none;box-shadow:none;">
+        <div class="fc-label" style="margin-bottom:14px;">Change Administrator Password</div>
+        <div style="display:grid;gap:14px;">
+          <div>
+            <label class="form-label">Current Password</label>
+            <input type="password" class="form-input" id="curPass" placeholder="Current admin password" autocomplete="current-password">
+          </div>
+          <div>
+            <label class="form-label">New Password</label>
+            <input type="password" class="form-input" id="newPass" placeholder="At least 6 characters" autocomplete="new-password">
+          </div>
+          <div>
+            <label class="form-label">Confirm New Password</label>
+            <input type="password" class="form-input" id="confPass" placeholder="Re-enter new password" autocomplete="new-password">
+          </div>
+          <button class="btn btn-lg btn-primary" id="savePass" style="width:100%;">Update Password</button>
+        </div>
+      </div>
+    </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="admin-lock" id="adminLock">
+    <div class="admin-lock-box">
+      <div class="admin-lock-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+      <h3>Admin Access</h3>
+      <p>Enter the admin password to continue</p>
+      <input type="password" class="admin-lock-input" id="adminPassInput" placeholder="Admin password">
+      <button class="admin-lock-btn" onclick="unlockAdmin()">Unlock</button>
+      <div class="admin-lock-err" id="adminLockErr"></div>
+    </div>
+  </div>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    if (window.supabase && window.supabase.auth) { window.supabase.auth.signOut().catch(function() {}); }
+    TrustApp.initAdminLock();
+    function toast(type, msg) {
+      var box = document.getElementById('toastBox');
+      var el = document.createElement('div');
+      el.className = 'toast-message toast-' + type;
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, 2200);
+    }
+    var cfg = TrustApp.getConfig();
+    var appEl = document.getElementById('chipApp');
+    if (appEl) appEl.textContent = 'App: ' + (cfg.appTitle || 'Trust');
+    var hmEl = document.getElementById('hmAuth');
+    if (hmEl) hmEl.textContent = 'Locked';
+
+    document.getElementById('savePass').onclick = function () {
+      var cur = document.getElementById('curPass').value;
+      var nw = document.getElementById('newPass').value;
+      var conf = document.getElementById('confPass').value;
+      if (!cur || !nw) { toast('error', 'Please fill in all fields'); return; }
+      if (nw !== conf) { toast('error', 'New passwords do not match'); return; }
+      if (String(nw).length < 6) { toast('error', 'New password must be at least 6 characters'); return; }
+      var res = TrustApp.changeAdminPassword(cur, nw);
+      if (!res.ok) { toast('error', res.msg); return; }
+      toast('success', 'Admin password updated');
+      document.getElementById('curPass').value = '';
+      document.getElementById('newPass').value = '';
+      document.getElementById('confPass').value = '';
+      setTimeout(function () { TrustApp.initAdminLock(); }, 300);
+    };
+  </script>
+</body>
+</html>

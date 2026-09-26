@@ -1,0 +1,345 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <title>User Management - Trust</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+  <style>
+    .profit-toggle{border:none;border-radius:14px;padding:4px 14px;font-size:12px;font-weight:700;cursor:pointer;}
+    .profit-toggle.on{background:#07c160;color:#fff;}
+    .profit-toggle.off{background:#eef1f6;color:#8a94a6;}
+  </style>
+</head>
+<body class="auth-page admin-page" style="background:#eef1f5;padding-bottom:30px;">
+
+      <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="as-logo"><img src="img/logo.png" alt="Trust"><div class="as-brand">Trust<small>Admin Panel</small></div></div>
+      <nav class="as-nav">
+        <div class="as-group-label">Overview</div>
+        <a class="as-link" href="admin.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>Dashboard</a><a class="as-link active" href="admin-users.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Users</a><a class="as-link" href="admin-verify.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>Verification</a><a class="as-link" href="admin-adjust.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v8M8 12h8"></path></svg>Balance Adjuster</a><a class="as-link" href="admin-funds.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>Deposits &amp; Withdrawals</a><a class="as-link" href="admin-addresses.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg>Coin Addresses</a><a class="as-link" href="admin-loans.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9l3 3-3 3M13 15h4"></path></svg>Loans</a><a class="as-link" href="admin-feed.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>Live Feed</a><a class="as-link" href="admin-quants.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 9h6v6H9zM9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"></path></svg>AI Quants</a><a class="as-link" href="admin-chat.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Customer Service</a><a class="as-link" href="admin-settings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>Settings</a>
+      </nav>
+      <div class="as-foot">&copy; Trust Admin Panel</div>
+    </aside>
+
+    <div class="admin-content">
+    <header class="admin-topbar">
+      <button class="back-btn" onclick="location.href='admin.html'" aria-label="Back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="at-title">User Management<small>Manage members, profits &amp; status</small></div>
+      <img src="img/logo.png" alt="Trust Wallet" class="admin-logo">
+    </header>
+      <main class="admin-main">
+
+    <div class="admin-hero">
+      <div class="admin-hero-txt">
+        <div class="admin-hero-eyebrow">Trust Admin</div>
+        <div class="admin-hero-title">User Management</div>
+        <div class="admin-hero-sub">Search registered users, review verification status and adjust balances</div>
+        <div class="admin-hero-chips">
+          <span class="hero-chip" id="chipUsers">0 users</span>
+          <span class="hero-chip" id="chipVerified">0 verified</span>
+          <span class="hero-chip" id="chipKyc">0 pending KYC</span>
+          <span class="hero-chip" id="chipAdmins">0 admins</span>
+        </div>
+      </div>
+      <div class="hero-metric">
+        <div class="hm-val" id="hmUsers">0</div>
+        <div class="hm-lab">Registered Accounts</div>
+      </div>
+    </div>
+
+    <div class="admin-stats grid-4">
+      <div class="stat-card sc-blue">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Total Users</div><div class="s-value" id="stUsers">0</div></div>
+      </div>
+      <div class="stat-card sc-green">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><path d="M22 4L12 14.01l-3-3"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Verified</div><div class="s-value" id="stVerified">0</div></div>
+      </div>
+      <div class="stat-card sc-amber">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Pending KYC</div><div class="s-value" id="stKyc">0</div></div>
+      </div>
+      <div class="stat-card sc-purple">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2.5"></circle><path d="M6 12h.01M18 12h.01"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Total USDT Balance</div><div class="s-value" id="stUsdt">$0.00</div></div>
+      </div>
+    </div>
+
+    <div class="admin-search">
+      <input type="text" id="userSearch" placeholder="Search by name or email...">
+    </div>
+
+    <div class="admin-panel">
+      <div class="admin-panel-head">
+        <div class="ph-title"><span class="ph-dot"></span>All Users <span class="ph-sub">&#183; click Edit to manage a user</span></div>
+      </div>
+      <div class="admin-table-wrap">
+        <table data-mc-accordion="1">
+          <thead><tr><th>Account</th><th>UID</th><th>Balance</th><th>Status</th><th>Joined</th><th>Verification</th><th>Profit Mode</th><th>Actions</th></tr></thead>
+          <tbody id="userRows"></tbody>
+        </table>
+      </div>
+    </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="admin-modal-overlay" id="editModal" style="display:none;" onclick="closeEditModal(event)">
+    <div class="admin-modal" onclick="event.stopPropagation()">
+      <div class="admin-modal-head">
+        <div class="admin-modal-user" id="editUserInfo"></div>
+        <button class="admin-modal-close" onclick="closeEditModal()" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <div class="admin-modal-body" id="editModalBody"></div>
+    </div>
+  </div>
+
+  <div class="admin-lock" id="adminLock">
+    <div class="admin-lock-box">
+      <div class="admin-lock-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+      <h3>Admin Access</h3>
+      <p>Enter the admin password to continue</p>
+      <input type="password" class="admin-lock-input" id="adminPassInput" placeholder="Admin password">
+      <button class="admin-lock-btn" onclick="unlockAdmin()">Unlock</button>
+      <div class="admin-lock-err" id="adminLockErr"></div>
+    </div>
+  </div>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    function toast(type, msg) {
+      var box = document.getElementById('toastBox');
+      var el = document.createElement('div');
+      el.className = 'toast-message toast-' + type;
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, 2000);
+    }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function fmtAmt(n) {
+      return (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function balCell(u) {
+      var b = TrustApp.getBalances(u.uid) || {};
+      var main = fmtAmt(b.USDT) + ' <span style="font-weight:800;color:#1652f0;">USDT</span>';
+      var others = Object.keys(b).filter(function (k) { return parseFloat(b[k]) > 0 && k !== 'USDT'; })
+        .map(function (k) { return fmtAmt(b[k]) + ' ' + k; });
+      return '<span class="money-cell">' + main + (others.length ? '<span class="mc-sub">' + others.slice(0, 3).join(' &middot; ') + '</span>' : '') + '</span>';
+    }
+    function accCell(u) {
+      var admin = TrustApp.isUserAdmin(u.uid);
+      var acc = String(u.account || '');
+      var wallet = /^0x[0-9a-f]{40}$/i.test(acc) || (/^[A-Za-z0-9]{40,}$/.test(acc) && /[a-z]/.test(acc));
+      return '<div class="user-cell"><div class="user-ava" style="background:' + (admin ? 'linear-gradient(135deg,#7c3aed,#a78bfa)' : (wallet ? 'linear-gradient(135deg,#059669,#34d399)' : 'linear-gradient(135deg,#1652f0,#3b6cff)')) + ';">' + esc(acc.charAt(0).toUpperCase()) + '</div>'
+        + '<div class="user-meta"><div class="user-name">' + esc(acc) + (admin ? ' <span class="pill-sm" style="background:#f3e8ff;color:#7c3aed;">ADMIN</span>' : '') + (wallet ? ' <span class="pill-sm" style="background:#d1fae5;color:#047857;">WALLET</span>' : '') + '</div><div class="user-uid">' + esc(u.uid) + '</div></div></div>';
+    }
+    function verCell(u) {
+      var v = TrustApp.getVerification ? TrustApp.getVerification(u.uid) : null;
+      if (v && v.status === 'approved') return '<span class="badge green">Approved</span>';
+      var btn = '<button class="action-btn ab-green" onclick="verifyUser(\'' + esc(u.uid) + '\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Verify</button>';
+      if (v && v.status === 'rejected') return '<span class="badge red">Rejected</span> ' + btn;
+      if (v && v.status === 'pending') return '<span class="badge amber">Pending</span> ' + btn;
+      return '<span class="muted" style="font-size:12.5px;">Not submitted</span> ' + btn;
+    }
+    function verifyUser(uid) {
+      var res = TrustApp.adminApproveKyc(uid);
+      if (!res.ok) { toast('error', res.msg); return; }
+      toast('success', 'KYC verified for ' + uid);
+      renderUsers();
+    }
+    function profitCell(u) {
+      var on = TrustApp.getProfitMode ? TrustApp.getProfitMode(u.uid) : false;
+      return '<button class="profit-toggle ' + (on ? 'on' : 'off') + '" onclick="toggleProfit(\'' + esc(u.uid) + '\')">' + (on ? 'On' : 'Off') + '</button>';
+    }
+    function statusCell(u) {
+      var active = TrustApp.isUserActive(u.uid);
+      return active ? '<span class="badge green">Active</span>' : '<span class="badge red">Inactive</span>';
+    }
+    var editUid = null;
+    function row(label, sub, btn) {
+      return '<div class="admin-modal-row"><div class="amr-info"><div class="amr-label">' + label + '</div><div class="amr-sub">' + sub + '</div></div><div class="amr-btn">' + btn + '</div></div>';
+    }
+    function openEdit(uid) {
+      var u = TrustApp.accountByUid(uid) || {};
+      if (!u.uid) return;
+      editUid = u.uid;
+      var admin = TrustApp.isUserAdmin(u.uid);
+      var active = TrustApp.isUserActive(u.uid);
+      var b = TrustApp.getBalances(u.uid) || {};
+      var info = '<div class="admin-modal-ava"' + (admin ? ' style="background:linear-gradient(135deg,#7c3aed,#a78bfa);"' : '') + '>' + esc((u.account || '?').charAt(0).toUpperCase()) + '</div>'
+        + '<div><div class="admin-modal-name">' + esc(u.account) + (admin ? ' <span class="pill-sm" style="background:#f3e8ff;color:#7c3aed;">ADMIN</span>' : '') + '</div>'
+        + '<div class="admin-modal-uid">' + esc(u.uid) + ' &#183; joined ' + esc((u.createdAt || '').slice(0, 10) || '-') + '</div></div>';
+      var roleBtn = admin
+        ? '<button class="action-btn ab-red" onclick="toggleAdmin(\'' + esc(u.uid) + '\')">Remove Admin</button>'
+        : '<button class="action-btn ab-blue" onclick="toggleAdmin(\'' + esc(u.uid) + '\')">Make Admin</button>';
+      var statusBtn = active
+        ? '<button class="action-btn ab-red" onclick="toggleStatus(\'' + esc(u.uid) + '\')">Deactivate</button>'
+        : '<button class="action-btn ab-green" onclick="toggleStatus(\'' + esc(u.uid) + '\')">Activate</button>';
+      var resolveVer = function (v) {
+        if (!v) return 'Not submitted';
+        if (v.status === 'approved') return 'Approved';
+        if (v.status === 'rejected') return 'Rejected' + (v.rejection_reason ? ' - ' + v.rejection_reason : '');
+        if (v.status === 'pending') return 'Pending review';
+        return 'Not submitted';
+      };
+      var ver = TrustApp.getVerification ? TrustApp.getVerification(u.uid) : null;
+      var verBtn = ver && ver.status === 'approved'
+        ? '<span class="badge green">Approved</span>'
+        : '<button class="action-btn ab-green" onclick="verifyUser(\'' + esc(u.uid) + '\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Verify</button>';
+      var profit = TrustApp.getProfitMode ? TrustApp.getProfitMode(u.uid) : false;
+      var profitBtn = '<button class="profit-toggle ' + (profit ? 'on' : 'off') + '" onclick="toggleProfit(\'' + esc(u.uid) + '\')">' + (profit ? 'On' : 'Off') + '</button>';
+      document.getElementById('editUserInfo').innerHTML = info;
+      document.getElementById('editModalBody').innerHTML =
+        row('Account Status', active ? 'This account is currently active' : 'This account has been deactivated', statusBtn)
+        + row('Verification (KYC)', resolveVer(ver), verBtn)
+        + row('Profit Mode', profit ? 'Profits are ON for this user' : 'Profits are OFF for this user', profitBtn)
+        + row('Admin Role', admin ? 'Has full admin access' : 'Standard user permissions', roleBtn)
+        + row('USDT Balance', '$' + fmtAmt(b.USDT) + ' USDT', '<a class="action-btn ab-blue" href="admin-adjust.html?u=' + encodeURIComponent(u.uid) + '">Adjust Balance</a>')
+        + row('Delete User', 'Permanently remove this user and all their data', '<button class="action-btn ab-red" onclick="deleteUser(\'' + esc(u.uid) + '\')">Delete</button>');
+      document.getElementById('editModal').style.display = 'flex';
+    }
+    function deleteUser(uid) {
+      if (uid === TrustApp.getUserId()) { toast('error', 'You cannot delete your own account'); return; }
+      if (!confirm('PERMANENTLY DELETE this user and all their data (balances, history, chat)? This cannot be undone.')) return;
+      var res = TrustApp.removeUser(uid);
+      if (!res.ok) { toast('error', res.msg); return; }
+      toast('success', 'Deleted user ' + (res.account || uid));
+      document.getElementById('editModal').style.display = 'none';
+      editUid = null;
+      renderUsers();
+    }
+    function closeEditModal(ev) {
+      if (ev && ev.target !== document.getElementById('editModal')) return;
+      document.getElementById('editModal').style.display = 'none';
+      editUid = null;
+    }
+    function refreshEdit() {
+      renderUsers();
+      if (editUid) openEdit(editUid);
+    }
+    function toggleAdmin(uid) {
+      var admin = TrustApp.isUserAdmin(uid);
+      if (admin && uid === TrustApp.getUserId()) {
+        toast('error', 'You cannot remove your own admin permission');
+        return;
+      }
+      var res = TrustApp.setUserAdmin(uid, !admin);
+      if (!res.ok) { toast('error', res.msg); return; }
+      toast('success', (admin ? 'Removed admin permission from ' : 'Granted admin permission to ') + (res.user.account || uid));
+      refreshEdit();
+    }
+    function toggleStatus(uid) {
+      if (uid === TrustApp.getUserId()) {
+        toast('error', 'You cannot deactivate your own account');
+        return;
+      }
+      var active = TrustApp.isUserActive(uid);
+      if (active && !confirm('Deactivate this user? They will be unable to log in until reactivated.')) return;
+      var res = TrustApp.setUserStatus(uid, !active);
+      if (!res.ok) { toast('error', res.msg); return; }
+      toast('success', (active ? 'Deactivated ' : 'Activated ') + (res.user.account || uid));
+      refreshEdit();
+    }
+    function toggleProfit(uid) {
+      var cur = TrustApp.getProfitMode(uid);
+      var res = TrustApp.setProfitMode(uid, !cur);
+      if (!res.ok) { toast('error', res.msg); return; }
+      toast('success', 'Profit mode ' + (!cur ? 'ON' : 'OFF') + ' for ' + uid);
+      refreshEdit();
+    }
+    function renderStats() {
+      var users = TrustApp.getUsers();
+      var verified = 0, kyc = 0, usdt = 0, admins = 0;
+      users.forEach(function (u) {
+        var v = TrustApp.getVerification ? TrustApp.getVerification(u.uid) : null;
+        if (v && v.status === 'approved') verified++;
+        else if (v && v.status === 'pending') kyc++;
+        var b = TrustApp.getBalances(u.uid) || {};
+        usdt += parseFloat(b.USDT) || 0;
+        if (TrustApp.isUserAdmin(u.uid)) admins++;
+      });
+      document.getElementById('stUsers').textContent = users.length;
+      document.getElementById('stVerified').textContent = verified;
+      document.getElementById('stKyc').textContent = kyc;
+      document.getElementById('stUsdt').textContent = '$' + fmtAmt(usdt);
+      document.getElementById('hmUsers').textContent = users.length;
+      document.getElementById('chipUsers').textContent = users.length + ' users';
+      document.getElementById('chipVerified').textContent = verified + ' verified';
+      document.getElementById('chipKyc').textContent = kyc + ' pending KYC';
+      document.getElementById('chipAdmins').textContent = admins + ' admins';
+    }
+    function renderUsers() {
+      var box = document.getElementById('userRows');
+      var users = TrustApp.getUsers();
+      renderStats();
+      if (!users.length) {
+        box.innerHTML = '<tr><td colspan="8"><div class="empty-state"><span class="es-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg></span>No registered users yet</div></td></tr>';
+        return;
+      }
+      box.innerHTML = users.map(function (u) {
+        var date = (u.createdAt || '').slice(0, 10) || '-';
+        return '<tr><td>' + accCell(u) + '</td><td style="font-family:Consolas,monospace;font-size:12.5px;color:#5b6472;">' + esc(u.uid) + '</td><td>' + balCell(u) + '</td><td>' + statusCell(u) + '</td><td>' + date + '</td><td>' + verCell(u) + '</td><td>' + profitCell(u) + '</td>'
+          + '<td><button class="action-btn ab-gray" onclick="openEdit(\'' + esc(u.uid) + '\')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>Edit</button></td></tr>';
+      }).join('');
+    }
+    if (window.supabase && window.supabase.auth) { window.supabase.auth.signOut().catch(function() {}); }
+    TrustApp.initAdminLock();
+    if (TrustApp.initAdminTablesMobile) TrustApp.initAdminTablesMobile();
+    window.addEventListener('trustsync:users', function () {
+      try { renderUsers(); } catch (e) {}
+      if (editUid) { try { openEdit(editUid); } catch (e) {} }
+      if (DB && DB.pullBlob) DB.pullBlob('users').then(function () { try { renderUsers(); } catch (e) {} });
+    });
+    window.addEventListener('trustsync:user_balances', function () {
+      try { renderUsers(); } catch (e) {}
+      if (DB && DB.pullBlob) DB.pullBlob('user_balances').then(function () { try { renderUsers(); } catch (e) {} });
+    });
+    window.addEventListener('trustsync:verifications', function () {
+      try { renderUsers(); } catch (e) {}
+      if (DB && DB.pullBlob) DB.pullBlob('verifications').then(function () { try { renderUsers(); } catch (e) {} });
+    });
+    if (TrustApp.watchStorage) {
+      TrustApp.watchStorage(['trustUsers', 'trustBalances', 'trustVerifications'], function () { renderUsers(); });
+    window.addEventListener('trustver', renderUsers);
+    }
+    // Wait for DB to be fully connected before initial render
+    if (window.DB && DB.ready) {
+      if (DB.onReady) { DB.onReady(function () { renderUsers(); }); } else { DB.ready().then(function () { renderUsers(); }); }
+    } else {
+      renderUsers();
+    }
+    setTimeout(renderUsers, 150);
+    setInterval(renderUsers, 5000);
+    var searchBox = document.getElementById('userSearch');
+    searchBox.addEventListener('input', function () {
+      var q = searchBox.value.toLowerCase();
+      document.querySelectorAll('#userRows tr').forEach(function (r) {
+        r.style.display = r.textContent.toLowerCase().indexOf(q) !== -1 ? '' : 'none';
+      });
+      document.querySelectorAll('.admin-panel .admin-row-card').forEach(function (c) {
+        c.style.display = c.textContent.toLowerCase().indexOf(q) !== -1 ? '' : 'none';
+      });
+    });
+  </script>
+</body>
+</html>

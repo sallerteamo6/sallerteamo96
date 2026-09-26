@@ -1,0 +1,403 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <title>AI Quant Orders - Trust</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+  <style>
+    .admin-quants-page .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:1rem}
+    .admin-quants-page .modal-content{background:#fff;border-radius:16px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto}
+    .admin-quants-page .modal-header{display:flex;justify-content:space-between;align-items:center;padding:1rem 1.25rem;border-bottom:1px solid var(--border)}
+    .admin-quants-page .modal-header h3{margin:0;font-size:1.1rem;color:#131f30}
+    .admin-quants-page .modal-body{padding:1rem 1.25rem 1.25rem}
+    .admin-quants-page .detail-row{display:flex;justify-content:space-between;padding:7px 0;font-size:13.5px}
+    .admin-quants-page .detail-row .k{color:#8a94a6}
+    .admin-quants-page .detail-row .v{font-weight:700;color:#131f30}
+    .admin-quants-page .schedule-item{display:flex;align-items:center;gap:.75rem;padding:.6rem .75rem;border-radius:8px;background:#f9f9f9;border-left:4px solid #e0e0e0;margin-top:6px;font-size:13px}
+    .admin-quants-page .schedule-item.settled{background:#e8f5e9;border-left-color:#4caf50}
+    .admin-quants-page .schedule-item.pending{background:#fff3e0;border-left-color:#ff9800}
+    .admin-quants-page .schedule-day{font-weight:800;color:#131f30;min-width:56px}
+    .admin-quants-page .schedule-info{flex:1;color:#5b6472}
+    .admin-quants-page .schedule-status{font-weight:700;white-space:nowrap}
+    .admin-quants-page .schedule-item.settled .schedule-status{color:#4caf50}
+    .admin-quants-page .schedule-item.pending .schedule-status{color:#ff9800}
+    .admin-quants-page .pbar{height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;min-width:70px}
+    .admin-quants-page .pfill{height:100%;background:#1652f0;border-radius:3px}
+  </style>
+</head>
+<body class="auth-page admin-page admin-quants-page" style="background:#eef1f5;padding-bottom:30px;">
+
+      <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="as-logo"><img src="img/logo.png" alt="Trust"><div class="as-brand">Trust<small>Admin Panel</small></div></div>
+      <nav class="as-nav">
+        <div class="as-group-label">Overview</div>
+        <a class="as-link" href="admin.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>Dashboard</a><a class="as-link" href="admin-users.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Users</a><a class="as-link" href="admin-verify.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>Verification</a><a class="as-link" href="admin-adjust.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v8M8 12h8"></path></svg>Balance Adjuster</a><a class="as-link" href="admin-funds.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>Deposits &amp; Withdrawals</a><a class="as-link" href="admin-addresses.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg>Coin Addresses</a><a class="as-link" href="admin-loans.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9l3 3-3 3M13 15h4"></path></svg>Loans</a><a class="as-link" href="admin-feed.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>Live Feed</a><a class="as-link active" href="admin-quants.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 9h6v6H9zM9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"></path></svg>AI Quants</a><a class="as-link" href="admin-chat.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Customer Service</a><a class="as-link" href="admin-settings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>Settings</a>
+      </nav>
+      <div class="as-foot">&copy; Trust Admin Panel</div>
+    </aside>
+
+    <div class="admin-content">
+    <header class="admin-topbar">
+      <button class="back-btn" onclick="location.href='admin.html'" aria-label="Back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="at-title">AI Quant Orders<small>Manage AI quant plans</small></div>
+      <img src="img/logo.png" alt="Trust Wallet" class="admin-logo">
+    </header>
+      <main class="admin-main">
+
+    <div class="admin-hero">
+      <div class="admin-hero-txt">
+        <div class="admin-hero-eyebrow">Trust Admin</div>
+        <div class="admin-hero-title">AI Quant Orders</div>
+        <div class="admin-hero-sub">Orders auto-approve after a delay and settle automatically. Manual controls below are optional overrides.</div>
+        <div class="admin-hero-chips">
+          <span class="hero-chip" id="chipPending">0 pending</span>
+          <span class="hero-chip" id="chipRunning">0 running</span>
+          <span class="hero-chip" id="chipProfit">$0.00 profit</span>
+        </div>
+      </div>
+      <div class="hero-metric">
+        <div class="hm-val" id="hmProfit">$0.00</div>
+        <div class="hm-lab">Settled Profit</div>
+      </div>
+    </div>
+
+    <div class="admin-stats grid-4">
+      <div class="stat-card sc-amber">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Pending Approval</div><div class="s-value" id="qPending">0</div><div class="muted" style="font-size:11px;color:#d97706;">awaiting action</div></div>
+      </div>
+      <div class="stat-card sc-blue">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Running Positions</div><div class="s-value" id="qRunning">0</div><div class="muted" style="font-size:11px;color:#059669;">active plans</div></div>
+      </div>
+      <div class="stat-card sc-purple">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Total Invested</div><div class="s-value" id="qInvested">$0.00</div><div class="muted" style="font-size:11px;">all orders</div></div>
+      </div>
+      <div class="stat-card sc-green">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><path d="M22 4L12 14.01l-3-3"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Settled Profit</div><div class="s-value" id="qProfit">$0.00</div><div class="muted" style="font-size:11px;color:#059669;">credited to users</div></div>
+      </div>
+    </div>
+
+    <div class="tabs" id="quantTabs" style="margin-bottom:12px;">
+      <button class="tab-btn active" data-f="all">All</button>
+      <button class="tab-btn" data-f="pending">Pending</button>
+      <button class="tab-btn" data-f="running">Running</button>
+      <button class="tab-btn" data-f="completed">Completed</button>
+    </div>
+
+    <div class="admin-panel">
+      <div class="admin-panel-head">
+        <div class="ph-title"><span class="ph-dot"></span>Quant Orders</div>
+      </div>
+      <div class="admin-table-wrap">
+        <table>
+          <thead><tr><th>Order</th><th>User</th><th>Product</th><th>Amount</th><th>Progress</th><th>Profit</th><th>Status</th><th>Action</th></tr></thead>
+          <tbody id="quantRows"></tbody>
+        </table>
+      </div>
+    </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="detailOverlay" style="display:none;" onclick="closeDetail()">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3 id="dTitle">Order Details</h3>
+        <button class="close-btn" onclick="closeDetail()" aria-label="Close">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="#333" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div id="dBasic"></div>
+        <div style="font-weight:800;font-size:14px;color:#131f30;margin:14px 0 4px;">Profit Plan</div>
+        <div id="dSchedules"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="admin-lock" id="adminLock">
+    <div class="admin-lock-box">
+      <div class="admin-lock-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+      <h3>Admin Access</h3>
+      <p>Enter the admin password to continue</p>
+      <input type="password" class="admin-lock-input" id="adminPassInput" placeholder="Admin password">
+      <button class="admin-lock-btn" onclick="unlockAdmin()">Unlock</button>
+      <div class="admin-lock-err" id="adminLockErr"></div>
+    </div>
+  </div>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    if (window.supabase && window.supabase.auth) { window.supabase.auth.signOut().catch(function() {}); }
+    TrustApp.initAdminLock();
+    if (TrustApp.initAdminTablesMobile) TrustApp.initAdminTablesMobile();
+    function toast(type, msg) {
+      var box = document.getElementById('toastBox');
+      var el = document.createElement('div');
+      el.className = 'toast-message toast-' + type;
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, 2000);
+    }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function fmt(n) { return (parseFloat(n) || 0).toFixed(2); }
+    function fmtUsd(n) {
+      if (!isFinite(n)) return '$0.00';
+      var abs = Math.abs(n);
+      var txt = abs >= 1000000000 ? (abs / 1000000000).toFixed(2) + 'B' : abs >= 1000000 ? (abs / 1000000).toFixed(1) + 'M' : abs >= 1000 ? (abs / 1000).toFixed(1) + 'K' : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return '$' + txt;
+    }
+    function acctName(o) {
+      if (o.account) return o.account;
+      var u = TrustApp.accountByUid ? TrustApp.accountByUid(o.uid) : null;
+      return (u && u.account) || ('' + o.uid);
+    }
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
+    function fmtTime(ts) {
+      if (!ts) return '--';
+      var d = new Date(ts);
+      return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+    }
+    function statusBadge(st) {
+      if (st === 'running') return '<span class="status-badge running">Running</span>';
+      if (st === 'completed') return '<span class="status-badge completed">Completed</span>';
+      if (st === 'rejected') return '<span class="status-badge rejected">Rejected</span>';
+      return '<span class="status-badge pending">Pending</span>';
+    }
+    function fmtLeft(ms) {
+      if (!isFinite(ms) || ms <= 0) return '0d 00:00:00 left';
+      var s = Math.floor(ms / 1000);
+      var d = Math.floor(s / 86400); s %= 86400;
+      var h = Math.floor(s / 3600); s %= 3600;
+      var m = Math.floor(s / 60); s %= 60;
+      return (d > 0 ? d + 'd ' : '') + pad2(h) + ':' + pad2(m) + ':' + pad2(s) + ' left';
+    }
+    function actionBtns(o) {
+      if (o.status === 'pending') {
+        return '<span class="wd-actions ab-group"><button class="action-btn ab-green" onclick="approveOrder(\'' + esc(o.id) + '\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Approve</button><button class="action-btn ab-red" onclick="rejectOrder(\'' + esc(o.id) + '\')">Reject</button></span>';
+      }
+      if (o.status === 'running') {
+        return '<span class="wd-actions"><button class="action-btn ab-blue" onclick="settleDay(\'' + esc(o.id) + '\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>Settle Day</button></span>';
+      }
+      return '<span class="muted">--</span>';
+    }
+
+    var filter = 'all';
+
+    function renderAll() {
+      var all = (TrustApp.getAIOrders ? TrustApp.getAIOrders() : []) || [];
+      var list = filter === 'all' ? all : all.filter(function (o) { return o.status === filter; });
+
+      var pend = 0, run = 0, invested = 0, profit = 0;
+      all.forEach(function (o) {
+        if (o.status === 'pending') pend++;
+        if (o.status === 'running') run++;
+        invested += o.amount || 0;
+        if (o.status !== 'rejected') profit += o.profit || 0;
+      });
+      document.getElementById('qPending').textContent = pend;
+      document.getElementById('qRunning').textContent = run;
+      document.getElementById('qInvested').textContent = fmtUsd(invested);
+      document.getElementById('qProfit').textContent = fmtUsd(profit);
+      document.getElementById('chipPending').textContent = pend + ' pending';
+      document.getElementById('chipRunning').textContent = run + ' running';
+      document.getElementById('chipProfit').textContent = fmtUsd(profit) + ' profit';
+      document.getElementById('hmProfit').textContent = fmtUsd(profit);
+
+      var box = document.getElementById('quantRows');
+      if (!list.length) {
+        box.innerHTML = '<tr><td colspan="8"><div class="empty-state"><span class="es-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"></path></svg></span>No AI quant orders</div></td></tr>';
+        return;
+      }
+      box.innerHTML = list.map(function (o) {
+        var pct = o.period > 0 ? Math.round(o.settledDays / o.period * 100) : 0;
+        var progress;
+        if (o.status === 'running') {
+          var stTs = o.startAt ? new Date(o.startAt).getTime() : 0;
+          var enTs = o.endAt ? new Date(o.endAt).getTime() : 0;
+          var livePct = (enTs > stTs) ? Math.min(100, Math.max(0, Math.round((Date.now() - stTs) / (enTs - stTs) * 100))) : pct;
+          progress = '<div style="display:flex;flex-direction:column;gap:4px;min-width:150px;">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#5b6472;white-space:nowrap;"><span>' + o.settledDays + '/' + o.period + ' days &middot; <b class="apct">' + livePct + '%</b></span><span class="aleft">' + fmtLeft(enTs - Date.now()) + '</span></div>'
+            + '<div class="pbar"><div class="pfill apfill" style="width:' + livePct + '%;" data-start="' + stTs + '" data-end="' + enTs + '"></div></div></div>';
+        } else {
+          progress = '<div style="display:flex;align-items:center;gap:8px;min-width:110px;"><div style="font-size:12px;color:#5b6472;white-space:nowrap;">' + o.settledDays + '/' + o.period + ' days</div><div class="pbar"><div class="pfill" style="width:' + pct + '%;"></div></div></div>';
+        }
+        var profitTxt = o.status === 'rejected' ? '0.00' : (o.profit > 0 ? '+' : '') + fmt(o.profit);
+        return '<tr data-id="' + esc(o.id) + '">'
+          + '<td><b style="color:#131f30;">' + esc(o.id) + '</b><div class="muted" style="font-size:11px;">' + fmtTime(o.createdAt) + '</div></td>'
+          + '<td><div class="user-cell"><div class="user-ava">' + esc((acctName(o) || '?').charAt(0).toUpperCase()) + '</div><div class="user-meta"><div class="user-name">' + esc(acctName(o)) + '</div><div class="user-uid">' + esc(o.uid || '') + '</div></div></div></td>'
+          + '<td>' + esc(o.product) + '</td>'
+          + '<td><span class="money-cell">' + fmt(o.amount) + ' USDT</span></td>'
+          + '<td>' + progress + '</td>'
+          + '<td><span class="money-cell" style="color:' + (o.profit > 0 ? '#059669' : '#131f30') + ';">' + profitTxt + ' USDT</span></td>'
+          + '<td>' + statusBadge(o.status) + '</td>'
+          + '<td>' + actionBtns(o) + '</td>'
+          + '</tr>';
+      }).join('');
+    }
+
+    function approveOrder(id) {
+      var o = o2(id);
+      var cfg = TrustApp.getConfig();
+      var intervalHours = parseFloat(cfg.aiQuantSettleIntervalHours);
+      if (!isFinite(intervalHours) || intervalHours < 1) intervalHours = 24;
+      var startAt = new Date().toISOString();
+      TrustApp.updateAIOrder(id, {
+        status: 'running',
+        startAt: startAt,
+        endAt: new Date(Date.now() + (o ? o.period : 7) * intervalHours * 3600000).toISOString(),
+        schedules: TrustApp.buildAISchedules ? TrustApp.buildAISchedules(o ? o.period : 7, intervalHours, startAt) : (o ? o.schedules : []),
+        settledDays: 0,
+        profit: 0,
+        principal: o ? o.amount : 0
+      });
+      toast('success', 'Order approved and running');
+      renderAll();
+    }
+    function o2(id) {
+      var all = (TrustApp.getAIOrders ? TrustApp.getAIOrders() : []) || [];
+      for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
+      return null;
+    }
+
+    function rejectOrder(id) {
+      var o = o2(id);
+      TrustApp.updateAIOrder(id, { status: 'rejected' });
+      if (o && o.uid && o.amount) TrustApp.addBalance(o.uid, 'USDT', o.amount);
+      toast('error', 'Order rejected, amount refunded');
+      renderAll();
+    }
+
+    function settleDay(id) {
+      var o = o2(id);
+      if (!o || o.status !== 'running') return;
+      var scheds = o.schedules || [];
+      var next = null;
+      for (var i = 0; i < scheds.length; i++) if (scheds[i].status === 0) { next = scheds[i]; break; }
+      if (!next) return;
+      var rate = Math.round((o.rateMin + Math.random() * (o.rateMax - o.rateMin)) * 100) / 100;
+      var dayProfit = Math.round(o.amount * rate) / 100;
+      next.status = 1;
+      next.rate = rate;
+      next.profit = dayProfit;
+      var settledDays = (o.settledDays || 0) + 1;
+      var totalProfit = Math.round(((o.profit || 0) + dayProfit) * 100) / 100;
+      var patch = {
+        schedules: scheds,
+        settledDays: settledDays,
+        profit: totalProfit,
+        principal: Math.round((o.amount + totalProfit) * 100) / 100
+      };
+      var credit = dayProfit;
+      if (settledDays >= o.period) {
+        patch.status = 'completed';
+        patch.endAt = new Date().toISOString();
+        credit = Math.round((credit + o.amount) * 100) / 100;
+      }
+      // Single combined credit (profit + principal) so two un-awaited
+      // server-first reads cannot race and the last write silently erase
+      // the principal refund.
+      if (o.uid) TrustApp.addBalance(o.uid, 'USDT', credit);
+      TrustApp.updateAIOrder(id, patch);
+      toast('success', 'Day ' + next.day + ' settled: +' + fmt(dayProfit) + ' USDT');
+      renderAll();
+    }
+
+    function openDetail(id) {
+      var o = o2(id);
+      if (!o) return;
+      document.getElementById('dTitle').textContent = o.product;
+      document.getElementById('dBasic').innerHTML =
+        '<div class="detail-row"><span class="k">Order ID</span><span class="v">' + esc(o.id) + '</span></div>'
+        + '<div class="detail-row"><span class="k">User</span><span class="v">' + esc(o.account) + '</span></div>'
+        + '<div class="detail-row"><span class="k">Investment</span><span class="v">' + fmt(o.amount) + ' USDT</span></div>'
+        + '<div class="detail-row"><span class="k">Period</span><span class="v">' + o.period + ' days</span></div>'
+        + '<div class="detail-row"><span class="k">Daily Return</span><span class="v">' + o.rateMin + '% - ' + o.rateMax + '%</span></div>'
+        + '<div class="detail-row"><span class="k">Principal</span><span class="v">' + fmt(o.principal) + ' USDT</span></div>'
+        + '<div class="detail-row"><span class="k">Cumulative Profit</span><span class="v" style="color:' + (o.profit > 0 ? '#059669' : '#131f30') + ';">' + (o.profit > 0 ? '+' : '') + fmt(o.profit) + ' USDT</span></div>'
+        + '<div class="detail-row"><span class="k">Status</span><span class="v">' + o.status.charAt(0).toUpperCase() + o.status.slice(1) + '</span></div>'
+        + '<div class="detail-row"><span class="k">Created</span><span class="v">' + fmtTime(o.createdAt) + '</span></div>'
+        + '<div class="detail-row"><span class="k">Start</span><span class="v">' + fmtTime(o.startAt) + '</span></div>'
+        + '<div class="detail-row"><span class="k">End</span><span class="v">' + fmtTime(o.endAt) + '</span></div>';
+      var scheds = o.schedules || [];
+      var sBox = document.getElementById('dSchedules');
+      if (!scheds.length) {
+        sBox.innerHTML = '<div class="empty-text" style="padding:12px 0;">No schedule yet</div>';
+      } else {
+        sBox.innerHTML = scheds.map(function (s) {
+          var info = s.status === 1
+            ? '<div class="schedule-info">Profit Rate: ' + s.rate + '% &middot; Profit: ' + fmt(s.profit) + ' USDT</div>'
+            : '<div class="schedule-info">' + fmtTime(s.time) + '</div>';
+          return '<div class="schedule-item ' + (s.status === 1 ? 'settled' : 'pending') + '">'
+            + '<div class="schedule-day">Day ' + s.day + '</div>'
+            + info
+            + '<div class="schedule-status">' + (s.status === 1 ? 'Settled' : 'Pending') + '</div></div>';
+        }).join('');
+      }
+      document.getElementById('detailOverlay').style.display = 'flex';
+    }
+    function closeDetail() { document.getElementById('detailOverlay').style.display = 'none'; }
+
+    renderAll();
+    if (TrustApp.watchStorage) {
+      TrustApp.watchStorage(['trustAIOrders', 'trustTxns'], function () { renderAll(); });
+    }
+    window.addEventListener('trustsync:ai_orders', function () { renderAll(); });
+    window.addEventListener('trustsync:transactions', function () { renderAll(); });
+    document.getElementById('quantTabs').querySelectorAll('.tab-btn').forEach(function (b) {
+      b.onclick = function () {
+        document.getElementById('quantTabs').querySelectorAll('.tab-btn').forEach(function (x) { x.classList.remove('active'); });
+        b.classList.add('active');
+        filter = b.dataset.f;
+        renderAll();
+      };
+    });
+    setInterval(function () {
+      if (TrustApp.aiProcess) { try { TrustApp.aiProcess(); } catch (e) {} }
+      renderAll();
+    }, 10000);
+
+    setInterval(function () {
+      var now = Date.now();
+      var fills = document.querySelectorAll('.apfill[data-start]');
+      for (var f = 0; f < fills.length; f++) {
+        var fl = fills[f];
+        var sts = parseInt(fl.getAttribute('data-start'), 10);
+        var ets = parseInt(fl.getAttribute('data-end'), 10);
+        if (!isFinite(sts) || !isFinite(ets) || ets <= sts) continue;
+        var fPct = Math.min(100, Math.max(0, (now - sts) / (ets - sts) * 100));
+        fl.style.width = fPct.toFixed(2) + '%';
+        var row = fl.closest('tr, .admin-row-card, .admin-row-card-list');
+        if (row) {
+          var pctEl = row.querySelector('.apct');
+          if (!pctEl) pctEl = row.closest('.admin-row-card') ? row.closest('.admin-row-card').querySelector('.apct') : null;
+          if (pctEl) pctEl.textContent = Math.round(fPct) + '%';
+          var leftEl = row.querySelector('.aleft');
+          if (!leftEl) leftEl = row.closest('.admin-row-card') ? row.closest('.admin-row-card').querySelector('.aleft') : null;
+          if (leftEl) leftEl.textContent = fmtLeft(ets - now);
+        }
+      }
+    }, 1000);
+  </script>
+</body>
+</html>

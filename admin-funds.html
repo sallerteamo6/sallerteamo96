@@ -1,0 +1,340 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <title>Deposits &amp; Withdrawals - Trust</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+</head>
+<body class="auth-page admin-page" style="background:#eef1f5;padding-bottom:30px;">
+
+      <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="as-logo"><img src="img/logo.png" alt="Trust"><div class="as-brand">Trust<small>Admin Panel</small></div></div>
+      <nav class="as-nav">
+        <div class="as-group-label">Overview</div>
+        <a class="as-link" href="admin.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>Dashboard</a><a class="as-link" href="admin-users.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Users</a><a class="as-link" href="admin-verify.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>Verification</a><a class="as-link" href="admin-adjust.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v8M8 12h8"></path></svg>Balance Adjuster</a><a class="as-link active" href="admin-funds.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>Deposits &amp; Withdrawals</a><a class="as-link" href="admin-addresses.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg>Coin Addresses</a><a class="as-link" href="admin-loans.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9l3 3-3 3M13 15h4"></path></svg>Loans</a><a class="as-link" href="admin-feed.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>Live Feed</a><a class="as-link" href="admin-quants.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 9h6v6H9zM9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"></path></svg>AI Quants</a><a class="as-link" href="admin-chat.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Customer Service</a><a class="as-link" href="admin-settings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>Settings</a>
+      </nav>
+      <div class="as-foot">&copy; Trust Admin Panel</div>
+    </aside>
+
+    <div class="admin-content">
+    <header class="admin-topbar">
+      <button class="back-btn" onclick="location.href='admin.html'" aria-label="Back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="at-title">Deposits &amp; Withdrawals<small>Approve funding requests</small></div>
+      <img src="img/logo.png" alt="Trust Wallet" class="admin-logo">
+    </header>
+      <main class="admin-main">
+
+    <div class="admin-hero">
+      <div class="admin-hero-txt">
+        <div class="admin-hero-eyebrow">Trust Admin</div>
+        <div class="admin-hero-title">Deposits &amp; Withdrawals</div>
+        <div class="admin-hero-sub">Review deposit confirmations and process withdrawal requests</div>
+        <div class="admin-hero-chips">
+          <span class="hero-chip" id="chipDep">0 deposits</span>
+          <span class="hero-chip" id="chipWd">0 pending withdrawals</span>
+          <span class="hero-chip" id="chipUsd">$0.00 confirmed</span>
+          <span class="hero-chip" id="chipMarket">Loading live prices...</span>
+        </div>
+      </div>
+      <div class="hero-metric">
+        <div class="hm-val" id="hmUsd">$0.00</div>
+        <div class="hm-lab">Confirmed Today</div>
+      </div>
+    </div>
+
+    <div class="admin-stats grid-4">
+      <div class="stat-card sc-amber">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"></path><path d="m21 3-6.75 6.75"></path><rect x="3" y="10" width="8" height="11" rx="1"></rect><rect x="14" y="10" width="7" height="11" rx="1"></rect><path d="M7 17h.01"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Pending Deposits</div><div class="s-value" id="stDep">0</div></div>
+      </div>
+      <div class="stat-card sc-blue">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9"></path><path d="M7 10h4"></path><path d="M11 6v4"></path><path d="M16 15v5"></path><path d="m16 15-2 2 2 2 2-2-2-2Z"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Pending Withdrawals</div><div class="s-value" id="stWd">0</div></div>
+      </div>
+      <div class="stat-card sc-green">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><path d="M22 4L12 14.01l-3-3"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Confirmed Deposits</div><div class="s-value" id="stDepConf">0</div></div>
+      </div>
+      <div class="stat-card sc-purple">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Approved Withdrawals</div><div class="s-value" id="stWdAppr">0</div></div>
+      </div>
+    </div>
+
+    <div class="admin-panel" style="margin-bottom:16px;">
+      <div class="admin-panel-head">
+        <div class="ph-title"><span class="ph-dot" style="background:#7c3aed;"></span>Fund Limits <span class="ph-sub">&#183; minimum amounts users must meet to deposit / withdraw</span></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;padding:14px;">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#5b6472;margin-bottom:6px;">Minimum Deposit (USDT)</label>
+          <input type="number" id="fMinDep" min="0" step="1" class="form-input" style="width:170px;" value="100">
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#5b6472;margin-bottom:6px;">Minimum Withdrawal (USDT)</label>
+          <input type="number" id="fMinWd" min="0" step="1" class="form-input" style="width:170px;" value="20">
+        </div>
+        <button class="action-btn ab-green" id="saveLimits" style="padding:11px 18px;display:inline-flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Save limits</button>
+        <span class="muted" style="font-size:12px;margin-left:auto;">Saved limits apply to all users on the funds page.</span>
+      </div>
+    </div>
+
+    <div class="admin-seg-tabs">
+      <button class="admin-seg-btn active" data-fund-tab="dep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18"></path><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path></svg>Deposits <span class="tab-cnt" id="tabCntDep">0</span></button>
+      <button class="admin-seg-btn" data-fund-tab="wd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19h18"></path><path d="M12 15V3"></path><path d="m7 8 5-5 5 5"></path></svg>Withdrawals <span class="tab-cnt" id="tabCntWd">0</span></button>
+    </div>
+
+    <div class="fund-tab-pane" data-fund-pane="dep">
+    <div class="admin-panel">
+      <div class="admin-panel-head">
+        <div class="ph-title"><span class="ph-dot"></span>Recent Deposits <span class="ph-sub">&#183; confirmed amounts are credited in USDT at live price</span></div>
+      </div>
+      <div class="admin-table-wrap">
+        <table>
+          <thead><tr><th>User</th><th>Asset</th><th>Amount</th><th>Proof</th><th>Status</th><th>Action</th></tr></thead>
+          <tbody id="depRows"></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+
+    <div class="fund-tab-pane" data-fund-pane="wd" style="display:none">
+    <div class="admin-panel">
+      <div class="admin-panel-head">
+        <div class="ph-title"><span class="ph-dot" style="background:#d97706;"></span>Pending Withdrawals <span class="ph-sub">&#183; approving debits the user's coin balance</span></div>
+      </div>
+      <div class="admin-table-wrap">
+        <table>
+          <thead><tr><th>User</th><th>Asset</th><th>Amount</th><th>Action</th></tr></thead>
+          <tbody id="wdRows"></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="admin-lock" id="adminLock">
+    <div class="admin-lock-box">
+      <div class="admin-lock-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+      <h3>Admin Access</h3>
+      <p>Enter the admin password to continue</p>
+      <input type="password" class="admin-lock-input" id="adminPassInput" placeholder="Admin password">
+      <button class="admin-lock-btn" onclick="unlockAdmin()">Unlock</button>
+      <div class="admin-lock-err" id="adminLockErr"></div>
+    </div>
+  </div>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    if (window.supabase && window.supabase.auth) { window.supabase.auth.signOut().catch(function() {}); }
+    TrustApp.initAdminLock();
+    if (TrustApp.initAdminTablesMobile) TrustApp.initAdminTablesMobile();
+    function toast(type, msg) {
+      var box = document.getElementById('toastBox');
+      var el = document.createElement('div');
+      el.className = 'toast-message toast-' + type;
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, 2000);
+    }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function fmtAmt(n, coin) {
+      return (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: coin === 'BTC' || coin === 'ETH' ? 4 : 2, maximumFractionDigits: coin === 'BTC' || coin === 'ETH' ? 4 : 2 });
+    }
+    function usdValue(coin) {
+      if (coin === 'USDT') return 1;
+      var d = TrustApp.findCoin ? TrustApp.findCoin(coin) : null;
+      return d ? (parseFloat(d.price) || 0) : 0;
+    }
+    function byNew(a, b) {
+      var ta = a.createdAt || a.created_at || '', tb = b.createdAt || b.created_at || '';
+      if (ta && tb && ta !== tb) return ta < tb ? 1 : -1;
+      var ia = parseFloat(a.id) || 0, ib = parseFloat(b.id) || 0;
+      if (ia !== ib) return ia > ib ? -1 : 1;
+      return 0;
+    }
+    function badgeFor(t) {
+      if (t.status === 'confirmed') return '<span class="badge green">Confirmed</span>';
+      if (t.status === 'rejected') return '<span class="badge red">Rejected</span>';
+      return '<span class="badge amber">Pending</span>';
+    }
+    var actionBtns = '<span class="wd-actions ab-group"><button class="action-btn ab-green" onclick="setDep(this,\'confirmed\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Confirm</button><button class="action-btn ab-red" onclick="setDep(this,\'rejected\')">Reject</button></span>';
+    var wdBtns = '<span class="wd-actions ab-group"><button class="action-btn ab-green" onclick="setWd(this,\'confirmed\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Approve</button><button class="action-btn ab-red" onclick="setWd(this,\'rejected\')">Reject</button></span>';
+
+    function setDep(btn, status) {
+      var tr = btn.closest('tr, .admin-row-card');
+      var id = tr.getAttribute('data-id');
+      var txn = TrustApp.getTxns().filter(function (t) { return String(t.id) === String(id); })[0];
+      if (status === 'confirmed') {
+        if (!txn) { toast('error', 'Record not found'); renderAll(); return; }
+        if (!TrustApp.isMarketLive()) { toast('error', 'Live market data not available yet. Deposits are confirmed at the live price only when the live price feed is connected.'); renderAll(); return; }
+        if (!usdValue(txn.coin)) { toast('error', 'No live price for ' + txn.coin + ', cannot confirm'); renderAll(); return; }
+        TrustApp.setTxnStatus(id, status);
+        var usd = (parseFloat(txn.amount) || 0) * usdValue(txn.coin);
+        toast('success', 'Deposit confirmed: credited ' + fmtAmt(usd, 'USDT') + ' USDT');
+      } else {
+        TrustApp.setTxnStatus(id, status);
+        toast('info', 'Deposit rejected');
+      }
+      renderAll();
+    }
+    function setWd(btn, status) {
+      var tr = btn.closest('tr, .admin-row-card');
+      var id = tr.getAttribute('data-id');
+      var txn = TrustApp.getTxns().filter(function (t) { return String(t.id) === String(id); })[0];
+      if (status === 'confirmed') {
+        if (!txn) { toast('error', 'Record not found'); renderAll(); return; }
+        var bal = TrustApp.getBalance(txn.uid, txn.coin);
+        if (bal < (parseFloat(txn.amount) || 0)) { toast('error', 'Insufficient ' + txn.coin + ' balance (has ' + fmtAmt(bal, txn.coin) + ')'); renderAll(); return; }
+      }
+      TrustApp.setTxnStatus(id, status);
+      toast(status === 'confirmed' ? 'success' : 'error', 'Withdrawal ' + (status === 'confirmed' ? 'approved' : 'rejected'));
+      renderAll();
+    }
+    function renderAll() {
+      var txns = TrustApp.getTxns();
+      var deps = txns.filter(function (t) { return t.type === 'deposit' || t.type === 'referral_bonus'; }).sort(byNew).slice(0, 20);
+      var wds = txns.filter(function (t) { return t.type === 'withdraw' && t.status === 'pending'; }).sort(byNew);
+      var depPending = txns.filter(function (t) { return t.type === 'deposit' && t.status === 'pending'; }).length;
+      var depConfirmed = txns.filter(function (t) { return t.type === 'deposit' && t.status === 'confirmed'; }).length;
+      var wdApproved = txns.filter(function (t) { return t.type === 'withdraw' && t.status === 'confirmed'; }).length;
+      var confUsd = txns.filter(function (t) { return t.type === 'deposit' && t.status === 'confirmed'; })
+        .reduce(function (s, t) { return s + (parseFloat(t.amount) || 0) * usdValue(t.coin); }, 0);
+      document.getElementById('stDep').textContent = depPending;
+      document.getElementById('stWd').textContent = wds.length;
+      document.getElementById('stDepConf').textContent = depConfirmed;
+      document.getElementById('stWdAppr').textContent = wdApproved;
+      document.getElementById('hmUsd').textContent = '$' + fmtAmt(confUsd, 'USDT');
+      document.getElementById('chipDep').textContent = deps.length + ' deposits';
+      document.getElementById('chipWd').textContent = wds.length + ' pending withdrawals';
+      document.getElementById('chipUsd').textContent = '$' + fmtAmt(confUsd, 'USDT') + ' confirmed';
+      document.getElementById('tabCntDep').textContent = deps.length;
+      document.getElementById('tabCntWd').textContent = wds.length;
+      var depBox = document.getElementById('depRows');
+      if (!deps.length) {
+        depBox.innerHTML = '<tr><td colspan="6"><div class="empty-state"><span class="es-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9"></path><path d="M7 10h4"></path><path d="M11 6v4"></path></svg></span>No deposits yet</div></td></tr>';
+      } else {
+        depBox.innerHTML = deps.map(function (t) {
+          var act = t.status === 'pending' ? actionBtns : '<span class="muted">--</span>';
+          var proof = '<span class="muted">--</span>';
+          if (t.proof && String(t.proof).indexOf('data:image') === 0) {
+            proof = '<img src="' + esc(t.proof) + '" alt="proof" title="Click to view full image" onclick="TrustApp.showImageLightbox(this.src)" style="width:44px;height:44px;object-fit:cover;border-radius:8px;cursor:zoom-in;border:1px solid var(--border);">';
+          } else if (t.proofName || t.proof) {
+            proof = '<span class="badge blue">' + esc((t.proofName || t.proof).slice(0, 24)) + '</span>';
+          } else if (t.note) {
+            proof = '<span class="badge blue">' + esc(t.note) + '</span>';
+          }
+          var usdSub = '<span class="mc-sub">≈ ' + fmtAmt((parseFloat(t.amount) || 0) * usdValue(t.coin), 'USDT') + ' USDT</span>';
+          return '<tr data-id="' + esc(t.id) + '"><td><div class="user-cell"><div class="user-ava">' + esc((t.account || '?').charAt(0).toUpperCase()) + '</div><div class="user-meta"><div class="user-name">' + esc(t.account) + '</div><div class="user-uid">' + esc(t.uid) + '</div></div></div></td><td><span class="tag">' + esc(t.coin) + '</span></td><td><span class="money-cell">' + fmtAmt(t.amount, t.coin) + ' ' + esc(t.coin) + usdSub + '</span></td><td>' + proof + '</td><td>' + badgeFor(t) + '</td><td>' + act + '</td></tr>';
+        }).join('');
+      }
+      var wdBox = document.getElementById('wdRows');
+      if (!wds.length) {
+        wdBox.innerHTML = '<tr><td colspan="4"><div class="empty-state"><span class="es-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9"></path><path d="M16 15v5"></path><path d="m16 15-2 2 2 2 2-2-2-2Z"></path></svg></span>No pending withdrawals</div></td></tr>';
+      } else {
+        wdBox.innerHTML = wds.map(function (t) {
+          var dest = '';
+          if (t.method === 'bank') {
+            dest = '<div class="mc-sub">Bank card &#183; ' + esc((t.holder || '') + (t.bank ? ' &#183; ' + t.bank : '')) + ' &#183; ' + esc('****' + String(t.card || '').slice(-4)) + '</div>';
+          } else if (t.address) {
+            dest = '<div class="mc-sub">' + esc(t.address.slice(0, 30) + (t.address.length > 30 ? '...' : '')) + '</div>';
+          }
+          return '<tr data-id="' + esc(t.id) + '"><td><div class="user-cell"><div class="user-ava">' + esc((t.account || '?').charAt(0).toUpperCase()) + '</div><div class="user-meta"><div class="user-name">' + esc(t.account) + '</div><div class="user-uid">' + esc(t.uid) + '</div></div></div></td><td><span class="tag">' + esc(t.coin) + '</span></td><td><div class="money-cell">' + fmtAmt(t.amount, t.coin) + ' ' + esc(t.coin) + '</div>' + dest + '</td><td>' + wdBtns + '</td></tr>';
+        }).join('');
+      }
+    }
+    function loadLimits() {
+      var c = TrustApp.getConfig ? TrustApp.getConfig() : {};
+      var md = document.getElementById('fMinDep');
+      var mw = document.getElementById('fMinWd');
+      if (md) md.value = parseFloat(c.minRechargeAmount) || 0;
+      if (mw) mw.value = parseFloat(c.minWithdrawAmount) || 0;
+    }
+    var saveLimitsBtn = document.getElementById('saveLimits');
+    if (saveLimitsBtn) {
+      saveLimitsBtn.onclick = function () {
+        var vd = document.getElementById('fMinDep').value;
+        var vw = document.getElementById('fMinWd').value;
+        if (vd === '' || vw === '') { toast('error', 'Enter both amounts (0 disables the minimum)'); return; }
+        var md = Math.max(0, parseFloat(vd) || 0);
+        var mw = Math.max(0, parseFloat(vw) || 0);
+        if (!TrustApp.saveConfig) { toast('error', 'saveConfig unavailable'); return; }
+        var c = TrustApp.getConfig ? TrustApp.getConfig() : {};
+        c.minRechargeAmount = md;
+        c.minWithdrawAmount = mw;
+        TrustApp.saveConfig(c);
+        toast('success', 'Limits saved: min deposit ' + md + ' USDT, min withdrawal ' + mw + ' USDT');
+      };
+    }
+    if (TrustApp.getConfig && (window.DB && DB.onReady)) DB.onReady(loadLimits); else loadLimits();
+    renderAll();
+    function showFundTab(name) {
+      document.querySelectorAll('.admin-seg-btn').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-fund-tab') === name);
+      });
+      document.querySelectorAll('.fund-tab-pane').forEach(function (p) {
+        p.style.display = p.getAttribute('data-fund-pane') === name ? '' : 'none';
+      });
+      if (TrustApp.makeAdminTablesMobile) {
+        setTimeout(function () { try { TrustApp.makeAdminTablesMobile(); } catch (e) {} }, 30);
+      }
+    }
+    document.querySelectorAll('.admin-seg-btn').forEach(function (b) {
+      b.addEventListener('click', function () { showFundTab(b.getAttribute('data-fund-tab')); });
+    });
+    if (parseInt(document.getElementById('tabCntWd').textContent, 10) > 0) showFundTab('wd');
+    function applyMarketStatus() {
+      var chip = document.getElementById('chipMarket');
+      if (!chip) return;
+      if (TrustApp.isMarketLive()) {
+        chip.textContent = 'Live prices connected';
+        chip.style.background = 'rgba(5,193,104,.25)';
+        chip.style.borderColor = 'rgba(5,193,104,.5)';
+      } else {
+        chip.textContent = 'Connecting to live prices...';
+      }
+    }
+    function loadMarket(tries) {
+      if (typeof TrustApp.fetchMarket !== 'function') { applyMarketStatus(); return; }
+      TrustApp.fetchMarket(function () {
+    renderAll();
+    if (TrustApp.watchStorage) {
+      TrustApp.watchStorage(['trustTxns', 'trustBalances', 'trustUsers'], function () { renderAll(); });
+    }
+    ['trustsync:txns', 'trustsync:balances', 'trustsync:users'].forEach(function (ev) {
+      window.addEventListener(ev, function () {
+        if (DB && DB.pullBlob) DB.pullBlob(ev.split(':')[1]).then(function () { renderAll(); });
+      });
+    });
+        setInterval(function () { if (!document.hidden) renderAll(); }, 4000);
+        applyMarketStatus();
+        if (!TrustApp.isMarketLive() && tries > 0) {
+          setTimeout(function () { loadMarket(tries - 1); }, 4000);
+        }
+      });
+    }
+    loadMarket(50);
+    // Wait for DB ready after market loads
+    if (window.DB && DB.ready) DB.ready().then(renderAll);
+  </script>
+</body>
+</html>

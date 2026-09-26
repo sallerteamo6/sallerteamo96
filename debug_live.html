@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Live Debug Tool (No Auth)</title>
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+  <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+</head>
+<body>
+  <h2>Live Debug Tool</h2>
+  <!-- Admin lock elements (required for unlockAdmin to work) -->
+  <div class="admin-lock" id="adminLock" style="display:none;">
+    <div class="admin-lock-box">
+      <h3>Admin Access</h3>
+      <input type="password" class="admin-lock-input" id="adminPassInput" placeholder="Admin password">
+      <button class="admin-lock-btn" onclick="window.TrustApp?.unlockAdmin()">Unlock</button>
+      <div class="admin-lock-err" id="adminLockErr"></div>
+    </div>
+  </div>
+  <div class="toast-overlay" id="toastBox"></div>
+  <div style="margin:10px 0;">
+    <button onclick="runTests()" style="padding:10px 20px; font-size:16px;">Run Full Diagnostic</button>
+    <button onclick="testUnlock()" style="padding:10px 20px; font-size:16px; margin-left:10px;">Test Unlock Flow</button>
+    <button onclick="testNavigation()" style="padding:10px 20px; font-size:16px; margin-left:10px;">Test Nav Persistence</button>
+    <button onclick="forceAdminSession()" style="padding:10px 20px; font-size:16px; margin-left:10px; background:#f60; color:white;">Force Admin Session</button>
+  </div>
+  <div id="output" style="font-family: monospace; white-space: pre-wrap; background: #1e1e1e; color: #0f0; padding: 10px; max-height: 500px; overflow: auto; border: 1px solid #333;"></div>
+  <script>
+    // Disable the auth guard redirect for this page
+    window.__debug_no_redirect__ = true;
+    
+    function log(msg) {
+      const out = document.getElementById('output');
+      const time = new Date().toLocaleTimeString();
+      out.textContent += '[' + time + '] ' + msg + '\n';
+      out.scrollTop = out.scrollHeight;
+      console.log(msg);
+    }
+
+    async function waitForDB() {
+      return new Promise((resolve) => {
+        const t = setInterval(() => {
+          if (window.DB && DB.connected) { clearInterval(t); resolve(); }
+        }, 50);
+        setTimeout(() => { clearInterval(t); resolve(); }, 10000);
+      });
+    }
+
+    async function runTests() {
+      document.getElementById('output').textContent = '';
+      log('=== FULL DIAGNOSTIC ===');
+      log('Location: ' + window.location.href);
+      log('Cookie: "' + document.cookie + '"');
+      
+      await waitForDB();
+      
+      log('DB.connected: ' + (!!window.DB && DB.connected));
+      log('DB.ENABLED: ' + (!!window.DB && DB.ENABLED));
+      log('Supabase loaded: ' + (!!window.supabase));
+      
+      // Session cookie
+      const tokMatch = document.cookie.match(/trsstok=([^;]+)/);
+      const tok = tokMatch ? tokMatch[1] : null;
+      log('Session token: ' + (tok || 'NONE'));
+      
+      // Session from DB
+      if (tok) {
+        try {
+          const session = await DB.getSession(tok);
+          log('DB session: ' + JSON.stringify(session));
+        } catch (e) {
+          log('ERROR getSession: ' + e.message);
+        }
+      }
+      
+      // Admin lock state
+      const lock = document.getElementById('adminLock');
+      log('Admin lock element: ' + (lock ? 'FOUND' : 'NOT FOUND'));
+      if (lock) log('Admin lock display: ' + (lock.style.display || 'none (default)'));
+      
+      // Internal session
+      const sess = window.TrustApp ? TrustApp.getSessionState() : 'no TrustApp';
+      log('_session: ' + JSON.stringify(sess));
+      log('isCurrentUserAdmin(): ' + (window.TrustApp ? TrustApp.isCurrentUserAdmin() : 'n/a'));
+      log('getUserId(): ' + (window.TrustApp ? TrustApp.getUserId() : 'n/a'));
+      
+      // Check realtime channels
+      if (window.supabase && window.supabase.realtime) {
+        const chans = window.supabase.realtime.channels || [];
+        log('Realtime channels: ' + chans.map(c => c.topic).join(', ') || 'none');
+      }
+      
+      log('=== DIAGNOSTIC COMPLETE ===');
+    }
+
+    async function testUnlock() {
+      log('\n=== TEST UNLOCK ===');
+      const lock = document.getElementById('adminLock');
+      const input = document.getElementById('adminPassInput') || document.createElement('input');
+      if (!input.id) { input.id = 'adminPassInput'; input.type = 'password'; document.body.appendChild(input); }
+      const err = document.getElementById('adminLockErr') || document.createElement('div');
+      if (!err.id) { err.id = 'adminLockErr'; document.body.appendChild(err); }
+      
+      input.value = 'admin123';
+      log('Calling unlockAdmin()...');
+      window.TrustApp.unlockAdmin();
+      await new Promise(r => setTimeout(r, 800));
+      
+      log('After unlock:');
+      const sess = window.TrustApp ? TrustApp.getSessionState() : 'no TrustApp';
+      log('_session: ' + JSON.stringify(sess));
+      log('isCurrentUserAdmin(): ' + window.TrustApp.isCurrentUserAdmin());
+      if (lock) log('Lock display: ' + lock.style.display);
+      
+      const tokMatch = document.cookie.match(/trsstok=([^;]+)/);
+      if (tokMatch) {
+        const s = await DB.getSession(tokMatch[1]);
+        log('DB session after unlock: ' + JSON.stringify(s));
+      }
+    }
+
+    async function testNavigation() {
+      log('\n=== TEST NAV PERSISTENCE ===');
+      const tokMatch = document.cookie.match(/trsstok=([^;]+)/);
+      if (!tokMatch) { log('No token - cannot test'); return; }
+      const tok = tokMatch[1];
+      
+      log('Calling restoreSession()...');
+      await window.TrustApp.restoreSession();
+      
+      log('After restore:');
+      const sess = window.TrustApp ? TrustApp.getSessionState() : 'no TrustApp';
+      log('_session: ' + JSON.stringify(sess));
+      log('isCurrentUserAdmin(): ' + window.TrustApp.isCurrentUserAdmin());
+      
+      const lock = document.getElementById('adminLock');
+      if (lock) {
+        log('Before initAdminLock, lock display: ' + lock.style.display);
+        window.TrustApp.initAdminLock();
+        await new Promise(r => setTimeout(r, 200));
+        log('After initAdminLock, lock display: ' + lock.style.display);
+      }
+      
+      const s = await DB.getSession(tok);
+      log('DB session: ' + JSON.stringify(s));
+    }
+
+    async function forceAdminSession() {
+      log('\n=== FORCE ADMIN SESSION ===');
+      // Create a fresh token and session with admin=true
+      const tok = 'trsstok=' + Math.random().toString(36).substring(2) + Date.now();
+      document.cookie = tok + '; path=/; SameSite=Lax';
+      log('Created cookie: ' + tok);
+      
+      const t = tok.split('=')[1];
+      await DB.createSession(t, null, { language: 'en', admin: true });
+      log('Created session row with admin=true');
+      
+      // Now test restore
+      await testNavigation();
+    }
+
+    runTests();
+  </script>
+</body>
+</html>

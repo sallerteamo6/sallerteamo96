@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <title>Order List - Trust</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+</head>
+<body class="auth-page orders-page" style="background:#f5f7fa;">
+
+  <header class="sub-header">
+    <button class="back-btn" onclick="location.href='index.html'" aria-label="Back">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <span class="header-title" data-i18n="orders.title">Order List</span>
+    <span class="header-spacer"></span>
+  </header>
+
+  <main class="page" style="max-width:560px;">
+    <div class="tabs" id="orderTabs" style="margin-bottom:16px;">
+      <button class="tab-btn active" data-t="all" data-i18n="common.all">All</button>
+      <button class="tab-btn" data-t="open" data-i18n="orders.open">Open</button>
+      <button class="tab-btn" data-t="closed" data-i18n="orders.closed">Closed</button>
+    </div>
+
+    <div id="ordersList"></div>
+  </main>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    function toast(type, msg) {
+      var box = document.getElementById('toastBox');
+      var el = document.createElement('div');
+      el.className = 'toast-message toast-' + type;
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, 2000);
+    }
+
+    var icons = {
+      'BTC': ['img/btc.png', 'BTC'], 'ETH': ['img/eth.png', 'ETH'], 'USDT': ['img/usdt.png', 'USDT'],
+      'LTC': ['img/ltc.png', 'LTC'], 'XRP': ['img/xrp.png', 'XRP'], 'DOGE': ['img/DOGE.png', 'DOGE'],
+      'TON': ['img/TON.png', 'TON'], 'ADA': ['img/ADA.png', 'ADA'], 'BNB': ['img/BNB.png', 'BNB'],
+      'TRX': ['img/TRX.png', 'TRX'], 'UNI': ['img/UNI.png', 'UNI'], 'AVAX': ['img/AVAX.png', 'AVAX'],
+      'DOT': ['img/DOT.png', 'DOT'], 'LINK': ['img/LINK.png', 'LINK'], 'BCH': ['img/BCH.png', 'BCH'],
+      'BSV': ['img/BSV.png', 'BSV'], 'IOTA': ['img/IOTA.png', 'IOTA'], 'ETC': ['img/ETC.png', 'ETC'],
+      'USDC': ['img/USDC.png', 'USDC'], 'TUSD': ['img/TUSD.png', 'TUSD'], 'SOL': ['img/SOL.png', 'SOL'],
+      'XAU': ['img/XAU.svg', 'Au'], 'GOLD': ['img/XAU.svg', 'Au'], 'XAG': ['img/XAG.svg', 'Ag'],
+      'SILVER': ['img/XAG.svg', 'Ag'], 'XPD': ['img/XPD.svg', 'Pd'], 'XPT': ['img/XPT.svg', 'Pt'],
+      'EUR': ['img/EUR.svg', 'EUR'], 'EURUSD': ['img/EUR.svg', 'EUR'], 'AUD': ['img/AUD.svg', 'AUD'],
+      'GBP': ['img/GBP.svg', 'GBP'], 'GBPUSD': ['img/GBP.svg', 'GBP'], 'USD': ['img/USD_CNY.svg', 'USD'],
+      'JPY': ['img/USD_JPY.svg', 'JPY']
+    };
+
+    var orders = [];
+
+    function fmtTime(s) { return s === '--' ? '--' : s; }
+
+    function formatNum(n) {
+      if (n == null || isNaN(n)) return '--';
+      var abs = Math.abs(n);
+      var dec = abs >= 1000 ? 2 : abs >= 1 ? 3 : 4;
+      return parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    }
+
+    function formatTime(iso) {
+      if (!iso) return '--';
+      return String(iso).slice(0, 19).replace('T', ' ');
+    }
+
+    function loadOrders() {
+      var stored = (TrustApp.getTrades ? TrustApp.getTrades() : []) || [];
+      orders = stored.map(function (t) {
+        var closed = t.status === 'win' || t.status === 'loss';
+        return {
+          st: closed ? 'closed' : 'open',
+          pair: (t.pair || 'BTC').split('/')[0],
+          dir: t.side === 'down' ? 'down' : 'up',
+          amt: t.amount || 0,
+          buy: formatNum(t.price),
+          sell: closed ? formatNum(t.sellPrice) : '--',
+          bt: formatTime(t.createdAt),
+          st2: closed ? formatTime(t.settledAt) : '--',
+          pl: t.profit || 0,
+          won: closed ? t.status === 'win' : null
+        };
+      });
+    }
+
+    function statusMeta(o) {
+      if (o.st === 'open') return { cls: 'status-open', txt: TrustApp.t('orders.open') };
+      return o.won ? { cls: 'status-win', txt: TrustApp.t('orders.statusProfit') } : { cls: 'status-loss', txt: TrustApp.t('orders.statusLoss') };
+    }
+
+    function render() {
+      var list = orders.filter(function (o) { return filter === 'all' || o.st === filter; });
+      var el = document.getElementById('ordersList');
+      if (!list.length) {
+        el.innerHTML = '<div class="card"><div class="empty-state"><div class="empty-text">' + TrustApp.t('orders.noOrders') + '</div></div></div>';
+        return;
+      }
+      el.innerHTML = list.map(function (o) {
+        var ico = icons[o.pair] || ['', 'T'];
+        var iconHtml = ico[0] ? '<img src="' + ico[0] + '" alt="' + o.pair + '">' : '<div class="product-icon-placeholder">' + ico[1] + '</div>';
+        var meta = statusMeta(o);
+        var sell = o.st === 'closed' ? '$' + o.sell : '--';
+        var st2 = o.st === 'closed' ? fmtTime(o.st2) : '--';
+        var plTxt = o.st === 'open' ? '--' : (o.won ? '+' : '-') + Math.abs(o.pl).toFixed(2) + ' USDT';
+        return '<div class="order-card">'
+          + '<div class="product-header">'
+          + '<div class="product-icon">' + iconHtml + '</div>'
+          + '<div style="flex:1;min-width:0;">'
+          + '<div class="ptitle">' + o.pair + '/USDT</div>'
+          + '<div class="order-time">' + fmtTime(o.bt) + '</div>'
+          + '</div>'
+          + '<span class="status-badge ' + meta.cls + '">' + meta.txt + '</span>'
+          + '</div>'
+          + '<div class="order-meta">'
+          + '<div class="row"><span class="label">' + TrustApp.t('orders.purchaseAmount') + '</span><span class="value">' + o.amt + ' USDT</span></div>'
+          + '<div class="row"><span class="label">' + TrustApp.t('orders.direction') + '</span><span class="value ' + (o.dir === 'up' ? 'up-text' : 'down-text') + '">' + (o.dir === 'up' ? TrustApp.t('orders.up') : TrustApp.t('orders.down')) + '</span></div>'
+          + '<div class="row"><span class="label">' + TrustApp.t('orders.buyPrice') + '</span><span class="value">$' + o.buy + '</span></div>'
+          + '<div class="row"><span class="label">' + TrustApp.t('orders.sellPrice') + '</span><span class="value">' + sell + '</span></div>'
+          + '<div class="row"><span class="label">' + TrustApp.t('orders.deliveryTime') + '</span><span class="value">' + st2 + '</span></div>'
+          + '<div class="profit-row"><span class="label">' + TrustApp.t('orders.profitLoss') + '</span><span class="value ' + (o.st === 'open' ? '' : (o.won ? 'up-text' : 'down-text')) + '">' + plTxt + '</span></div>'
+          + '</div>'
+          + '</div>';
+      }).join('');
+    }
+
+    var filter = 'all';
+    loadOrders();
+    render();
+    document.getElementById('orderTabs').querySelectorAll('.tab-btn').forEach(function (b) {
+      b.onclick = function () {
+        document.getElementById('orderTabs').querySelectorAll('.tab-btn').forEach(function (x) { x.classList.remove('active'); });
+        b.classList.add('active');
+        filter = b.dataset.t;
+        render();
+      };
+    });
+    setInterval(function () { loadOrders(); render(); }, 3000);
+  </script>
+</body>
+</html>

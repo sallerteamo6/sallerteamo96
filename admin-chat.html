@@ -1,0 +1,458 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <title>Customer Service - Trust</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+  <style>
+    .chat-layout{display:flex;gap:14px;align-items:flex-start;}
+    .chat-users{width:280px;flex:none;background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:0 2px 12px rgba(19,31,48,.06);overflow:hidden;}
+    .chat-users-head{padding:12px 14px;font-weight:800;font-size:14px;border-bottom:1px solid var(--border);color:#131f30;}
+    .conv-item{padding:12px 14px;border-bottom:1px solid #f0f2f6;cursor:pointer;}
+    .conv-item:active{background:#f5f7fb;}
+    .conv-item.active{background:#eef4ff;border-left:3px solid #1652f0;}
+    .conv-name{font-size:14px;font-weight:700;color:#131f30;}
+    .conv-prev{font-size:12px;color:#8a94a6;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .conv-empty{padding:20px 14px;color:#8a94a6;font-size:13px;text-align:center;}
+    .chat-panel{flex:1;min-width:0;background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:0 2px 12px rgba(19,31,48,.06);overflow:hidden;}
+    .chat-panel-head{padding:12px 14px;font-weight:800;font-size:14px;border-bottom:1px solid var(--border);color:#131f30;}
+    .chat-thread{min-height:340px;max-height:52vh;overflow-y:auto;padding:14px;}
+    .chat-input-row{padding:12px 14px;border-top:1px solid var(--border);}
+.chat-pending{display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px 0;max-height:90px;overflow-y:auto;}
+    .pending-chip{display:flex;align-items:center;gap:6px;background:#f2f5fa;border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px;color:#131f30;max-width:200px;}
+    .pending-chip span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .pending-chip button{border:none;background:transparent;color:#8a94a6;font-size:16px;line-height:1;cursor:pointer;padding:0 2px;}
+    .pending-chip button:hover{color:#d63649;}
+    .pending-thumb{width:26px;height:26px;object-fit:cover;border-radius:5px;flex:none;}
+    .conv-item.unread{background:#fff8f0;}
+    .conv-item.unread .conv-name{color:#cc5c00;font-weight:800;}
+    .conv-item.unread .conv-prev{color:#c26e23;font-weight:600;}
+    .conv-item.unread .conv-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#d63649;color:#fff;font-size:11px;font-weight:800;margin-left:6px;}
+    .conv-badge{display:none;}
+    .chat-msg.unread .msg-text{background:#fff3d6;}
+    .chat-msg.unread .msg-text::after{content:'●';color:#e67e00;font-size:12px;margin-left:8px;}
+    .msg-del-btn{display:inline-block;margin-top:6px;background:none;border:1px solid #f0d0d5;color:#c6596d;border-radius:6px;font-size:11px;padding:2px 8px;cursor:pointer;margin-left:6px;}
+    .msg-del-btn:hover{color:#d63649;border-color:#d63649;}
+    .admin-attach{flex:none;width:42px;height:42px;border-radius:50%;border:1px solid #dfe3ea;background:#f7f8fa;color:#5b6472;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;}
+    .admin-attach:hover{background:#eef1f6;color:#1652f0;}
+    .msg-edit-btn{display:inline-block;margin-top:6px;background:none;border:1px solid #dfe3ea;color:#5b6472;border-radius:6px;font-size:11px;padding:2px 8px;cursor:pointer;}
+    .msg-edit-btn:hover{color:#1652f0;border-color:#1652f0;}
+    .msg-edited{font-size:11px;opacity:.55;font-style:italic;}
+    .msg-edit-area{width:100%;box-sizing:border-box;border:1px solid #1652f0;border-radius:8px;padding:8px;font-size:14px;font-family:inherit;resize:vertical;color:#131f30;background:#fff;}
+    .msg-edit-actions{display:flex;gap:8px;margin-top:8px;}
+    .msg-save{background:#1652f0;color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer;}
+    .msg-cancel{background:#fff;color:#5b6472;border:1px solid #dfe3ea;border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer;}
+    .chat-panel-head{display:flex;align-items:center;gap:10px;}
+    .chat-back{display:none;background:none;border:none;color:#1652f0;font-size:22px;line-height:1;cursor:pointer;padding:0 4px;flex-shrink:0;}
+    @media (max-width:640px){
+      .chat-layout{flex-direction:column;}
+      .chat-users{width:100%;}
+      .chat-panel{display:none;}
+      body.chat-open .chat-users{display:none;}
+      body.chat-open .chat-panel{display:block;}
+      .chat-back{display:block;}
+    }
+  </style>
+</head>
+<body class="auth-page admin-page" style="background:#eef1f5;padding-bottom:30px;">
+
+      <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="as-logo"><img src="img/logo.png" alt="Trust"><div class="as-brand">Trust<small>Admin Panel</small></div></div>
+      <nav class="as-nav">
+        <div class="as-group-label">Overview</div>
+        <a class="as-link" href="admin.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>Dashboard</a><a class="as-link" href="admin-users.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Users</a><a class="as-link" href="admin-verify.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>Verification</a><a class="as-link" href="admin-adjust.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v8M8 12h8"></path></svg>Balance Adjuster</a><a class="as-link" href="admin-funds.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>Deposits &amp; Withdrawals</a><a class="as-link" href="admin-addresses.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg>Coin Addresses</a><a class="as-link" href="admin-loans.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9l3 3-3 3M13 15h4"></path></svg>Loans</a><a class="as-link" href="admin-feed.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>Live Feed</a><a class="as-link" href="admin-quants.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 9h6v6H9zM9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"></path></svg>AI Quants</a><a class="as-link active" href="admin-chat.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Customer Service</a><a class="as-link" href="admin-settings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>Settings</a>
+      </nav>
+      <div class="as-foot">&copy; Trust Admin Panel</div>
+    </aside>
+
+    <div class="admin-content">
+    <header class="admin-topbar">
+      <button class="back-btn" onclick="location.href='admin.html'" aria-label="Back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="at-title">Customer Service<small>Read &amp; reply to messages</small></div>
+      <img src="img/logo.png" alt="Trust Wallet" class="admin-logo">
+    </header>
+      <main class="admin-main">
+
+    <div class="admin-hero">
+      <div class="admin-hero-txt">
+        <div class="admin-hero-eyebrow">Trust Admin</div>
+        <div class="admin-hero-title">Customer Service</div>
+        <div class="admin-hero-sub">Click a user to view and reply to their customer service conversation</div>
+        <div class="admin-hero-chips">
+          <span class="hero-chip" id="chipConvs">0 conversations</span>
+          <span class="hero-chip" id="chipMsgs">0 user messages</span>
+        </div>
+      </div>
+      <div class="admin-hero-live"><span class="live-dot"></span>ONLINE</div>
+    </div>
+
+    <div class="admin-stats grid-4" style="grid-template-columns:1fr 1fr;">
+      <div class="stat-card sc-blue">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Conversations</div><div class="s-value" id="stConvs">0</div></div>
+      </div>
+      <div class="stat-card sc-green">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">User Messages</div><div class="s-value" id="stMsgs">0</div></div>
+      </div>
+    </div>
+
+    <div class="chat-layout">
+      <div class="chat-users">
+        <div class="chat-users-head">Users</div>
+        <div id="convList"><div class="conv-empty">Loading...</div></div>
+      </div>
+
+        <div class="chat-panel">
+          <div class="chat-panel-head">
+            <button type="button" class="chat-back" id="chatBack" aria-label="Back">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            </button>
+            <span id="convTitle">Select a user to view chat</span>
+          </div>
+          <div class="chat-thread" id="chatThread"><div class="chat-welcome">Select a user to start chatting</div></div>
+          <div class="chat-pending" id="pendingRow" style="display:none;"></div>
+          <div class="chat-input-row">
+            <button type="button" class="admin-attach" id="attachBtn" aria-label="Attach">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+            </button>
+            <input type="file" id="attachInput" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar,.csv" multiple style="display:none;">
+            <input type="text" class="form-input" id="chatReply" placeholder="Type a reply as support...">
+            <button class="btn btn-sm" id="chatSend" style="background:#1652f0;color:#fff;padding:12px 18px;">Send</button>
+          </div>
+        </div>
+    </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="admin-lock" id="adminLock">
+    <div class="admin-lock-box">
+      <div class="admin-lock-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+      <h3>Admin Access</h3>
+      <p>Enter the admin password to continue</p>
+      <input type="password" class="admin-lock-input" id="adminPassInput" placeholder="Admin password">
+      <button class="admin-lock-btn" onclick="unlockAdmin()">Unlock</button>
+      <div class="admin-lock-err" id="adminLockErr"></div>
+    </div>
+  </div>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    if (window.supabase && window.supabase.auth) { window.supabase.auth.signOut().catch(function() {}); }
+    TrustApp.initAdminLock();
+    if (TrustApp.initAdminTablesMobile) TrustApp.initAdminTablesMobile();
+    function toast(type, msg) {
+      var box = document.getElementById('toastBox');
+      var el = document.createElement('div');
+      el.className = 'toast-message toast-' + type;
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, 2000);
+    }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function labelFor(uid) {
+      var u = TrustApp.accountByUid(uid);
+      return u ? u.account : ('User ' + uid);
+    }
+    function lastMsg(uid) {
+      var msgs = TrustApp.getChat(uid);
+      return msgs.length ? msgs[msgs.length - 1] : null;
+    }
+    function unreadCount(uid) {
+      var n = 0;
+      TrustApp.getChat(uid).forEach(function (m) { if (m.from !== 'admin' && !m.seen) n++; });
+      return n;
+    }
+
+    var currentUid = null;
+    var editingMid = null;
+    var pinnedBottom = true;
+
+    function conversationVisible() {
+      return window.innerWidth > 640 || document.body.classList.contains('chat-open');
+    }
+
+    function buildList() {
+      var box = document.getElementById('convList');
+      var seen = {};
+      TrustApp.getUsers().forEach(function (u) { seen[u.uid] = u; });
+      TrustApp.chatUsers().forEach(function (id) { if (!seen[id]) seen[id] = { uid: id, account: 'User ' + id }; });
+      var ids = Object.keys(seen);
+      var userMsgs = 0;
+      ids.forEach(function (uid) {
+        TrustApp.getChat(uid).forEach(function (m) { if (m.from !== 'admin') userMsgs++; });
+      });
+      document.getElementById('stConvs').textContent = ids.length;
+      document.getElementById('stMsgs').textContent = userMsgs;
+      document.getElementById('chipConvs').textContent = ids.length + ' conversations';
+      document.getElementById('chipMsgs').textContent = userMsgs + ' user messages';
+      if (!ids.length) {
+        box.innerHTML = '<div class="conv-empty">No users yet</div>';
+        return;
+      }
+      ids.sort(function (a, b) {
+        var la = lastMsg(a), lb = lastMsg(b);
+        if (la && lb) return (lb.at || '').localeCompare(la.at || '');
+        if (la) return -1;
+        if (lb) return 1;
+        var ca = seen[a].createdAt || '', cb = seen[b].createdAt || '';
+        if (ca && cb && ca !== cb) return cb.localeCompare(ca);
+        return (seen[a].account || '').localeCompare(seen[b].account || '');
+      });
+      if (currentUid === null || !seen[currentUid]) currentUid = ids[0];
+      box.innerHTML = ids.map(function (uid) {
+        var last = lastMsg(uid);
+        var prev = last ? esc((last.text || (TrustApp.attLabel ? TrustApp.attLabel(last.attachments) : '') || '').slice(0, 40)) : 'No messages yet';
+        var active = uid === currentUid ? ' active' : '';
+        var unread = unreadCount(uid);
+        var unreadMark = unread ? ' unread' : '';
+        var badge = unread ? '<span class="conv-badge">' + unread + '</span>' : '';
+        return '<div class="conv-item' + active + unreadMark + '" data-uid="' + esc(uid) + '">'
+          + '<div class="conv-name">' + esc(seen[uid].account) + badge + '</div>'
+          + '<div class="conv-prev">' + prev + '</div></div>';
+      }).join('');
+    }
+    document.getElementById('convList').addEventListener('click', function (e) {
+      var item = e.target.closest ? e.target.closest('.conv-item') : null;
+      if (item) {
+        var uid = item.getAttribute('data-uid');
+        currentUid = uid;
+        document.body.classList.add('chat-open');
+        if (conversationVisible()) TrustApp.markChatSeen(currentUid);
+        buildList();
+        pinnedBottom = true;
+        renderThread();
+      }
+    });
+    var chatBack = document.getElementById('chatBack');
+    if (chatBack) {
+      chatBack.onclick = function () {
+        document.body.classList.remove('chat-open');
+      };
+    }
+    window.addEventListener('resize', function () {
+      if (window.innerWidth > 640) document.body.classList.remove('chat-open');
+    });
+    function renderThread() {
+      var box = document.getElementById('chatThread');
+      var title = document.getElementById('convTitle');
+      if (!currentUid) {
+        title.textContent = 'Select a user to view chat';
+        box.innerHTML = '<div class="chat-welcome">Select a user to start chatting</div>';
+        return;
+      }
+      if (editingMid) return;
+      title.textContent = labelFor(currentUid);
+      var msgs = TrustApp.getChat(currentUid);
+      if (!msgs.length) {
+        box.innerHTML = '<div class="chat-welcome">No messages yet</div>';
+        return;
+      }
+      box.innerHTML = msgs.map(function (m, i) {
+        var cls = m.from === 'admin' ? 'user' : 'admin';
+        var who = m.from === 'admin' ? 'Support' : 'User';
+        var tm = (m.at || '').replace('T', ' ').slice(0, 16);
+        var text = m.text ? esc(m.text) : (TrustApp.attLabel ? esc(TrustApp.attLabel(m.attachments)) : '');
+        var atts = TrustApp.renderAttachments ? TrustApp.renderAttachments(m.attachments) : '';
+        var key = m.mid ? esc(m.mid) : ('idx:' + i);
+        var edited = m.edited ? ' <span class="msg-edited">(edited)</span>' : '';
+        var unread = m.from !== 'admin' && !m.seen ? ' unread' : '';
+        var actions = '<div style="margin-top:6px;">';
+        if (m.from === 'user') {
+          actions += '<button type="button" class="msg-edit-btn" data-mid="' + key + '">Edit</button>';
+        }
+        actions += '<button type="button" class="msg-del-btn" data-mid="' + key + '">Delete</button></div>';
+        return '<div class="chat-msg ' + cls + unread + '">'
+          + '<div class="msg-text" data-mid="' + key + '">' + text + edited + '</div>'
+          + atts
+          + '<span class="chat-time">' + who + ' &middot; ' + tm + '</span>'
+          + actions
+          + '</div>';
+      }).join('');
+      if (pinnedBottom) box.scrollTop = box.scrollHeight;
+    }
+    var chatThreadEl = document.getElementById('chatThread');
+    chatThreadEl.addEventListener('scroll', function () {
+      pinnedBottom = (chatThreadEl.scrollHeight - chatThreadEl.scrollTop - chatThreadEl.clientHeight) < 60;
+    });
+    function startEdit(key) {
+      var msgs = TrustApp.getChat(currentUid);
+      var msg = null;
+      for (var i = 0; i < msgs.length; i++) {
+        var k = msgs[i].mid ? msgs[i].mid : ('idx:' + i);
+        if (k === key) { msg = msgs[i]; break; }
+      }
+      if (!msg) return;
+      editingMid = key;
+      var target = document.querySelector('.msg-text[data-mid="' + key + '"]');
+      if (!target) { editingMid = null; return; }
+      target.innerHTML = '<textarea class="msg-edit-area" rows="2">' + esc(msg.text || '') + '</textarea>'
+        + '<div class="msg-edit-actions"><button type="button" class="msg-save" data-mid="' + key + '">Save</button>'
+        + '<button type="button" class="msg-cancel" data-mid="' + key + '">Cancel</button></div>';
+      var area = target.querySelector('.msg-edit-area');
+      if (area) area.focus();
+      var btn = document.querySelector('.msg-edit-btn[data-mid="' + key + '"]');
+      if (btn) btn.style.display = 'none';
+    }
+    document.getElementById('chatThread').addEventListener('click', function (e) {
+      var save = e.target.closest ? e.target.closest('.msg-save') : null;
+      var cancel = e.target.closest ? e.target.closest('.msg-cancel') : null;
+      var edit = e.target.closest ? e.target.closest('.msg-edit-btn') : null;
+      var del = e.target.closest ? e.target.closest('.msg-del-btn') : null;
+      if (del) {
+        var dmid = del.getAttribute('data-mid');
+        if (!confirm('Delete this message? This cannot be undone.')) return;
+        TrustApp.deleteChatMsg(currentUid, dmid);
+        refresh();
+      } else if (save) {
+        var key = save.getAttribute('data-mid');
+        var area = document.querySelector('.msg-text[data-mid="' + key + '"] .msg-edit-area');
+        var val = area ? area.value.trim() : '';
+        editingMid = null;
+        TrustApp.updateChatMsg(currentUid, key, val);
+        refresh();
+      } else if (cancel) {
+        editingMid = null;
+        refresh();
+      } else if (edit) {
+        startEdit(edit.getAttribute('data-mid'));
+      }
+    });
+    function refresh() {
+      if (currentUid && conversationVisible()) TrustApp.markChatSeen(currentUid);
+      buildList();
+      renderThread();
+    }
+
+    var MAX_ATT_BYTES = 1200000;
+    var pending = [];
+
+    function fileKind(file) {
+      if (file.type && file.type.indexOf('image/') === 0) return 'image';
+      if (file.type && file.type.indexOf('video/') === 0) return 'video';
+      return 'file';
+    }
+
+    function compressImage(file, cb) {
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      img.onload = function () {
+        var maxW = 700;
+        var scale = Math.min(1, maxW / img.width);
+        var w = Math.max(1, Math.round(img.width * scale));
+        var h = Math.max(1, Math.round(img.height * scale));
+        var canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        cb(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); cb(null); };
+      img.src = url;
+    }
+
+    function readFileData(file, cb) {
+      var r = new FileReader();
+      r.onload = function () { cb(r.result); };
+      r.onerror = function () { cb(null); };
+      r.readAsDataURL(file);
+    }
+
+    function addFiles(fileList) {
+      var files = Array.prototype.slice.call(fileList);
+      files.forEach(function (f) {
+        if (pending.length >= 6) { toast('error', 'Up to 6 attachments per message'); return; }
+        if (f.size > MAX_ATT_BYTES) { toast('error', f.name + ' is too large (max 1.2MB)'); return; }
+        var kind = fileKind(f);
+        var done = function (data) {
+          if (!data) { toast('error', 'Could not read ' + f.name); return; }
+          pending.push({ kind: kind, name: f.name, data: data, size: f.size });
+          renderPending();
+        };
+        if (kind === 'image') {
+          compressImage(f, function (dataUrl) {
+            if (dataUrl) done(dataUrl);
+            else readFileData(f, done);
+          });
+        } else {
+          readFileData(f, done);
+        }
+      });
+      if (document.getElementById('attachInput')) document.getElementById('attachInput').value = '';
+    }
+
+    function renderPending() {
+      var row = document.getElementById('pendingRow');
+      if (!pending.length) { row.style.display = 'none'; row.innerHTML = ''; return; }
+      row.style.display = 'flex';
+      row.innerHTML = pending.map(function (a, i) {
+        var thumb = a.kind === 'image' ? '<img class="pending-thumb" src="' + a.data + '" alt="">' : '';
+        return '<div class="pending-chip">' + thumb + '<span>' + esc(a.name) + '</span><button type="button" onclick="removePending(' + i + ')">&times;</button></div>';
+      }).join('');
+    }
+
+    function removePending(i) {
+      pending.splice(i, 1);
+      renderPending();
+    }
+
+    document.getElementById('chatSend').onclick = function () {
+      var input = document.getElementById('chatReply');
+      var text = input.value.trim();
+      if (!currentUid) { toast('error', 'Select a user first'); return; }
+      if (!text && !pending.length) { toast('error', 'Type a reply or attach a file'); return; }
+      TrustApp.sendChatMsg(currentUid, 'admin', text, pending);
+      pending = [];
+      renderPending();
+      input.value = '';
+      pinnedBottom = true;
+      refresh();
+    };
+    document.getElementById('attachBtn').onclick = function () {
+      document.getElementById('attachInput').click();
+    };
+    document.getElementById('attachInput').addEventListener('change', function (e) {
+      if (e.target.files && e.target.files.length) addFiles(e.target.files);
+    });
+    document.getElementById('chatReply').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') document.getElementById('chatSend').click();
+    });
+    refresh();
+    setInterval(refresh, 2000);
+    window.addEventListener('trustchat', function () { refresh(); });
+    window.addEventListener('trustsync:chat_messages', function () { refresh(); });
+    // fast chat channel: pull only the chat blob ~1s so new user messages
+    // and replies appear without waiting for the 5s whole-app poll
+    var chatSyncBusy = false;
+    var chatSyncDone = function () { chatSyncBusy = false; };
+    setInterval(function () {
+      if (document.hidden || chatSyncBusy) return;
+      if (typeof DB === 'undefined' || !DB.pullBlob || !DB.ENABLED) return;
+      chatSyncBusy = true;
+      DB.pullBlob('chat').then(function () { refresh(); }).then(chatSyncDone, chatSyncDone);
+    }, 1000);
+    window.addEventListener('storage', function (e) {
+      if (e.key === 'trustChat' || e.key === null) refresh();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,234 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <title>Coin Addresses - Trust</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+  <style>
+    .addr-add{width:100%;padding:12px;background:#1652f0;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:14px;}
+    .addr-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #f0f2f6;}
+    .addr-row:last-child{border-bottom:none;}
+    .addr-coin{font-weight:800;font-size:15px;color:#131f30;width:64px;}
+    .addr-info{flex:1;min-width:0;}
+    .addr-net{font-size:11px;color:#8a94a6;margin-bottom:2px;}
+    .addr-val{font-family:Consolas,monospace;font-size:12.5px;color:#131f30;word-break:break-all;}
+    .addr-actions{display:flex;gap:6px;}
+    .ca-modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;z-index:1200;padding:16px;}
+    .ca-modal{background:#fff;border-radius:16px;width:100%;max-width:460px;padding:18px;}
+    .ca-modal h3{margin:0 0 14px;font-size:17px;color:#131f30;}
+    .ca-modal label{font-size:12px;color:#8a94a6;display:block;margin:10px 0 4px;font-weight:600;}
+    .ca-modal input,.ca-modal textarea{width:100%;border:1px solid #e0e4ec;border-radius:10px;padding:10px 12px;font-size:14px;outline:none;box-sizing:border-box;}
+    .ca-modal input:focus,.ca-modal textarea:focus{border-color:#1652f0;}
+    .ca-modal textarea{min-height:80px;font-family:Consolas,monospace;font-size:12.5px;resize:vertical;}
+    .ca-actions{display:flex;gap:10px;margin-top:16px;}
+    .ca-actions .btn{flex:1;padding:12px;}
+    .btn-green{background:#07c160;color:#fff;}
+    .btn-ghost{border:1px solid var(--border);background:#fff;color:#5b6472;}
+    .btn-red{background:#f44336;color:#fff;}
+  </style>
+</head>
+<body class="auth-page admin-page" style="background:#eef1f5;padding-bottom:30px;">
+
+      <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="as-logo"><img src="img/logo.png" alt="Trust"><div class="as-brand">Trust<small>Admin Panel</small></div></div>
+      <nav class="as-nav">
+        <div class="as-group-label">Overview</div>
+        <a class="as-link" href="admin.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>Dashboard</a><a class="as-link" href="admin-users.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Users</a><a class="as-link" href="admin-verify.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>Verification</a><a class="as-link" href="admin-adjust.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v8M8 12h8"></path></svg>Balance Adjuster</a><a class="as-link" href="admin-funds.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>Deposits &amp; Withdrawals</a><a class="as-link active" href="admin-addresses.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg>Coin Addresses</a><a class="as-link" href="admin-loans.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9l3 3-3 3M13 15h4"></path></svg>Loans</a><a class="as-link" href="admin-feed.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>Live Feed</a><a class="as-link" href="admin-quants.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 9h6v6H9zM9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"></path></svg>AI Quants</a><a class="as-link" href="admin-chat.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Customer Service</a><a class="as-link" href="admin-settings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>Settings</a>
+      </nav>
+      <div class="as-foot">&copy; Trust Admin Panel</div>
+    </aside>
+
+    <div class="admin-content">
+    <header class="admin-topbar">
+      <button class="back-btn" onclick="location.href='admin.html'" aria-label="Back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="at-title">Coin Addresses<small>Manage wallet addresses</small></div>
+      <img src="img/logo.png" alt="Trust Wallet" class="admin-logo">
+    </header>
+      <main class="admin-main">
+
+    <div class="admin-hero">
+      <div class="admin-hero-txt">
+        <div class="admin-hero-eyebrow">Trust Admin</div>
+        <div class="admin-hero-title">Coin Addresses</div>
+        <div class="admin-hero-sub">Edit the deposit addresses and networks shown to users on the deposit page</div>
+        <div class="admin-hero-chips">
+          <span class="hero-chip" id="chipCoins">0 coins</span>
+        </div>
+      </div>
+      <div class="hero-metric">
+        <div class="hm-val" id="hmCoins">0</div>
+        <div class="hm-lab">Addresses Configured</div>
+      </div>
+    </div>
+
+    <button class="add-btn" onclick="openEditor(null)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      Add Coin
+    </button>
+
+    <div class="admin-panel">
+      <div class="admin-panel-head">
+        <div class="ph-title"><span class="ph-dot"></span>Deposit Addresses</div>
+      </div>
+      <div id="addrList"></div>
+    </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="ca-modal-overlay" id="caModal">
+    <div class="ca-modal">
+      <h3 id="caTitle">Add Coin</h3>
+      <label>Coin Symbol</label>
+      <input type="text" id="caCoin" placeholder="e.g. XRP">
+      <label>Network</label>
+      <input type="text" id="caNet" placeholder="e.g. TRC-20, ERC-20, Bitcoin">
+      <label>Deposit Address</label>
+      <textarea id="caAddr" placeholder="Enter the wallet address users will send to"></textarea>
+      <div class="ca-actions">
+        <button class="btn btn-green" onclick="saveEditor()">Save</button>
+        <button class="btn btn-ghost" onclick="closeEditor()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="admin-lock" id="adminLock">
+    <div class="admin-lock-box">
+      <div class="admin-lock-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+      <h3>Admin Access</h3>
+      <p>Enter the admin password to continue</p>
+      <input type="password" class="admin-lock-input" id="adminPassInput" placeholder="Admin password">
+      <button class="admin-lock-btn" onclick="unlockAdmin()">Unlock</button>
+      <div class="admin-lock-err" id="adminLockErr"></div>
+    </div>
+  </div>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    var editingCoin = null;
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function toast(type, msg) {
+      var box = document.getElementById('toastBox');
+      var el = document.createElement('div');
+      el.className = 'toast-message toast-' + type;
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, 2000);
+    }
+
+    var COIN_COLOR = {
+      USDT: '#26a17b', BTC: '#f7931a', ETH: '#627eea', LTC: '#345d9d', XRP: '#23292f',
+      DOGE: '#c2a633', TON: '#0098ea', ADA: '#0033ad', BNB: '#f3ba2f', SOL: '#14f195',
+      TRX: '#ef0029', UNI: '#ff007a', AVAX: '#e84142', DOT: '#e6007a', LINK: '#2a5ada',
+      BCH: '#8dc351', BSV: '#eab304', IOTA: '#101010', ETC: '#328332', USDC: '#2775ca', TUSD: '#002868'
+    };
+    function coinDot(c) {
+      var col = COIN_COLOR[c.toUpperCase()] || '#64748b';
+      var dark = col === '#23292f' || col === '#101010' || col === '#002868' || col === '#0033ad' || col === '#345d9d';
+      var fg = dark ? '#fff' : '#131f30';
+      return '<span class="coin-dot" style="background:' + col + ';color:' + fg + ';">' + esc(c.charAt(0).toUpperCase()) + '</span>';
+    }
+
+    function renderList() {
+      var addrs = TrustApp.getCoinAddresses();
+      var box = document.getElementById('addrList');
+      var coins = Object.keys(addrs).sort(function (a, b) { return a.localeCompare(b); });
+      document.getElementById('hmCoins').textContent = coins.length;
+      document.getElementById('chipCoins').textContent = coins.length + ' coins';
+      if (!coins.length) {
+        box.innerHTML = '<div class="empty-state"><span class="es-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg></span>No coins configured. Add one to show a deposit address.</div>';
+        return;
+      }
+      box.innerHTML = coins.map(function (c) {
+        var d = addrs[c];
+        return '<div class="kv-row">'
+          + '<div class="kv-coin">' + coinDot(c) + '<span>' + esc(c) + '</span></div>'
+          + '<div class="kv-info"><div class="kv-net">Network: ' + esc(d.net || 'Mainnet') + '</div><div class="kv-val">' + esc(d.addr) + '</div></div>'
+          + '<div class="ab-group">'
+          + '<button class="action-btn ab-blue" onclick="openEditor(\'' + esc(c) + '\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>Edit</button>'
+          + '<button class="action-btn ab-red" onclick="removeCoin(\'' + esc(c) + '\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>Delete</button>'
+          + '</div></div>';
+      }).join('');
+    }
+
+    function openEditor(coin) {
+      editingCoin = coin;
+      var addrs = TrustApp.getCoinAddresses();
+      var title = document.getElementById('caTitle');
+      var coinEl = document.getElementById('caCoin');
+      var netEl = document.getElementById('caNet');
+      var addrEl = document.getElementById('caAddr');
+      if (coin) {
+        var d = addrs[coin] || {};
+        title.textContent = 'Edit ' + coin;
+        coinEl.value = coin;
+        coinEl.disabled = true;
+        netEl.value = d.net || '';
+        addrEl.value = d.addr || '';
+      } else {
+        title.textContent = 'Add Coin';
+        coinEl.value = '';
+        coinEl.disabled = false;
+        netEl.value = '';
+        addrEl.value = '';
+      }
+      document.getElementById('caModal').style.display = 'flex';
+      setTimeout(function () { (coin ? netEl : coinEl).focus(); }, 50);
+    }
+    function closeEditor() {
+      document.getElementById('caModal').style.display = 'none';
+      editingCoin = null;
+    }
+    function refreshAddrs() {
+      if (window.DB && DB.pullBlob) DB.pullBlob('coin_addresses').then(function () { renderList(); }).catch(function () { renderList(); });
+    }
+    function saveEditor() {
+      var coin = editingCoin || document.getElementById('caCoin').value;
+      var net = document.getElementById('caNet').value.trim();
+      var addr = document.getElementById('caAddr').value.trim();
+      var res = TrustApp.saveCoinAddress(coin, net, addr);
+      if (!res.ok) { toast('error', res.msg); return; }
+      toast('success', (editingCoin ? coin : coin.toUpperCase()) + ' address saved');
+      closeEditor();
+      renderList();
+      refreshAddrs();
+    }
+    function removeCoin(coin) {
+      if (!confirm('Remove ' + coin + '? The deposit address for this coin will be hidden.')) return;
+      var res = TrustApp.removeCoinAddress(coin);
+      if (!res.ok) { toast('error', res.msg); return; }
+      toast('success', coin + ' removed');
+      renderList();
+      refreshAddrs();
+    }
+
+    if (window.supabase && window.supabase.auth) { window.supabase.auth.signOut().catch(function() {}); }
+    TrustApp.initAdminLock();
+    if (TrustApp.initAdminTablesMobile) TrustApp.initAdminTablesMobile();
+    renderList();
+    setInterval(renderList, 3000);
+    window.addEventListener('storage', function (e) {
+      if (e.key === 'trustCoinAddresses' || e.key === null) renderList();
+    });
+    window.addEventListener('trustsync:coin_addresses', function () { renderList(); });
+  </script>
+</body>
+</html>

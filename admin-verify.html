@@ -1,0 +1,441 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <title>Identity Verification - Trust</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+  <style>
+    .ver-filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+    .ver-filters button{border:1px solid var(--border);background:#fff;color:#5b6472;padding:7px 14px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;}
+    .ver-filters button.active{background:#1652f0;border-color:#1652f0;color:#fff;}
+    .ver-filters button .cnt{font-weight:700;}
+    .ver-modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;z-index:1200;padding:16px;}
+    .ver-modal{background:#fff;border-radius:16px;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;padding:18px;}
+    .ver-modal h3{margin:0 0 4px;font-size:17px;color:#131f30;}
+    .ver-modal .vm-sub{font-size:12.5px;color:#8a94a6;margin-bottom:14px;}
+    .vm-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;}
+    .vm-field{min-width:0;}
+    .vm-field label{font-size:11px;color:#8a94a6;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:2px;}
+    .vm-field div{font-size:14px;color:#131f30;word-break:break-word;}
+    .vm-field.wide{grid-column:1/-1;}
+    .vm-docs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;}
+    .vm-doc label{font-size:11px;color:#8a94a6;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:6px;}
+    .vm-doc img{width:100%;border:1px solid var(--border);border-radius:10px;max-height:180px;object-fit:cover;background:#f5f7fb;}
+    .vm-note{margin-top:14px;background:#f2f5fa;border-radius:10px;padding:10px 12px;font-size:13px;color:#5b6472;display:none;}
+    .vm-reject{width:100%;margin-top:12px;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:13px;outline:none;display:none;box-sizing:border-box;}
+    .vm-actions{display:flex;gap:10px;margin-top:14px;}
+    .vm-actions .btn{flex:1;padding:12px;}
+    .btn-green{background:#07c160;color:#fff;}
+    .btn-red{background:#f44336;color:#fff;}
+    .btn-ghost{border:1px solid var(--border);background:#fff;color:#5b6472;}
+    @media (max-width:480px){.vm-grid{grid-template-columns:1fr;}.vm-docs{grid-template-columns:1fr;}}
+  </style>
+</head>
+<body class="auth-page admin-page" style="background:#eef1f5;padding-bottom:30px;">
+
+      <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="as-logo"><img src="img/logo.png" alt="Trust"><div class="as-brand">Trust<small>Admin Panel</small></div></div>
+      <nav class="as-nav">
+        <div class="as-group-label">Overview</div>
+        <a class="as-link" href="admin.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>Dashboard</a><a class="as-link" href="admin-users.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Users</a><a class="as-link active" href="admin-verify.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>Verification</a><a class="as-link" href="admin-adjust.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v8M8 12h8"></path></svg>Balance Adjuster</a><a class="as-link" href="admin-funds.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>Deposits &amp; Withdrawals</a><a class="as-link" href="admin-addresses.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg>Coin Addresses</a><a class="as-link" href="admin-loans.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9l3 3-3 3M13 15h4"></path></svg>Loans</a><a class="as-link" href="admin-feed.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>Live Feed</a><a class="as-link" href="admin-quants.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 9h6v6H9zM9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"></path></svg>AI Quants</a><a class="as-link" href="admin-chat.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Customer Service</a><a class="as-link" href="admin-settings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>Settings</a>
+      </nav>
+      <div class="as-foot">&copy; Trust Admin Panel</div>
+    </aside>
+
+    <div class="admin-content">
+    <header class="admin-topbar">
+      <button class="back-btn" onclick="location.href='admin.html'" aria-label="Back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="at-title">Identity Verification<small>Review identity submissions</small></div>
+      <img src="img/logo.png" alt="Trust Wallet" class="admin-logo">
+    </header>
+      <main class="admin-main">
+
+    <div class="admin-hero">
+      <div class="admin-hero-txt">
+        <div class="admin-hero-eyebrow">Trust Admin</div>
+        <div class="admin-hero-title">Identity Verification</div>
+        <div class="admin-hero-sub">Review user documents and approve or reject their KYC submissions</div>
+        <div class="admin-hero-chips">
+          <span class="hero-chip" id="chipPending">0 pending</span>
+          <span class="hero-chip" id="chipApproved">0 approved</span>
+          <span class="hero-chip" id="chipRejected">0 rejected</span>
+        </div>
+      </div>
+      <div class="hero-metric">
+        <div class="hm-val" id="hmPending">0</div>
+        <div class="hm-lab">Awaiting Review</div>
+      </div>
+    </div>
+
+    <div class="admin-stats grid-4">
+      <div class="stat-card sc-amber">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Pending</div><div class="s-value" id="stPending">0</div></div>
+      </div>
+      <div class="stat-card sc-green">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><path d="M22 4L12 14.01l-3-3"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Approved</div><div class="s-value" id="stApproved">0</div></div>
+      </div>
+      <div class="stat-card sc-blue">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><path d="m9 11 3 3L22 4"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Total Submissions</div><div class="s-value" id="stTotal">0</div></div>
+      </div>
+      <div class="stat-card sc-purple">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Rejected</div><div class="s-value" id="stRejected">0</div></div>
+      </div>
+    </div>
+
+    <div class="ver-filters" id="verFilters"></div>
+
+    <div class="admin-panel">
+      <div class="admin-panel-head">
+        <div class="ph-title"><span class="ph-dot"></span>Verification Requests <span class="ph-sub" id="listCount"></span></div>
+      </div>
+      <div class="admin-table-wrap">
+        <table>
+          <thead><tr><th>Account</th><th>Name</th><th>Email</th><th>ID Number</th><th>Submitted</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="verRows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="admin-panel" style="margin-top:20px;">
+      <div class="admin-panel-head">
+        <div class="ph-title"><span class="ph-dot" style="background:#7c3aed;"></span>Advanced Verification <span class="ph-sub" id="advListCount"></span></div>
+      </div>
+      <div class="admin-table-wrap">
+        <table>
+          <thead><tr><th>Account</th><th>UID</th><th>Submitted</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="advRows"></tbody>
+        </table>
+      </div>
+    </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="ver-modal-overlay" id="advModal">
+    <div class="ver-modal">
+      <h3 id="avmAccount">Advanced Verification Review</h3>
+      <div class="vm-sub" id="avmSub"></div>
+      <div class="vm-field wide"><label>User UID</label><div id="avmUid">-</div></div>
+      <div class="vm-docs" style="grid-template-columns:1fr;">
+        <div class="vm-doc"><label>Handheld ID Photo</label><img id="avmImg" alt="Handheld ID" style="max-height:340px;width:100%;object-fit:contain;cursor:zoom-in" onclick="TrustApp.showImageLightbox(this.src)"></div>
+      </div>
+      <div class="vm-note" id="avmNote"></div>
+      <textarea class="vm-reject" id="avmRejectNote" placeholder="Reason for rejection (optional)"></textarea>
+      <div class="vm-actions">
+        <button class="btn btn-green" id="avmApprove" onclick="avmApprove()">Approve</button>
+        <button class="btn btn-red" id="avmReject" onclick="avmReject()">Reject</button>
+        <button class="btn btn-ghost" onclick="closeAdvModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="ver-modal-overlay" id="verModal">
+    <div class="ver-modal">
+      <h3 id="vmAccount">Verification Review</h3>
+      <div class="vm-sub" id="vmSub"></div>
+      <div class="vm-grid">
+        <div class="vm-field"><label>Full Name</label><div id="vmName">-</div></div>
+        <div class="vm-field"><label>Email</label><div id="vmEmail">-</div></div>
+        <div class="vm-field"><label>ID Number</label><div id="vmIdNumber">-</div></div>
+        <div class="vm-field"><label>Phone</label><div id="vmPhone">-</div></div>
+        <div class="vm-field wide"><label>User UID</label><div id="vmUid">-</div></div>
+      </div>
+      <div class="vm-docs">
+        <div class="vm-doc"><label>ID Photo - Front</label><img id="vmFront" alt="Front of ID" style="cursor:zoom-in" onclick="TrustApp.showImageLightbox(this.src)"></div>
+        <div class="vm-doc"><label>ID Photo - Back</label><img id="vmBack" alt="Back of ID" style="cursor:zoom-in" onclick="TrustApp.showImageLightbox(this.src)"></div>
+      </div>
+      <div class="vm-note" id="vmNote"></div>
+      <textarea class="vm-reject" id="vmRejectNote" placeholder="Reason for rejection (optional)"></textarea>
+      <div class="vm-actions">
+        <button class="btn btn-green" id="vmApprove" onclick="vmApprove()">Approve</button>
+        <button class="btn btn-red" id="vmReject" onclick="vmReject()">Reject</button>
+        <button class="btn btn-ghost" onclick="closeVerModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="admin-lock" id="adminLock">
+    <div class="admin-lock-box">
+      <div class="admin-lock-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+      <h3>Admin Access</h3>
+      <p>Enter the admin password to continue</p>
+      <input type="password" class="admin-lock-input" id="adminPassInput" placeholder="Admin password">
+      <button class="admin-lock-btn" onclick="unlockAdmin()">Unlock</button>
+      <div class="admin-lock-err" id="adminLockErr"></div>
+    </div>
+  </div>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    var currentFilter = 'pending';
+    var currentUid = null;
+    // authoritative verification map held in memory (photo-heavy blobs can
+    // overflow localStorage on the admin device; RAM has no such cap), so the
+    // list AND the document photos always render. Falls back to localStorage.
+    var liveVer = null;
+    function verMap() {
+      return liveVer || TrustApp.getVerifications() || {};
+    }
+    function refreshFromBlob() {
+      if (typeof DB === 'undefined' || !DB.fetchBlob || !DB.ENABLED) return;
+      DB.fetchBlob('verifications').then(function (m) {
+        if (m) { liveVer = m; refreshAll(); }
+      }).catch(function () {});
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function toast(type, msg) {
+      var box = document.getElementById('toastBox');
+      var el = document.createElement('div');
+      el.className = 'toast-message toast-' + type;
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, 2000);
+    }
+    function acctFor(uid) {
+      var u = TrustApp.accountByUid(uid);
+      return u ? u.account : ('User ' + uid);
+    }
+    function badgeOf(status) {
+      if (status === 'approved') return '<span class="badge green">Approved</span>';
+      if (status === 'rejected') return '<span class="badge red">Rejected</span>';
+      return '<span class="badge amber">Pending</span>';
+    }
+
+    function counts() {
+      var all = verMap();
+      var c = { all: 0, pending: 0, approved: 0, rejected: 0 };
+      Object.keys(all).forEach(function (u) { c.all++; c[all[u].status]++; });
+      return c;
+    }
+
+    function renderStats() {
+      var c = counts();
+      document.getElementById('stPending').textContent = c.pending;
+      document.getElementById('stApproved').textContent = c.approved;
+      document.getElementById('stRejected').textContent = c.rejected;
+      document.getElementById('stTotal').textContent = c.all;
+      document.getElementById('hmPending').textContent = c.pending;
+      document.getElementById('chipPending').textContent = c.pending + ' pending';
+      document.getElementById('chipApproved').textContent = c.approved + ' approved';
+      document.getElementById('chipRejected').textContent = c.rejected + ' rejected';
+    }
+
+    function renderFilters() {
+      var box = document.getElementById('verFilters');
+      var c = counts();
+      var defs = [['pending', 'Pending', c.pending], ['approved', 'Approved', c.approved], ['rejected', 'Rejected', c.rejected], ['all', 'All', c.all]];
+      box.innerHTML = defs.map(function (d) {
+        return '<button class="' + (currentFilter === d[0] ? 'active' : '') + '" onclick="setFilter(\'' + d[0] + '\')">' + d[1] + ' <span class="cnt">(' + d[2] + ')</span></button>';
+      }).join('');
+    }
+    function setFilter(f) { currentFilter = f; renderFilters(); renderList(); }
+
+    function renderList() {
+      var all = verMap();
+      var uids = Object.keys(all).filter(function (u) { return currentFilter === 'all' || all[u].status === currentFilter; });
+      uids.sort(function (a, b) { return (all[b].submittedAt || '').localeCompare(all[a].submittedAt || ''); });
+      var box = document.getElementById('verRows');
+      document.getElementById('listCount').textContent = '&#183; ' + uids.length + ' shown';
+      if (!uids.length) {
+        box.innerHTML = '<tr><td colspan="7"><div class="empty-state"><span class="es-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path><path d="M14 2v6h6"></path></svg></span>No verification requests in this view</div></td></tr>';
+        return;
+      }
+      box.innerHTML = uids.map(function (u) {
+        var v = all[u];
+        var date = (v.submittedAt || '').replace('T', ' ').slice(0, 16);
+        return '<tr><td><div class="user-cell"><div class="user-ava">' + esc((acctFor(u) || '?').charAt(0).toUpperCase()) + '</div><div class="user-meta"><div class="user-name">' + esc(acctFor(u)) + '</div><div class="user-uid">' + esc(u) + '</div></div></div></td><td>' + esc(v.name) + '</td><td>' + esc(v.email) + '</td><td>' + esc(v.idNumber) + '</td><td>' + date + '</td><td>' + badgeOf(v.status) + '</td>'
+          + '<td><button class="action-btn ab-blue" onclick="openVerModal(\'' + esc(u) + '\')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"></path><circle cx="12" cy="12" r="3"></circle></svg>Review</button></td></tr>';
+      }).join('');
+    }
+
+    function openVerModal(uid) {
+      currentUid = uid;
+      var v = verMap()[uid] || TrustApp.getVerification(uid);
+      if (!v) { toast('error', 'Submission not found'); return; }
+      document.getElementById('vmAccount').textContent = acctFor(uid);
+      document.getElementById('vmSub').textContent = badgeOf(v.status) + ' submitted ' + (v.submittedAt || '').replace('T', ' ').slice(0, 16);
+      document.getElementById('vmName').textContent = v.name || '-';
+      document.getElementById('vmEmail').textContent = v.email || '-';
+      document.getElementById('vmIdNumber').textContent = v.idNumber || '-';
+      document.getElementById('vmPhone').textContent = v.phone || '-';
+      document.getElementById('vmUid').textContent = uid;
+      document.getElementById('vmFront').src = v.idFront || '';
+      document.getElementById('vmBack').src = v.idBack || '';
+      var note = document.getElementById('vmNote');
+      var rejectNote = document.getElementById('vmRejectNote');
+      var isPending = v.status === 'pending';
+      if (v.status === 'approved' || v.status === 'rejected') {
+        note.style.display = 'block';
+        note.textContent = (v.status === 'approved' ? 'Approved' : 'Rejected') + ' on ' + (v.reviewedAt || '').replace('T', ' ').slice(0, 16) + (v.note ? ' - ' + v.note : '');
+      } else {
+        note.style.display = 'none';
+      }
+      rejectNote.style.display = isPending ? 'block' : 'none';
+      rejectNote.value = '';
+      document.getElementById('vmApprove').style.display = isPending ? '' : 'none';
+      document.getElementById('vmReject').style.display = isPending ? '' : 'none';
+      document.getElementById('verModal').style.display = 'flex';
+    }
+    function closeVerModal() {
+      document.getElementById('verModal').style.display = 'none';
+      currentUid = null;
+    }
+    function vmApprove() {
+      if (!currentUid) return;
+      var res = TrustApp.setVerificationStatus(currentUid, 'approved', '');
+      if (!res.ok) { toast('error', res.msg); return; }
+      toast('success', 'Verification approved');
+      closeVerModal();
+      renderFilters();
+      renderList();
+      refreshFromBlob();
+    }
+    function vmReject() {
+      if (!currentUid) return;
+      var note = document.getElementById('vmRejectNote').value.trim();
+      var res = TrustApp.setVerificationStatus(currentUid, 'rejected', note);
+      if (!res.ok) { toast('error', res.msg); return; }
+      toast('success', 'Verification rejected');
+      closeVerModal();
+      renderFilters();
+      renderList();
+      refreshFromBlob();
+    }
+
+    /* ===== Advanced verification ===== */
+    var currentAdvUid = null;
+
+    function advBadge(status) {
+      if (status === 'approved') return '<span class="badge green">Approved</span>';
+      if (status === 'rejected') return '<span class="badge red">Rejected</span>';
+      if (status === 'pending') return '<span class="badge amber">Pending</span>';
+      return '<span class="muted" style="font-size:12.5px;">Not submitted</span>';
+    }
+
+    function renderAdvList() {
+      var ver = verMap();
+      var box = document.getElementById('advRows');
+      var rows = Object.keys(ver).filter(function (u) { return ver[u] && ver[u].advanced; });
+      rows.sort(function (a, b) { return (ver[b].advancedSubmittedAt || '').localeCompare(ver[a].advancedSubmittedAt || ''); });
+      document.getElementById('advListCount').textContent = '&#183; ' + rows.length + ' submitted';
+      if (!rows.length) {
+        box.innerHTML = '<tr><td colspan="5"><div class="empty-state"><span class="es-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path><path d="M14 2v6h6"></path></svg></span>No advanced verification submissions</div></td></tr>';
+        return;
+      }
+      box.innerHTML = rows.map(function (u) {
+        var v = ver[u];
+        var date = (v.advancedSubmittedAt || '').replace('T', ' ').slice(0, 16);
+        var reviewBtn = v.advancedStatus === 'pending'
+          ? '<button class="action-btn ab-blue" onclick="openAdvModal(\'' + esc(u) + '\')">Review</button>'
+          : '<button class="action-btn ab-gray" onclick="openAdvModal(\'' + esc(u) + '\')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"></path><circle cx="12" cy="12" r="3"></circle></svg>View</button>';
+        return '<tr><td><div class="user-cell"><div class="user-ava">' + esc((acctFor(u) || '?').charAt(0).toUpperCase()) + '</div><div class="user-meta"><div class="user-name">' + esc(acctFor(u)) + '</div></div></div></td><td style="font-family:Consolas,monospace;font-size:12.5px;color:#5b6472;">' + esc(u) + '</td><td>' + date + '</td><td>' + advBadge(v.advancedStatus) + '</td><td>' + reviewBtn + '</td></tr>';
+      }).join('');
+    }
+
+    function openAdvModal(uid) {
+      currentAdvUid = uid;
+      var v = verMap()[uid] || TrustApp.getVerification(uid);
+      var a = v.advancedStatus || 'pending';
+      document.getElementById('avmAccount').textContent = acctFor(uid);
+      document.getElementById('avmUid').textContent = uid;
+      document.getElementById('avmSub').textContent = advBadge(a) + ' submitted ' + (v.advancedSubmittedAt || '').replace('T', ' ').slice(0, 16);
+      document.getElementById('avmImg').src = v.advanced || '';
+      var note = document.getElementById('avmNote');
+      var rejectNote = document.getElementById('avmRejectNote');
+      if (a === 'approved' || a === 'rejected') {
+        note.style.display = 'block';
+        note.textContent = (a === 'approved' ? 'Approved' : 'Rejected') + ' on ' + (v.advancedReviewedAt || '').replace('T', ' ').slice(0, 16) + (v.advancedNote ? ' - ' + v.advancedNote : '');
+      } else {
+        note.style.display = 'none';
+      }
+      var isPending = a === 'pending';
+      rejectNote.style.display = isPending ? 'block' : 'none';
+      rejectNote.value = '';
+      document.getElementById('avmApprove').style.display = isPending ? '' : 'none';
+      document.getElementById('avmReject').style.display = isPending ? '' : 'none';
+      document.getElementById('advModal').style.display = 'flex';
+    }
+    function closeAdvModal() {
+      document.getElementById('advModal').style.display = 'none';
+      currentAdvUid = null;
+    }
+    function avmApprove() {
+      if (!currentAdvUid) return;
+      var res = TrustApp.setAdvancedVerificationStatus(currentAdvUid, 'approved', '');
+      if (!res.ok) { toast('error', res.msg); return; }
+      toast('success', 'Advanced verification approved');
+      closeAdvModal();
+      renderAdvList();
+      refreshFromBlob();
+    }
+    function avmReject() {
+      if (!currentAdvUid) return;
+      var note = document.getElementById('avmRejectNote').value.trim();
+      var res = TrustApp.setAdvancedVerificationStatus(currentAdvUid, 'rejected', note);
+      if (!res.ok) { toast('error', res.msg); return; }
+      toast('success', 'Advanced verification rejected');
+      closeAdvModal();
+      renderAdvList();
+      refreshFromBlob();
+    }
+
+    function refreshAll() {
+      renderStats();
+      renderFilters();
+      renderList();
+      renderAdvList();
+    }
+
+    if (window.supabase && window.supabase.auth) { window.supabase.auth.signOut().catch(function() {}); }
+    TrustApp.initAdminLock();
+    if (TrustApp.initAdminTablesMobile) TrustApp.initAdminTablesMobile();
+    // Wait for DB to be ready before initial render
+    if (window.DB && DB.ready) {
+      DB.ready().then(function () { refreshAll(); refreshFromBlob(); });
+    } else {
+      refreshAll();
+      refreshFromBlob();
+    }
+    setInterval(refreshAll, 3000);
+    window.addEventListener('storage', function (e) {
+      if (e.key === 'trustVerifications' || e.key === null) refreshAll();
+    });
+    window.addEventListener('trustver', refreshFromBlob);
+    window.addEventListener('trustsync:verifications', function () { refreshAll(); });
+    // fast verifications channel: re-fetch the blob in memory ~1s so new
+    // requests (and their documents) appear instantly, without the 5s poll or
+    // any localStorage quota above
+    var verSyncBusy = false;
+    var verSyncDone = function () { verSyncBusy = false; };
+    setInterval(function () {
+      if (document.hidden || verSyncBusy) return;
+      if (typeof DB === 'undefined' || !DB.fetchBlob || !DB.ENABLED) return;
+      verSyncBusy = true;
+      refreshFromBlob();
+      verSyncDone();
+    }, 1000);
+  </script>
+</body>
+</html>

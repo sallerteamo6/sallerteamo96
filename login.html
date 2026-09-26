@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <title>Trust</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+</head>
+<body>
+  <div id="app">
+    <div class="login-container">
+      <div class="login-top-left">
+        <button class="wallet-connect-btn" id="walletBtn" onclick="TrustApp.connectWallet()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="14" rx="2"></rect><path d="M6 6V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"></path><circle cx="16" cy="13" r="1" fill="currentColor"></circle></svg>
+          <span id="walletText" data-i18n="common.connectWallet">Connect Wallet</span>
+        </button>
+      </div>
+      <div class="login-wrapper">
+        <div class="language-selector">
+          <div class="language-toggle" onclick="toggleLang()">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+          </div>
+          <div class="language-menu" id="langMenu" style="display:none;">
+            <div class="language-option active" onclick="setLang(this,'English')">English</div>
+            <div class="language-option" onclick="setLang(this,'中文')">中文</div>
+            <div class="language-option" onclick="setLang(this,'日本語')">日本語</div>
+            <div class="language-option" onclick="setLang(this,'한국어')">한국어</div>
+            <div class="language-option" onclick="setLang(this,'فارسی')">فارسی</div>
+            <div class="language-option" onclick="setLang(this,'Deutsch')">Deutsch</div>
+            <div class="language-option" onclick="setLang(this,'Français')">Français</div>
+            <div class="language-option" onclick="setLang(this,'Español')">Español</div>
+            <div class="language-option" onclick="setLang(this,'Italiano')">Italiano</div>
+            <div class="language-option" onclick="setLang(this,'Português')">Português</div>
+            <div class="language-option" onclick="setLang(this,'Русский')">Русский</div>
+          </div>
+        </div>
+        <div>
+          <div class="logo"><img src="img/logo.png" alt="Logo" class="logo-image"></div>
+          <form class="login-form" onsubmit="return doLogin(event)">
+            <div class="input-group"><input type="text" placeholder="Phone/Email" class="input-field" id="username" data-i18n-ph="login.phoneEmail" required></div>
+            <div class="input-group"><input type="password" placeholder="Password" class="input-field" id="password" data-i18n-ph="login.password" required></div>
+            <div class="remember-me"><input type="checkbox" id="remember" class="checkbox"><label for="remember" class="checkbox-label" data-i18n="login.remember">Remember me</label></div>
+            <button type="submit" class="login-button" id="loginBtn" data-i18n="login.login">Login</button>
+            <div class="links">
+              <a href="register.html" class="link">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
+                <span data-i18n="login.register">Register</span>
+              </a>
+              <a href="javascript:void(0);" class="link" onclick="location.href='service.html'">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                <span data-i18n="common.onlineService">Online Service</span>
+              </a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    var fields = document.querySelectorAll('.login-form .input-field');
+    var btn = document.getElementById('loginBtn');
+    function updateBtn() {
+      var empty = !fields[0].value || !fields[1].value;
+      btn.disabled = empty;
+      btn.classList.toggle('disabled', empty);
+    }
+    fields.forEach(function (f) { f.addEventListener('input', updateBtn); });
+    updateBtn();
+
+    function getParam(name) {
+      var m = new RegExp('[?&]' + name + '=([^&]*)').exec(location.search);
+      return m ? decodeURIComponent(m[1]) : '';
+    }
+
+    function doLogin(e) {
+      e.preventDefault();
+      var user = fields[0].value;
+      var pass = fields[1].value;
+      btn.disabled = true; btn.textContent = 'Loading...';
+      TrustApp.login(user, pass).then(function (res) {
+        btn.disabled = false; btn.textContent = 'Login';
+        if (!res.ok) { toast('error', res.msg || 'Login failed'); return; }
+        toast('success', 'Login successful');
+        var r = getParam('r');
+        setTimeout(function () { location.href = r || 'index.html'; }, 150);
+      }).catch(function (err) {
+        btn.disabled = false; btn.textContent = 'Login';
+        toast('error', err.message || 'Login failed');
+      });
+      return false;
+    }
+
+    function toast(type, msg) {
+      var box = document.getElementById('toastBox');
+      var el = document.createElement('div');
+      el.className = 'toast-message toast-' + type;
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, 2500);
+    }
+
+    try {
+      document.getElementById('remember').checked = false;
+    } catch (err) {}
+    if (TrustApp.applyWalletBtn) TrustApp.applyWalletBtn();
+  </script>
+</body>
+</html>

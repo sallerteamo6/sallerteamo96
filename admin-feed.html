@@ -1,0 +1,183 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <title>Live Trade Feed - Trust</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+</head>
+<body class="auth-page admin-page" style="background:#eef1f5;padding-bottom:30px;">
+
+      <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="as-logo"><img src="img/logo.png" alt="Trust"><div class="as-brand">Trust<small>Admin Panel</small></div></div>
+      <nav class="as-nav">
+        <div class="as-group-label">Overview</div>
+        <a class="as-link" href="admin.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>Dashboard</a><a class="as-link" href="admin-users.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Users</a><a class="as-link" href="admin-verify.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>Verification</a><a class="as-link" href="admin-adjust.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v8M8 12h8"></path></svg>Balance Adjuster</a><a class="as-link" href="admin-funds.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>Deposits &amp; Withdrawals</a><a class="as-link" href="admin-addresses.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg>Coin Addresses</a><a class="as-link" href="admin-loans.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9l3 3-3 3M13 15h4"></path></svg>Loans</a><a class="as-link active" href="admin-feed.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>Live Feed</a><a class="as-link" href="admin-quants.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 9h6v6H9zM9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"></path></svg>AI Quants</a><a class="as-link" href="admin-chat.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Customer Service</a><a class="as-link" href="admin-settings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>Settings</a>
+      </nav>
+      <div class="as-foot">&copy; Trust Admin Panel</div>
+    </aside>
+
+    <div class="admin-content">
+    <header class="admin-topbar">
+      <button class="back-btn" onclick="location.href='admin.html'" aria-label="Back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="at-title">Live Trade Feed<small>Real-time trading activity</small></div>
+      <img src="img/logo.png" alt="Trust Wallet" class="admin-logo">
+    </header>
+      <main class="admin-main">
+
+    <div class="admin-hero">
+      <div class="admin-hero-txt">
+        <div class="admin-hero-eyebrow">Trust Admin</div>
+        <div class="admin-hero-title">Live Trade Feed</div>
+        <div class="admin-hero-sub">Trades stream in real time across all pairs</div>
+        <div class="admin-hero-chips">
+          <span class="hero-chip" id="chipTrades">0 trades</span>
+          <span class="hero-chip" id="chipBuys">0 buys</span>
+          <span class="hero-chip" id="chipSells">0 sells</span>
+        </div>
+      </div>
+      <div class="admin-hero-live"><span class="live-dot"></span>LIVE</div>
+    </div>
+
+    <div class="admin-stats grid-4">
+      <div class="stat-card sc-blue">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"></path><path d="M6 12h12"></path><path d="M9 18h6"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Trades (24h)</div><div class="s-value" id="stTrades">0</div></div>
+      </div>
+      <div class="stat-card sc-green">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Buy Orders</div><div class="s-value" id="stBuys">0</div></div>
+      </div>
+      <div class="stat-card sc-red">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="m12 19-7-7 7-7"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Sell Orders</div><div class="s-value" id="stSells">0</div></div>
+      </div>
+      <div class="stat-card sc-purple">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></div>
+        <div><div class="muted" style="font-size:12px;font-weight:600;">Volume (24h)</div><div class="s-value" id="stVolume">$0.00</div></div>
+      </div>
+    </div>
+
+    <div class="admin-panel">
+      <div class="admin-panel-head">
+        <div class="ph-title"><span class="ph-dot" style="background:#059669;"></span>Stream <span class="ph-sub">&#183; latest real trades</span> <span class="ph-sub" id="feedSync" style="color:#8a94a6;">syncing&#8230;</span></div>
+      </div>
+      <div class="admin-table-wrap">
+        <table>
+          <thead><tr><th>Pair</th><th>Side</th><th>Amount</th><th>Price</th><th>User</th></tr></thead>
+          <tbody id="tradeFeed"></tbody>
+        </table>
+      </div>
+    </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="admin-lock" id="adminLock">
+    <div class="admin-lock-box">
+      <div class="admin-lock-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+      <h3>Admin Access</h3>
+      <p>Enter the admin password to continue</p>
+      <input type="password" class="admin-lock-input" id="adminPassInput" placeholder="Admin password">
+      <button class="admin-lock-btn" onclick="unlockAdmin()">Unlock</button>
+      <div class="admin-lock-err" id="adminLockErr"></div>
+    </div>
+  </div>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    if (window.supabase && window.supabase.auth) { window.supabase.auth.signOut().catch(function() {}); }
+    TrustApp.initAdminLock();
+    if (TrustApp.initAdminTablesMobile) TrustApp.initAdminTablesMobile();
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function registeredUsersOnly(list) {
+      var users = TrustApp.getUsers ? TrustApp.getUsers() : [];
+      var names = {}, uids = {};
+      users.forEach(function (u) {
+        // Feed is registered-users-only: wallet/guest logins (is_guest) stay out
+        // even though they now appear in the admin Users list.
+        if (u.isGuest) return;
+        if (u.account) names[String(u.account).toLowerCase()] = true;
+        if (u.uid) uids[String(u.uid)] = true;
+      });
+      return (list || []).filter(function (t) {
+        if (t.user && names[String(t.user).toLowerCase()]) return true;
+        if (t.uid && uids[String(t.uid)]) return true;
+        return false;
+      });
+    }
+    function tradeRow(t) {
+      var side = (t.side === 'down' || t.side === 'sell') ? 'Sell' : 'Buy';
+      var cls = side === 'Sell' ? 'red' : 'green';
+      var price = '$' + (parseFloat(t.price) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+      var amt = (parseFloat(t.amount) || 0).toLocaleString('en-US', { maximumFractionDigits: 4 });
+      return '<tr data-id="' + esc(t.id) + '"><td><span class="tag">' + esc(t.pair) + '</span></td><td><span class="badge ' + cls + '">' + side + '</span></td><td>' + amt + '</td><td><span class="money-cell">' + price + '</span></td><td>' + esc(t.user) + '</td></tr>';
+    }
+    function renderStats() {
+      var list = registeredUsersOnly(TrustApp.getTrades());
+      var buys = 0, sells = 0, vol = 0;
+      list.forEach(function (t) {
+        if (t.side === 'down' || t.side === 'sell') sells++; else buys++;
+        vol += (parseFloat(t.amount) || 0) * (parseFloat(t.price) || 0);
+      });
+      document.getElementById('stTrades').textContent = list.length;
+      document.getElementById('stBuys').textContent = buys;
+      document.getElementById('stSells').textContent = sells;
+      document.getElementById('stVolume').textContent = '$' + vol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      document.getElementById('chipTrades').textContent = list.length + ' trades';
+      document.getElementById('chipBuys').textContent = buys + ' buys';
+      document.getElementById('chipSells').textContent = sells + ' sells';
+    }
+    function render() {
+      var tb = document.getElementById('tradeFeed');
+      var list = registeredUsersOnly(TrustApp.getTrades());
+      renderStats();
+      if (!list.length) {
+        tb.innerHTML = '<tr><td colspan="5"><div class="empty-state"><span class="es-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"></path><path d="M6 12h12"></path><path d="M9 18h6"></path></svg></span>No user trades yet - trades appear here as registered users place orders</div></td></tr>';
+        return;
+      }
+      tb.innerHTML = list.slice(0, 15).map(tradeRow).join('');
+    }
+    // Pull fresh rows from Supabase, then re-render. The live project has no
+    // realtime publication enabled, so 'trustsync:trades' only fires on boot;
+    // polling the tables every 2.5s is what makes new trades stream into the
+    // feed without a manual page reload.
+    function pullLatest() {
+      var note = document.getElementById('feedSync');
+      function done() {
+        render();
+        if (note) {
+          var n = 0;
+          try { n = TrustApp.getTrades().length; } catch (e) {}
+          var d = new Date();
+          var p = function (x) { return (x < 10 ? '0' : '') + x; };
+          note.textContent = '\u00b7 ' + n + ' trades \u00b7 synced ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+        }
+      }
+      if (typeof DB === 'undefined' || !DB || !DB.pullBlob || !DB.ENABLED) { done(); return; }
+      Promise.all([DB.pullBlob('trades'), DB.pullBlob('users')]).then(done).catch(done);
+    }
+    render();
+    pullLatest();
+    setInterval(pullLatest, 2500);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) pullLatest(); });
+    window.addEventListener('trustsync:trades', function () { render(); });
+  </script>
+</body>
+</html>

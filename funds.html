@@ -1,0 +1,571 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>Trust</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+</head>
+<body class="auth-page funds-page" style="background:#f5f5f5;">
+
+  <header class="sub-header">
+    <button class="back-btn" onclick="location.href='account.html'" aria-label="Back">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M15 18L9 12L15 6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <h1 class="header-title" data-i18n="funds.title">Funds Management</h1>
+  </header>
+
+  <div class="tabs-container" id="fundTabs">
+    <div class="tab-item active" data-t="recharge" data-i18n="funds.deposit">Deposit</div>
+    <div class="tab-item" data-t="withdraw" data-i18n="funds.withdraw">Withdraw</div>
+  </div>
+
+  <main class="page" style="max-width:560px;padding-top:15px;">
+
+<!-- ============ DEPOSIT ============ -->
+    <div id="formRecharge">
+      <div class="form-section">
+        <div class="form-label" style="font-weight:600;" data-i18n="funds.selectCoin">Select Coin</div>
+        <div class="dep-coins" id="coinCards"></div>
+      </div>
+
+      <div class="form-section" style="padding:0;">
+        <div id="depAddrBox"></div>
+      </div>
+
+      <div class="form-section">
+        <label class="form-label" data-i18n="funds.amount">Amount</label>
+        <div class="currency-chips" id="depDenom" style="margin-bottom:10px;"></div>
+        <input type="number" class="form-input" id="depAmount" placeholder="Minimum deposit amount: 100 USDT" min="100" step="any">
+
+        <label class="form-label" style="margin-top:14px;" data-i18n="funds.paymentProof">Payment Proof</label>
+        <div class="proof-uploader" id="uploadBox">
+          <span class="proof-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+          </span>
+          <div class="proof-title" id="uploadText" data-i18n="funds.clickUpload">Click to upload payment screenshot</div>
+          <div class="proof-sub" data-i18n="funds.pngJpg">PNG or JPG image, up to 5MB</div>
+          <div class="proof-file" id="uploadFile"></div>
+          <input type="file" id="depProofInput" accept="image/*" style="display:none;">
+        </div>
+      </div>
+
+      <div class="tips-section">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9800" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <span data-i18n="funds.contactUs">Please contact us before deposit</span>
+      </div>
+
+      <button class="submit-btn" id="depSubmit" data-i18n="common.submit" onclick="submitDeposit()" disabled>Submit</button>
+
+      <div class="form-section" style="padding:16px;">
+        <div class="form-label" style="font-weight:600;font-size:16px;" data-i18n="funds.depositHistory">Deposit History</div>
+        <div id="depRecords"></div>
+      </div>
+    </div>
+
+    <!-- ============ WITHDRAW ============ -->
+    <div id="formWithdraw" style="display:none;">
+      <div class="form-section">
+        <label class="form-label" data-i18n="funds.withdrawMethod">Withdrawal Method</label>
+        <div class="currency-chips" id="wdMethodChips">
+          <button class="currency-chip active" data-m="crypto"><span class="cc-sym">Crypto</span><span class="cc-net">Wallet address</span></button>
+          <button class="currency-chip" data-m="bank"><span class="cc-sym">Bank Card</span><span class="cc-net">Fiat transfer</span></button>
+        </div>
+
+        <div id="wdCrypto">
+          <label class="form-label" style="margin-top:14px;" data-i18n="funds.currency">Currency</label>
+          <div class="currency-chips" id="coinChips2">
+            <button class="currency-chip active" data-c="USDT"><span class="cc-sym"><img src="img/usdt.png" alt="" style="width:16px;height:16px;border-radius:50%;margin-right:5px;vertical-align:-3px;">USDT</span><span class="cc-net">ERC20</span></button>
+            <button class="currency-chip" data-c="BTC"><span class="cc-sym"><img src="img/btc.png" alt="" style="width:16px;height:16px;border-radius:50%;margin-right:5px;vertical-align:-3px;">BTC</span><span class="cc-net">Bitcoin</span></button>
+            <button class="currency-chip" data-c="ETH"><span class="cc-sym"><img src="img/eth.png" alt="" style="width:16px;height:16px;border-radius:50%;margin-right:5px;vertical-align:-3px;">ETH</span><span class="cc-net">Ethereum network</span></button>
+            <button class="currency-chip" data-c="SOL"><span class="cc-sym"><img src="img/SOL.png" alt="" style="width:16px;height:16px;border-radius:50%;margin-right:5px;vertical-align:-3px;">SOL</span><span class="cc-net">Solana network</span></button>
+          </div>
+          <label class="form-label" style="margin-top:14px;" data-i18n="funds.withdrawAddress">Withdrawal Address</label>
+          <input type="text" class="form-input" id="wdAddress" data-i18n-ph="funds.enterAddress" placeholder="Please enter withdrawal address">
+          <div class="network-hint" id="wdNetwork"><span class="net-dot"></span>Network: <b>ERC20</b></div>
+        </div>
+
+        <div id="wdBank" style="display:none;">
+          <label class="form-label" style="margin-top:14px;" data-i18n="funds.bankHolder">Card Holder Name</label>
+          <input type="text" class="form-input" id="bankHolder" placeholder="Name on the bank card">
+          <label class="form-label" style="margin-top:14px;" data-i18n="funds.bankName">Bank Name</label>
+          <input type="text" class="form-input" id="bankName" placeholder="e.g. Bank of America">
+          <label class="form-label" style="margin-top:14px;" data-i18n="funds.bankCardNo">Card Number</label>
+          <input type="text" class="form-input" id="bankCard" placeholder="16-19 digit card number">
+          <label class="form-label" style="margin-top:14px;" data-i18n="funds.bankBranch">Branch / City (optional)</label>
+          <input type="text" class="form-input" id="bankBranch" placeholder="e.g. New York Downtown Branch">
+        </div>
+
+        <label class="form-label" style="margin-top:14px;" data-i18n="funds.amount">Amount</label>
+        <input type="number" class="form-input" id="wdAmount" placeholder="Minimum withdrawal amount: 20 USDT" min="20" step="any">
+        <p class="password-hint">Available balance: 1,025.00 USDT</p>
+        <div class="loan-info-row" style="border-top:1px solid var(--border);margin-top:8px;padding-top:10px;">
+          <span class="l-label" data-i18n="funds.withdrawalFee">Withdrawal fee</span><b class="l-value" id="wdFee">0.1%</b>
+        </div>
+        <div class="loan-info-row">
+          <span class="l-label" data-i18n="funds.actualAmount">Actual amount</span><b class="l-value" id="wdActual">0.00 USDT</b>
+        </div>
+      </div>
+
+      <div class="tips-section">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9800" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <span data-i18n="funds.withdrawTip" id="wdTip">Withdrawal requests will be processed within 24 hours</span>
+      </div>
+
+      <button class="submit-btn" data-i18n="common.submit" onclick="submitWithdraw()">Submit</button>
+
+      <div class="form-section" style="padding:16px;">
+        <div class="form-label" style="font-weight:600;font-size:16px;" data-i18n="funds.withdrawHistory">Withdrawal History</div>
+        <div id="wdRecords"></div>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    function toast(type, msg) {
+      var box = document.getElementById('toastBox');
+      var el = document.createElement('div');
+      el.className = 'toast-message toast-' + type;
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, 2000);
+    }
+    function copyText(t) {
+      var i = document.createElement('input');
+      i.value = t;
+      document.body.appendChild(i);
+      i.select();
+      try { document.execCommand('copy'); toast('success', TrustApp.t('funds.addressCopied')); } catch (e) { toast('info', t); }
+      i.remove();
+    }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    var cur = 'recharge';
+    var wdMethod = 'crypto';
+    var q = new URLSearchParams(location.search);
+    if (q.get('t') === 'withdraw') cur = 'withdraw';
+
+    function setTab(t) {
+      cur = t;
+      document.getElementById('fundTabs').querySelectorAll('.tab-item').forEach(function (b) { b.classList.toggle('active', b.dataset.t === t); });
+      document.getElementById('formRecharge').style.display = t === 'recharge' ? '' : 'none';
+      document.getElementById('formWithdraw').style.display = t === 'withdraw' ? '' : 'none';
+    }
+    document.getElementById('fundTabs').querySelectorAll('.tab-item').forEach(function (b) { b.onclick = function () { setTab(b.dataset.t); }; });
+    setTab(cur);
+
+    var appCfg = TrustApp.getConfig ? TrustApp.getConfig() : AppConfig;
+    var depEl = document.getElementById('depAmount');
+    if (depEl) {
+      depEl.min = appCfg.minRechargeAmount;
+      depEl.placeholder = TrustApp.t('funds.minDeposit').replace('{a}', appCfg.minRechargeAmount).replace('{c}', 'USDT');
+    }
+    var wdEl = document.getElementById('wdAmount');
+    if (wdEl) {
+      wdEl.min = appCfg.minWithdrawAmount;
+      wdEl.placeholder = TrustApp.t('funds.minWithdraw').replace('{a}', appCfg.minWithdrawAmount);
+    }
+    var feeRate = parseFloat(appCfg.withdrawalFeeRate) || 0;
+    var wdRate = 1 - feeRate / 100;
+    var feeEl = document.getElementById('wdFee');
+    if (feeEl) feeEl.textContent = feeRate + '%';
+
+    var uid = null;
+    var user = null;
+    // Re-derive the current identity once the DB session has been restored
+    // (restoreSession is async at page boot), then re-render everything.
+    function refreshIdentity() {
+      var n = TrustApp.getUserId();
+      if (n !== uid || !user) {
+        uid = n;
+        user = uid ? TrustApp.accountByUid(uid) : null;
+        renderCoins();
+        renderAddr();
+        renderDepDenom();
+      }
+    }
+
+    function getAddrMap() {
+      return TrustApp.getCoinAddresses ? TrustApp.getCoinAddresses() : {};
+    }
+
+    var WD_NET = { USDT: 'ERC20', BTC: 'Bitcoin', ETH: 'Ethereum network' };
+    var COIN_STYLE = {
+      USDT: { c: '#26a17b', g: '#26a17b,#16926c' },
+      BTC: { c: '#f7931a', g: '#f7931a,#e07d00' },
+      ETH: { c: '#627eea', g: '#627eea,#4a66d8' },
+      LTC: { c: '#345d9d', g: '#345d9d,#27487a' },
+      BNB: { c: '#f3ba2f', g: '#f3ba2f,#d9a51f' },
+      USDC: { c: '#2775ca', g: '#2775ca,#1d5ea3' }
+    };
+    function updateWdNetwork() {
+      var el = document.getElementById('wdNetwork');
+      if (!el) return;
+      if (wdMethod === 'bank') { el.style.display = 'none'; return; }
+      el.style.display = '';
+      var coin = activeCoin('#coinChips2');
+      el.innerHTML = '<span class="net-dot"></span>' + TrustApp.t('funds.network') + ': <b>' + esc(WD_NET[coin] || coin) + '</b>';
+    }
+
+    function renderCoins() {
+      var addrs = getAddrMap();
+      var coins = Object.keys(addrs);
+      var html = coins.map(function (c, i) {
+        var st = COIN_STYLE[c] || { c: '#64748b', g: '#64748b,#4b5563' };
+        var net = (addrs[c].net || TrustApp.t('funds.mainnet')).toUpperCase();
+        var icon = TrustApp.coinIconPath ? TrustApp.coinIconPath(c) : 'img/' + c.toLowerCase() + '.png';
+        return '<div class="dep-coin' + (i === 0 ? ' active' : '') + '" data-c="' + c + '">'
+          + '<div class="dep-coin-head">'
+          + '<span class="dep-coin-icon"><img src="' + icon + '" alt="' + c + '" onerror="this.style.display=\'none\';this.parentNode.textContent=\'' + c.charAt(0) + '\';this.parentNode.style.background=\'' + st.c + '\';">' + c.charAt(0) + '</span>'
+          + '<span class="dep-coin-sym">' + c + '</span>'
+          + '</div>'
+          + '<span class="dep-coin-net">' + net + '</span>'
+          + '</div>';
+      }).join('');
+      document.getElementById('coinCards').innerHTML = html;
+      document.getElementById('coinCards').querySelectorAll('.dep-coin').forEach(function (el) {
+        el.onclick = function () {
+          document.getElementById('coinCards').querySelectorAll('.dep-coin').forEach(function (x) { x.classList.remove('active'); });
+          el.classList.add('active');
+          renderAddr();
+        };
+      });
+    }
+
+    function activeCoin(sel) {
+      var card = document.querySelector(sel + ' .dep-coin.active');
+      if (card) return card.dataset.c;
+      var a = document.querySelector(sel + ' .currency-chip.active');
+      return a ? a.dataset.c : 'USDT';
+    }
+
+    function usdValue(coin) {
+      if (coin === 'USDT') return 1;
+      var d = TrustApp.findCoin ? TrustApp.findCoin(coin) : null;
+      return d ? (parseFloat(d.price) || 0) : 0;
+    }
+
+    function minFor(coin) {
+      var p = usdValue(coin);
+      return p > 0 ? appCfg.minRechargeAmount / p : appCfg.minRechargeAmount;
+    }
+
+    var depDenom = 'USDT';
+    var depDenomBox = document.getElementById('depDenom');
+
+    function renderDepDenom() {
+      var coin = activeCoin('#coinCards');
+      if (coin === 'USDT') {
+        depDenom = 'USDT';
+        if (depDenomBox) depDenomBox.style.display = 'none';
+      } else {
+        if (depDenom !== coin && depDenom !== 'USDT') depDenom = coin;
+        var opts = [coin, 'USDT'];
+        if (depDenomBox) {
+          depDenomBox.innerHTML = opts.map(function (c) {
+            return '<button type="button" class="currency-chip' + (depDenom === c ? ' active' : '') + '" data-d="' + c + '">'
+              + '<span class="cc-sym">' + c + '</span>'
+              + '<span class="cc-net">' + (c === 'USDT' ? 'Amount in USDT' : 'Amount in ' + c) + '</span>'
+              + '</button>';
+          }).join('');
+          depDenomBox.querySelectorAll('.currency-chip').forEach(function (el) {
+            el.onclick = function () {
+              depDenom = el.dataset.d;
+              depDenomBox.querySelectorAll('.currency-chip').forEach(function (x) { x.classList.remove('active'); });
+              el.classList.add('active');
+              updateDepAmount();
+              updateDepSubmit();
+            };
+          });
+          depDenomBox.style.display = '';
+        }
+      }
+      updateDepAmount();
+      updateDepSubmit();
+    }
+
+    function updateDepAmount() {
+      var el = document.getElementById('depAmount');
+      if (!el) return;
+      var min = minFor(depDenom);
+      el.min = min;
+      el.placeholder = TrustApp.t('funds.minDeposit').replace('{a}', fmtAmt(min, depDenom)).replace('{c}', depDenom);
+    }
+
+    function fmtAmt(n, coin) {
+      return n.toLocaleString('en-US', { minimumFractionDigits: coin === 'BTC' || coin === 'ETH' ? 4 : 2, maximumFractionDigits: coin === 'BTC' || coin === 'ETH' ? 4 : 2 });
+    }
+
+    function renderAddr() {
+      var coin = activeCoin('#coinCards');
+      var addrs = getAddrMap();
+      var a = addrs[coin] || { net: 'Mainnet', addr: '' };
+      var box = document.getElementById('depAddrBox');
+      if (!box) return;
+      var st = COIN_STYLE[coin] || { c: '#64748b', g: '#64748b,#4b5563' };
+      var net = a.net || TrustApp.t('funds.mainnet');
+      var iconPath = TrustApp.coinIconPath ? TrustApp.coinIconPath(coin) : 'img/' + coin.toLowerCase() + '.png';
+      box.innerHTML = '<div class="dep-addr-card">'
+        + '<div class="dep-addr-head" style="background:linear-gradient(135deg,' + st.g + ');">'
+        + '<span class="dep-coin-badge"><img src="' + iconPath + '" alt="' + coin + '" onerror="this.style.display=\'none\';this.parentNode.textContent=\'' + coin.charAt(0) + '\';"></span>'
+        + '<div class="dep-addr-headtxt">'
+        + '<div class="dep-addr-title">' + TrustApp.t('funds.depositTitle').replace('{c}', coin) + '</div>'
+        + '<div class="dep-addr-net">' + TrustApp.t('funds.network') + ': <b>' + net + '</b><span class="dep-net-tag">' + TrustApp.t('funds.networkOnly').replace('{n}', net) + '</span></div>'
+        + '</div>'
+        + '</div>'
+        + '<div class="dep-addr-body">'
+        + '<div class="dep-addr-row"><div class="dep-addr-value">' + a.addr + '</div><button class="copy-btn" onclick="copyText(\'' + a.addr + '\')">' + TrustApp.t('funds.copy') + '</button></div>'
+        + '<div class="dep-addr-warn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>'
+        + '<span>' + TrustApp.t('funds.sendOnly').replace('{c}', coin).replace('{n}', net) + '</span></div>'
+        + '</div>'
+        + '</div>';
+      renderDepDenom();
+    }
+
+    var proofData = null;
+    var proofName = '';
+    var proofInput = document.getElementById('depProofInput');
+    var uploadBox = document.getElementById('uploadBox');
+    var depSubmit = document.getElementById('depSubmit');
+    function updateDepSubmit() {
+      var amt = parseFloat(document.getElementById('depAmount').value) || 0;
+      var min = minFor(depDenom);
+      var ok = !!proofData && amt >= min;
+      if (depSubmit) depSubmit.disabled = !ok;
+    }
+    if (uploadBox && proofInput) {
+      uploadBox.onclick = function () { proofInput.click(); };
+      proofInput.addEventListener('change', function () {
+        var f = proofInput.files && proofInput.files[0];
+        if (!f) return;
+        if (f.type.indexOf('image/') !== 0) { toast('error', 'Please choose an image file'); proofInput.value = ''; return; }
+        if (f.size > 5 * 1024 * 1024) { toast('error', 'Image must be smaller than 5MB'); proofInput.value = ''; return; }
+        var reader = new FileReader();
+        reader.onload = function (ev) {
+          var img = new Image();
+          img.onload = function () {
+            var max = 800;
+            var w = img.width, h = img.height;
+            if (w > max || h > max) {
+              var r = Math.min(max / w, max / h);
+              w = Math.round(w * r);
+              h = Math.round(h * r);
+            }
+            var c = document.createElement('canvas');
+            c.width = w;
+            c.height = h;
+            c.getContext('2d').drawImage(img, 0, 0, w, h);
+            proofData = c.toDataURL('image/jpeg', 0.75);
+            proofName = f.name;
+            if (uploadBox) uploadBox.classList.add('attached');
+            var txt = document.getElementById('uploadText');
+            if (txt) txt.textContent = TrustApp.t('funds.proofAttached');
+            var info = document.getElementById('uploadFile');
+            if (info) { info.style.display = 'block'; info.textContent = f.name + ' - ' + TrustApp.t('funds.clickToChange'); }
+            toast('success', TrustApp.t('funds.proofAttached'));
+            updateDepSubmit();
+          };
+          img.onerror = function () { toast('error', 'Invalid image file'); proofInput.value = ''; };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(f);
+      });
+    }
+
+    function renderHist() {
+      var list = TrustApp.getTxns().filter(function (t) { return String(t.uid) === String(uid); });
+      var stTxt = { pending: TrustApp.t('funds.statusPending'), confirmed: TrustApp.t('funds.statusApproved'), rejected: TrustApp.t('funds.statusRejected') };
+      var stCls = { pending: 0, confirmed: 1, rejected: 2 };
+      function recs(boxId, types) {
+        var typeList = Array.isArray(types) ? types : [types];
+        var box = document.getElementById(boxId);
+        var rows = list.filter(function (x) { return typeList.indexOf(x.type) !== -1; });
+        if (!rows.length) { box.innerHTML = '<div class="empty-text" style="padding:20px 0;">' + TrustApp.t('funds.noRecords') + '</div>'; return; }
+        box.innerHTML = rows.map(function (r) {
+          var credit = typeList.indexOf(r.type) !== -1;
+          var sign = credit ? '+' : '-';
+          var amtTxt = sign + fmtAmt(r.amount, r.coin);
+          return '<div class="record-item">'
+            + '<div class="record-header"><span class="record-amount ' + (credit ? 'credit' : 'debit') + '">' + amtTxt + ' ' + r.coin + '</span>'
+            + '<span class="status-pill status-' + stCls[r.status] + '">' + stTxt[r.status] + '</span></div>'
+            + '<div class="record-info">' + TrustApp.t('funds.orderNo') + r.id + (r.note ? ' &#183; ' + r.note : '') + '</div>'
+            + '<div class="record-time">' + (r.createdAt || '').replace('T', ' ').slice(0, 16) + '</div>'
+            + '</div>';
+        }).join('');
+      }
+      recs('depRecords', ['deposit', 'referral_bonus']);
+      recs('wdRecords', 'withdraw');
+    }
+
+    function submitDeposit() {
+      refreshIdentity();
+      if (!uid) { toast('error', 'Please login first'); return; }
+      var coin = activeCoin('#coinCards');
+      var denom = depDenom;
+      var amt = parseFloat(document.getElementById('depAmount').value) || 0;
+      if (!proofData) { toast('error', TrustApp.t('funds.needProof')); return; }
+      var min = minFor(denom);
+      if (amt < min) { toast('error', TrustApp.t('funds.minAmountMsg').replace('{a}', fmtAmt(min, denom)).replace('{c}', denom)); return; }
+      TrustApp.addTxn({ uid: uid, account: user ? user.account : uid, type: 'deposit', coin: denom, amount: amt, status: 'pending', note: 'Deposit request (' + coin + ')', proof: proofData || '', proofName: proofName });
+      toast('success', TrustApp.t('funds.depositSubmitted'));
+      document.getElementById('depAmount').value = '';
+      proofData = null;
+      proofName = '';
+      if (proofInput) proofInput.value = '';
+      if (uploadBox) uploadBox.classList.remove('attached');
+      var txt = document.getElementById('uploadText');
+      if (txt) txt.textContent = TrustApp.t('funds.clickUpload');
+      var info = document.getElementById('uploadFile');
+      if (info) { info.style.display = 'none'; info.textContent = ''; }
+      updateDepSubmit();
+      renderHist();
+    }
+
+    function submitWithdraw() {
+      refreshIdentity();
+      if (!uid) { toast('error', 'Please login first'); return; }
+      var kyc = TrustApp.getVerification ? TrustApp.getVerification(uid) : null;
+      if (!kyc || kyc.status !== 'approved') { toast('error', TrustApp.t('funds.kycBlock')); return; }
+      var dueLoans = TrustApp.getLoansForUser(uid).filter(function (l) { return l.status === 'approved'; });
+      if (dueLoans.length) {
+        var total = dueLoans.reduce(function (s, l) { return s + (parseFloat(l.amount) || 0) + (parseFloat(l.interest) || 0); }, 0);
+        toast('error', TrustApp.t('funds.loanBlock').replace('{a}', fmtAmt(total, 'USDT')));
+        return;
+      }
+      var coin = activeCoin('#coinChips2');
+      var amt = parseFloat(document.getElementById('wdAmount').value) || 0;
+      if (amt < appCfg.minWithdrawAmount) { toast('error', TrustApp.t('funds.minAmountMsg').replace('{a}', fmtAmt(appCfg.minWithdrawAmount, 'USDT')).replace('{c}', 'USDT')); return; }
+      var bal = TrustApp.getBalance(uid, wdMethod === 'bank' ? 'USDT' : coin);
+      if (amt > bal) { toast('error', TrustApp.t('funds.insufficient').replace('{c}', wdMethod === 'bank' ? 'USDT' : coin)); return; }
+      var note = 'Withdrawal request';
+      if (wdMethod === 'bank') {
+        var holder = document.getElementById('bankHolder').value.trim();
+        var bankName = document.getElementById('bankName').value.trim();
+        var card = document.getElementById('bankCard').value.trim();
+        var branch = document.getElementById('bankBranch').value.trim();
+        if (!holder) { toast('error', TrustApp.t('funds.enterHolder')); return; }
+        if (!card) { toast('error', TrustApp.t('funds.enterCard')); return; }
+        if (!/^[0-9]{12,19}$/.test(card.replace(/\s+/g, ''))) { toast('error', TrustApp.t('funds.invalidCard')); return; }
+        note = 'Bank card withdrawal to ' + holder + ' (' + card.replace(/\s+/g, '').slice(-4) + ')';
+        TrustApp.addTxn({ uid: uid, account: user ? user.account : uid, type: 'withdraw', coin: 'USDT', amount: amt, status: 'pending', method: 'bank', holder: holder, bank: bankName, card: card.replace(/\s+/g, ''), branch: branch, note: note });
+      } else {
+        var addr = (document.getElementById('wdAddress').value || '').trim();
+        if (!addr) { toast('error', TrustApp.t('funds.enterAddress')); return; }
+        note = 'Withdrawal to ' + addr.slice(0, 24) + (addr.length > 24 ? '...' : '');
+        TrustApp.addTxn({ uid: uid, account: user ? user.account : uid, type: 'withdraw', coin: coin, amount: amt, status: 'pending', method: 'crypto', address: addr, note: note });
+      }
+      toast('success', TrustApp.t('funds.withdrawSubmitted'));
+      document.getElementById('wdAmount').value = '';
+      document.getElementById('wdActual').textContent = '0.00 USDT';
+      updateWdBalance();
+      renderHist();
+    }
+
+    function updateWdBalance() {
+      var coin = activeCoin('#coinChips2');
+      if (wdMethod === 'bank') coin = 'USDT';
+      var hint = document.querySelector('.password-hint');
+      if (hint) hint.textContent = TrustApp.t('funds.available') + ': ' + fmtAmt(TrustApp.getBalance(uid, coin), coin) + ' ' + coin;
+    }
+    function updateWdTip() {
+      var el = document.getElementById('wdTip');
+      if (!el) return;
+      el.textContent = TrustApp.t(wdMethod === 'bank' ? 'funds.withdrawTipBank' : 'funds.withdrawTip');
+    }
+
+renderCoins();
+    document.querySelector('#coinChips2').querySelectorAll('.currency-chip').forEach(function (c) {
+        c.onclick = function () {
+        document.querySelector('#coinChips2').querySelectorAll('.currency-chip').forEach(function (x) { x.classList.remove('active'); });
+        c.classList.add('active');
+        updateWdBalance();
+        updateWdNetwork();
+      };
+    });
+
+    document.querySelector('#wdMethodChips').querySelectorAll('.currency-chip').forEach(function (m) {
+      m.onclick = function () {
+        document.querySelector('#wdMethodChips').querySelectorAll('.currency-chip').forEach(function (x) { x.classList.remove('active'); });
+        m.classList.add('active');
+        wdMethod = m.dataset.m;
+        document.getElementById('wdCrypto').style.display = wdMethod === 'crypto' ? '' : 'none';
+        document.getElementById('wdBank').style.display = wdMethod === 'bank' ? '' : 'none';
+        document.getElementById('wdAmount').min = appCfg.minWithdrawAmount;
+        updateWdBalance();
+        updateWdNetwork();
+        updateWdTip();
+      };
+    });
+
+    document.getElementById('depAmount').addEventListener('input', updateDepSubmit);
+    document.getElementById('wdAmount').addEventListener('input', function () {
+      var amt = parseFloat(this.value) || 0;
+      document.getElementById('wdActual').textContent = (amt * wdRate).toFixed(2) + ' USDT';
+    });
+
+    function refreshCfg() {
+      try {
+        var cfg = TrustApp.getConfig ? TrustApp.getConfig() : (AppConfig || {});
+        appCfg = cfg;
+        var depEl = document.getElementById('depAmount');
+        if (depEl) depEl.min = parseFloat(cfg.minRechargeAmount) || 0;
+        var wdEl = document.getElementById('wdAmount');
+        if (wdEl) wdEl.min = parseFloat(cfg.minWithdrawAmount) || 0;
+        feeRate = parseFloat(cfg.withdrawalFeeRate) || 0;
+        wdRate = 1 - feeRate / 100;
+        var feeEl = document.getElementById('wdFee');
+        if (feeEl) feeEl.textContent = feeRate + '%';
+      } catch (e) {}
+    }
+    function refreshAll() {
+      try {
+        refreshCfg();
+        refreshIdentity();
+        updateDepAmount();
+        updateDepSubmit();
+        updateWdBalance();
+        updateWdNetwork();
+        updateWdTip();
+        renderAddr();
+        renderHist();
+      } catch (e) {}
+    }
+    function refreshAddresses() {
+      try { renderCoins(); renderAddr(); renderDepDenom(); } catch (e) {}
+    }
+
+    refreshAll();
+    // Re-run once the async session restore completes and again whenever the
+    // DB finishes loading its normal tables (balances, transactions, addresses).
+    if (TrustApp.restoreSession) TrustApp.restoreSession().then(refreshAll);
+    if (DB && DB.onReady) DB.onReady(function () { refreshAll(); refreshAddresses(); });
+    if (TrustApp.watchStorage) {
+      TrustApp.watchStorage(['trustTxns', 'trustBalances'], refreshAll);
+    }
+    window.addEventListener('trustsync:transactions', refreshAll);
+    window.addEventListener('trustsync:user_balances', refreshAll);
+    window.addEventListener('trustsync:coin_addresses', refreshAddresses);
+    window.addEventListener('trustsync:admin_settings', function () { try { refreshCfg(); } catch (e) {} });
+    window.addEventListener('storage', function (e) {
+      if (e.key === null || e.key === 'trustTxns' || e.key === 'trustBalances') refreshAll();
+    });
+    setInterval(refreshAll, 3000);
+  </script>
+</body>
+</html>
+

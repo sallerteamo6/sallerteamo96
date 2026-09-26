@@ -1,0 +1,332 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <title>Admin Dashboard - Trust</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+</head>
+<body class="auth-page admin-page">
+  <div class="admin-shell">
+
+    <aside class="admin-sidebar">
+      <div class="as-logo"><img src="img/logo.png" alt="Trust"><div class="as-brand">Trust<small>Admin Panel</small></div></div>
+      <nav class="as-nav">
+        <div class="as-group-label">Overview</div>
+        <a class="as-link active" href="admin.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>Dashboard</a>
+        <div class="as-group-label">Users &amp; Compliance</div>
+        <a class="as-link" href="admin-users.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Users</a>
+        <a class="as-link" href="admin-verify.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>Verification</a>
+        <a class="as-link" href="admin-adjust.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v8M8 12h8"></path></svg>Balance Adjuster</a>
+        <div class="as-group-label">Finance</div>
+        <a class="as-link" href="admin-funds.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>Deposits &amp; Withdrawals</a>
+        <a class="as-link" href="admin-addresses.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg>Coin Addresses</a>
+        <a class="as-link" href="admin-loans.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9l3 3-3 3M13 15h4"></path></svg>Loans</a>
+        <div class="as-group-label">AI &amp; Trading</div>
+        <a class="as-link" href="admin-feed.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>Live Feed</a>
+        <a class="as-link" href="admin-quants.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 9h6v6H9zM9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"></path></svg>AI Quants</a>
+        <div class="as-group-label">Support</div>
+        <a class="as-link" href="admin-chat.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Customer Service</a>
+        <div class="as-group-label">System</div>
+        <a class="as-link" href="admin-settings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>Settings</a>
+      </nav>
+      <div class="as-foot">&copy; Trust Admin Panel</div>
+    </aside>
+
+    <div class="admin-content">
+      <header class="admin-topbar">
+        <button class="back-btn" onclick="location.href='index.html'" aria-label="Back">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div class="at-title">Admin Dashboard<small>Platform Overview</small></div>
+        <img src="img/logo.png" alt="Trust Wallet" class="admin-logo">
+      </header>
+      <main class="admin-main">
+
+    <div class="admin-hero">
+      <div class="admin-hero-txt">
+        <div class="admin-hero-eyebrow">Trust Admin</div>
+        <div class="admin-hero-title">Platform Overview</div>
+        <div class="admin-hero-sub">Monitor activity and manage requests across the exchange</div>
+        <div class="admin-hero-chips">
+          <span class="hero-chip" id="heroUsers">0 users</span>
+          <span class="hero-chip" id="heroPending">0 pending tasks</span>
+        </div>
+      </div>
+      <div class="admin-hero-live"><span class="live-dot"></span>Live</div>
+    </div>
+
+    <div class="grid-4 admin-stats">
+      <div class="stat-card sc-blue">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg></div>
+        <div class="sc-body">
+          <div class="s-label">Total Users</div>
+          <div class="s-value" id="statUsers">0</div>
+          <div class="s-sub s-up">registered accounts</div>
+        </div>
+      </div>
+      <div class="stat-card sc-purple">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg></div>
+        <div class="sc-body">
+          <div class="s-label">24h Volume</div>
+          <div class="s-value" id="statVolume">$0.00</div>
+          <div class="s-sub s-up" id="statVolumeSub">0 trades today</div>
+        </div>
+      </div>
+      <div class="stat-card sc-green">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M7 10l5 5 5-5"></path><path d="M12 15V3"></path></svg></div>
+        <div class="sc-body">
+          <div class="s-label">Deposits (24h)</div>
+          <div class="s-value" id="statDeposits">$0.00</div>
+          <div class="s-sub" style="color:#059669;" id="statDepositsSub">0 txns</div>
+        </div>
+      </div>
+      <div class="stat-card sc-amber">
+        <div class="sc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M17 8l-5-5-5 5"></path><path d="M12 3v12"></path></svg></div>
+        <div class="sc-body">
+          <div class="s-label">Pending Withdrawals</div>
+          <div class="s-value" id="statWd">$0.00</div>
+          <div class="s-sub" style="color:#d97706;" id="statWdSub">0 queue</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-cat"><span class="acat-bar"></span>Users &amp; Compliance</div>
+    <div class="admin-grid">
+      <a class="admin-card" href="admin-users.html">
+        <div class="ac-top">
+          <div class="ac-icon" style="background:#e8efff;color:#1652f0;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg></div>
+          <span class="ac-badge blue" id="usersCount"></span>
+        </div>
+        <div class="ac-title">User Management</div>
+        <div class="ac-desc">View and search registered users, their balances, KYC and account status.</div>
+        <div class="ac-go">Open Users <span class="go-arrow">&#8594;</span></div>
+      </a>
+      <a class="admin-card" href="admin-verify.html">
+        <div class="ac-top">
+          <div class="ac-icon" style="background:#ffeef1;color:#d63649;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg></div>
+          <span class="ac-badge" id="verBadge"></span>
+        </div>
+        <div class="ac-title">Identity Verification</div>
+        <div class="ac-desc">Review user identity documents and approve or reject verification requests.</div>
+        <div class="ac-go">Open Verification <span class="go-arrow">&#8594;</span></div>
+      </a>
+      <a class="admin-card" href="admin-adjust.html">
+        <div class="ac-top">
+          <div class="ac-icon" style="background:#e6f7ee;color:#059669;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v8M8 12h8"></path></svg></div>
+          <span class="ac-badge green" id="adjustBadge"></span>
+        </div>
+        <div class="ac-title">Balance Adjuster</div>
+        <div class="ac-desc">Manually credit or debit a user's wallet balance.</div>
+        <div class="ac-go">Open Adjuster <span class="go-arrow">&#8594;</span></div>
+      </a>
+    </div>
+
+    <div class="admin-cat"><span class="acat-bar"></span>Finance</div>
+    <div class="admin-grid">
+      <a class="admin-card" href="admin-funds.html">
+        <div class="ac-top">
+          <div class="ac-icon" style="background:#fff3e0;color:#d97706;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></div>
+          <span class="ac-badge amber" id="fundsBadge"></span>
+        </div>
+        <div class="ac-title">Deposits &amp; Withdrawals</div>
+        <div class="ac-desc">Review recent deposits and approve or reject pending withdrawal requests.</div>
+        <div class="ac-go">Open Funds <span class="go-arrow">&#8594;</span></div>
+      </a>
+      <a class="admin-card" href="admin-addresses.html">
+        <div class="ac-top">
+          <div class="ac-icon" style="background:#e8efff;color:#1652f0;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg></div>
+          <span class="ac-badge blue" id="addrBadge"></span>
+        </div>
+        <div class="ac-title">Coin Addresses</div>
+        <div class="ac-desc">Edit the deposit addresses and networks shown to users for each coin.</div>
+        <div class="ac-go">Open Addresses <span class="go-arrow">&#8594;</span></div>
+      </a>
+      <a class="admin-card" href="admin-loans.html">
+        <div class="ac-top">
+          <div class="ac-icon" style="background:#e6f7ee;color:#059669;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9l3 3-3 3M13 15h4"></path></svg></div>
+          <span class="ac-badge amber" id="loansBadge"></span>
+        </div>
+        <div class="ac-title">Loans</div>
+        <div class="ac-desc">Review loan applications and approve or reject loan requests.</div>
+        <div class="ac-go">Open Loans <span class="go-arrow">&#8594;</span></div>
+      </a>
+    </div>
+
+    <div class="admin-cat"><span class="acat-bar"></span>AI &amp; Trading</div>
+    <div class="admin-grid">
+      <a class="admin-card" href="admin-feed.html">
+        <div class="ac-top">
+          <div class="ac-icon" style="background:#f3e8ff;color:#7c3aed;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg></div>
+          <span class="ac-badge purple" id="feedBadge"></span>
+        </div>
+        <div class="ac-title">Live Trade Feed</div>
+        <div class="ac-desc">Watch real-time trades streaming across all pairs.</div>
+        <div class="ac-go">Open Feed <span class="go-arrow">&#8594;</span></div>
+      </a>
+      <a class="admin-card" href="admin-quants.html">
+        <div class="ac-top">
+          <div class="ac-icon" style="background:#e8efff;color:#1652f0;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 9h6v6H9zM9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"></path></svg></div>
+          <span class="ac-badge amber" id="quantsBadge"></span>
+        </div>
+        <div class="ac-title">AI Quant Orders</div>
+        <div class="ac-desc">Approve AI quant subscriptions, settle daily profits and track positions.</div>
+        <div class="ac-go">Open AI Quants <span class="go-arrow">&#8594;</span></div>
+      </a>
+    </div>
+
+    <div class="admin-cat"><span class="acat-bar"></span>Support</div>
+    <div class="admin-grid">
+      <a class="admin-card" href="admin-chat.html">
+        <div class="ac-top">
+          <div class="ac-icon" style="background:#e6f7ee;color:#059669;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></div>
+          <span class="ac-badge" id="chatBadge"></span>
+        </div>
+        <div class="ac-title">Customer Service</div>
+        <div class="ac-desc">View and reply to user customer service messages.</div>
+        <div class="ac-go">Open Customer Service <span class="go-arrow">&#8594;</span></div>
+      </a>
+    </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="admin-lock" id="adminLock">
+    <div class="admin-lock-box">
+      <div class="admin-lock-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+      <h3>Admin Access</h3>
+      <p>Enter the admin password to continue</p>
+      <input type="password" class="admin-lock-input" id="adminPassInput" placeholder="Admin password">
+      <button class="admin-lock-btn" onclick="unlockAdmin()">Unlock</button>
+      <div class="admin-lock-err" id="adminLockErr"></div>
+    </div>
+  </div>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    // Clear any user auth session on admin pages to ensure anon access
+    if (window.supabase && window.supabase.auth) {
+      window.supabase.auth.signOut().catch(function() {});
+    }
+    TrustApp.initAdminLock();
+    if (TrustApp.initAdminTablesMobile) TrustApp.initAdminTablesMobile();
+    ['trustsync:users', 'trustsync:txns', 'trustsync:loans', 'trustsync:verifications', 'trustsync:balances', 'trustsync:chat', 'trustsync:aiorders', 'trustsync:orders', 'trustsync:trades'].forEach(function (ev) {
+      window.addEventListener(ev, function () { renderDash(); });
+    });
+    // Wait for DB to be fully connected before initial render
+    if (window.DB && DB.ready) {
+      if (DB.onReady) { DB.onReady(function () { renderDash(); }); } else { DB.ready().then(function () { renderDash(); }); }
+    } else {
+      renderDash();
+    }
+    function renderDash() {
+    var users = TrustApp.getUsers();
+    var statEl = document.getElementById('statUsers');
+    if (statEl) statEl.textContent = users.length;
+    var usersEl = document.getElementById('usersCount');
+    if (usersEl) usersEl.textContent = users.length;
+
+    var verMap = TrustApp.getVerifications ? TrustApp.getVerifications() : {};
+    var verPending = 0;
+    Object.keys(verMap).forEach(function (u) { if (verMap[u].status === 'pending') verPending++; });
+    var verEl = document.getElementById('verBadge');
+    if (verEl) verEl.textContent = verPending ? verPending : '';
+
+    function fmtUsd(n) {
+      if (!isFinite(n)) return '$0.00';
+      var abs = Math.abs(n);
+      var txt = abs >= 1000000000 ? (abs / 1000000000).toFixed(2) + 'B' : abs >= 1000000 ? (abs / 1000000).toFixed(1) + 'M' : abs >= 1000 ? (abs / 1000).toFixed(1) + 'K' : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return '$' + txt;
+    }
+
+    var txns = TrustApp.getTxns();
+    var trades = TrustApp.getTrades();
+    var dayAgo = Date.now() - 86400000;
+
+    var vol = 0;
+    var todayTrades = 0;
+    trades.forEach(function (t) {
+      var ts = new Date(t.createdAt).getTime();
+      if (ts >= dayAgo) { vol += t.amount; todayTrades++; }
+    });
+    var volEl = document.getElementById('statVolume');
+    if (volEl) volEl.textContent = fmtUsd(vol);
+    var volSub = document.getElementById('statVolumeSub');
+    if (volSub) volSub.textContent = todayTrades + ' trade' + (todayTrades === 1 ? '' : 's') + ' today';
+    var feedEl = document.getElementById('feedBadge');
+    if (feedEl) feedEl.textContent = todayTrades ? todayTrades : '';
+
+    var addrEl = document.getElementById('addrBadge');
+    var addrMap = TrustApp.getCoinAddresses ? TrustApp.getCoinAddresses() : {};
+    var addrCount = Object.keys(addrMap).length;
+    if (addrEl) addrEl.textContent = addrCount ? addrCount : '';
+
+    var depSum = 0, depN = 0, wdSum = 0, wdN = 0, pendingDep = 0, pendingWd = 0;
+    function usdVal(coin) { if (coin === 'USDT') return 1; var d = TrustApp.findCoin ? TrustApp.findCoin(coin) : null; return d ? (parseFloat(d.price) || 0) : 0; }
+    txns.forEach(function (t) {
+      var ts = new Date(t.createdAt).getTime();
+      if (t.type === 'deposit' && t.status === 'confirmed' && ts >= dayAgo) { depSum += (parseFloat(t.amount) || 0) * usdVal(t.coin); depN++; }
+      if (t.type === 'deposit' && t.status === 'pending') pendingDep++;
+      if (t.type === 'withdraw' && t.status === 'pending') pendingWd++;
+      if (t.type === 'withdraw' && t.status === 'pending' && ts >= dayAgo) { wdSum += (parseFloat(t.amount) || 0) * usdVal(t.coin); wdN++; }
+    });
+    var depEl = document.getElementById('statDeposits');
+    if (depEl) depEl.textContent = fmtUsd(depSum);
+    var depSub = document.getElementById('statDepositsSub');
+    if (depSub) depSub.textContent = depN + ' txn' + (depN === 1 ? '' : 's');
+    var wdEl = document.getElementById('statWd');
+    if (wdEl) wdEl.textContent = fmtUsd(wdSum);
+    var wdSub = document.getElementById('statWdSub');
+    if (wdSub) wdSub.textContent = wdN + ' queue';
+    var fundsEl = document.getElementById('fundsBadge');
+    if (fundsEl) fundsEl.textContent = (pendingDep + pendingWd) ? (pendingDep + pendingWd) : '';
+
+    var loans = TrustApp.getLoans ? TrustApp.getLoans() : [];
+    var pendingLoans = loans.filter(function (l) { return l.status === 'pending'; }).length;
+    var loansEl = document.getElementById('loansBadge');
+    if (loansEl) loansEl.textContent = pendingLoans ? pendingLoans : '';
+
+    var aiOrders = TrustApp.getAIOrders ? TrustApp.getAIOrders() : [];
+    var pendingQuants = aiOrders.filter(function (o) { return o.status === 'pending'; }).length;
+    var quantsEl = document.getElementById('quantsBadge');
+    if (quantsEl) quantsEl.textContent = pendingQuants ? pendingQuants : '';
+
+    var unread = 0;
+    if (TrustApp.chatUsers && TrustApp.getChat) {
+      TrustApp.chatUsers().forEach(function (id) {
+        var msgs = TrustApp.getChat(id);
+        if (msgs.length && msgs[msgs.length - 1].from === 'user') unread++;
+      });
+    }
+    var chatEl = document.getElementById('chatBadge');
+    if (chatEl) chatEl.textContent = unread ? unread : '';
+
+    var heroUsers = document.getElementById('heroUsers');
+    if (heroUsers) heroUsers.textContent = users.length + ' user' + (users.length === 1 ? '' : 's');
+    var totalPending = verPending + pendingDep + pendingWd + pendingLoans + pendingQuants + unread;
+    var heroP = document.getElementById('heroPending');
+    if (heroP) heroP.textContent = totalPending + ' pending task' + (totalPending === 1 ? '' : 's');
+    }
+
+    renderDash();
+    setTimeout(renderDash, 150);
+    ['users', 'user_balances', 'transactions', 'loans', 'verifications', 'chat_messages'].forEach(function (t) {
+      window.addEventListener('trustsync:' + t, function () { renderDash(); });
+    });
+    setInterval(function () { if (!document.hidden) renderDash(); }, 5000);
+    var RELOAD_KEYS = ['trustUsers', 'trustTxns', 'trustLoans', 'trustAIOrders', 'trustVerifications', 'trustChat', 'trustBalances'];
+    window.addEventListener('storage', function (e) {
+      if (e.key === null || RELOAD_KEYS.indexOf(e.key) !== -1) location.reload();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <title>Trust</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+</head>
+<body>
+  <div id="app">
+    <div class="login-container">
+      <div class="login-wrapper">
+        <div class="language-selector">
+          <div class="language-toggle" onclick="toggleLang()">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+          </div>
+          <div class="language-menu" id="langMenu" style="display:none;">
+            <div class="language-option active" onclick="setLang(this,'English')">English</div>
+            <div class="language-option" onclick="setLang(this,'中文')">中文</div>
+            <div class="language-option" onclick="setLang(this,'日本語')">日本語</div>
+            <div class="language-option" onclick="setLang(this,'한국어')">한국어</div>
+            <div class="language-option" onclick="setLang(this,'فارسی')">فارسی</div>
+            <div class="language-option" onclick="setLang(this,'Deutsch')">Deutsch</div>
+            <div class="language-option" onclick="setLang(this,'Français')">Français</div>
+            <div class="language-option" onclick="setLang(this,'Español')">Español</div>
+            <div class="language-option" onclick="setLang(this,'Italiano')">Italiano</div>
+            <div class="language-option" onclick="setLang(this,'Português')">Português</div>
+            <div class="language-option" onclick="setLang(this,'Русский')">Русский</div>
+          </div>
+        </div>
+        <div>
+          <div class="logo"><img src="img/logo.png" alt="Logo" class="logo-image"></div>
+          <form class="register-form" onsubmit="return doRegister(event)">
+            <div class="register-type-selector">
+              <button type="button" class="type-button active" data-i18n="reg.phoneNumber" onclick="setType(this,'phone')">Phone Number</button>
+              <button type="button" class="type-button" data-i18n="reg.email" onclick="setType(this,'email')">Email</button>
+            </div>
+            <div class="input-group"><input type="tel" placeholder="Enter your phone number" class="input-field" id="account" data-i18n-ph="reg.phonePlaceholder" required></div>
+            <div class="input-group"><input type="password" placeholder="Password" class="input-field" id="password" data-i18n-ph="reg.password" required></div>
+            <div class="input-group"><input type="password" placeholder="Confirm Password" class="input-field" id="confirm" data-i18n-ph="reg.confirm" required></div>
+            <div class="input-group"><input type="text" placeholder="Referral code (optional)" class="input-field" id="referral" data-i18n-ph="reg.referral"></div>
+            <button type="submit" class="register-button" id="regBtn" data-i18n="reg.register">Register</button>
+            <div class="links">
+              <a href="login.html" class="link">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+                <span data-i18n="reg.backToLogin">Back to Login</span>
+              </a>
+              <a href="javascript:void(0);" class="link" onclick="location.href='service.html'">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                <span data-i18n="common.onlineService">Online Service</span>
+              </a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    var fields = document.querySelectorAll('.register-form .input-field');
+    var btn = document.getElementById('regBtn');
+    var currentType = 'phone';
+    function updateBtn() {
+      var empty = !fields[0].value || !fields[1].value || !fields[2].value;
+      btn.disabled = empty;
+      btn.classList.toggle('disabled', empty);
+    }
+    fields.forEach(function (f) { f.addEventListener('input', updateBtn); });
+    updateBtn();
+
+    function setType(el, type) {
+      currentType = type;
+      document.querySelectorAll('.type-button').forEach(function (b) { b.classList.remove('active'); });
+      el.classList.add('active');
+      fields[0].type = type === 'phone' ? 'tel' : 'email';
+      fields[0].placeholder = type === 'phone' ? t('reg.phonePlaceholder') : t('reg.emailPlaceholder');
+    }
+
+    function doRegister(e) {
+      e.preventDefault();
+      var account = fields[0].value;
+      if (currentType === 'phone') {
+        if (!/^[\d+\-\s]{6,20}$/.test(account)) { toast('error', 'Please enter a valid phone number'); return false; }
+      } else {
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(account)) { toast('error', 'Please enter a valid email'); return false; }
+      }
+      if (fields[1].value.length < 6) { toast('error', 'Password must be at least 6 characters'); return false; }
+      if (fields[1].value !== fields[2].value) { toast('error', 'Passwords do not match'); return false; }
+      btn.disabled = true; btn.textContent = 'Registering...';
+      TrustApp.register(account, fields[1].value, fields[3] ? fields[3].value : '').then(function (res) {
+        btn.disabled = false; btn.textContent = 'Register';
+        if (!res.ok) { toast('error', res.msg || 'Registration failed'); return; }
+        toast('success', 'Registration successful. Your UID: ' + res.user.uid, 4500);
+        setTimeout(function () { location.href = 'index.html'; }, 150);
+      }).catch(function (err) {
+        btn.disabled = false; btn.textContent = 'Register';
+        toast('error', err.message || 'Registration failed');
+      });
+      return false;
+    }
+
+    function toast(type, msg, duration) {
+      var box = document.getElementById('toastBox');
+      var el = document.createElement('div');
+      el.className = 'toast-message toast-' + type;
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, duration || 2500);
+    }
+  </script>
+</body>
+</html>

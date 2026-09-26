@@ -1,0 +1,288 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="./">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>Trust</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="img/logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="scripts/config.js"></script>
+  <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/db.js"></script>
+  <script src="app.js"></script>
+</head>
+<body class="auth-page exchange-page" style="background:#f5f7fa;">
+
+  <header class="sub-header">
+    <button class="back-btn" onclick="location.href='account.html'" aria-label="Back">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M15 18L9 12L15 6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <h1 class="header-title" data-i18n="exch.title">Exchange</h1>
+  </header>
+
+  <main class="page" style="max-width:560px;">
+    <div class="exchange-form">
+      <div>
+        <label class="form-label" data-i18n="exch.from">From</label>
+        <div class="exchange-row">
+          <select class="currency-select" id="fromCoin">
+            <option value="USDT" data-rate="1">USDT</option>
+            <option value="BTC" data-rate="67482.5">BTC</option>
+            <option value="ETH" data-rate="3512.18">ETH</option>
+            <option value="LTC" data-rate="84.12">LTC</option>
+            <option value="XRP" data-rate="2.24">XRP</option>
+            <option value="DOGE" data-rate="0.158">DOGE</option>
+            <option value="TON" data-rate="5.42">TON</option>
+            <option value="ADA" data-rate="0.71">ADA</option>
+            <option value="BNB" data-rate="685.3">BNB</option>
+            <option value="TRX" data-rate="0.27">TRX</option>
+            <option value="UNI" data-rate="9.84">UNI</option>
+            <option value="AVAX" data-rate="27.51">AVAX</option>
+            <option value="USDC" data-rate="1">USDC</option>
+          </select>
+          <input type="number" class="amount-input" id="fromAmount" data-i18n-ph="exch.enterAmount" placeholder="Please enter amount">
+        </div>
+        <div class="balance-line"><span data-i18n="exch.available">Available Balance</span>: <span id="fromBal">1,025.00</span> USDT <button class="all-btn" data-i18n="exch.all" onclick="setMax()">ALL</button></div>
+      </div>
+
+      <div class="exchange-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10L12 15L17 10"/></svg>
+      </div>
+
+      <div>
+        <label class="form-label" data-i18n="exch.to">To</label>
+        <div class="exchange-row">
+          <select class="currency-select" id="toCoin">
+            <option value="BTC" data-rate="67482.5">BTC</option>
+            <option value="USDT" data-rate="1" selected>USDT</option>
+            <option value="ETH" data-rate="3512.18">ETH</option>
+            <option value="LTC" data-rate="84.12">LTC</option>
+            <option value="XRP" data-rate="2.24">XRP</option>
+            <option value="DOGE" data-rate="0.158">DOGE</option>
+            <option value="TON" data-rate="5.42">TON</option>
+            <option value="ADA" data-rate="0.71">ADA</option>
+            <option value="BNB" data-rate="685.3">BNB</option>
+            <option value="TRX" data-rate="0.27">TRX</option>
+            <option value="UNI" data-rate="9.84">UNI</option>
+            <option value="AVAX" data-rate="27.51">AVAX</option>
+            <option value="USDC" data-rate="1">USDC</option>
+          </select>
+          <input type="number" class="amount-input readonly" id="toAmount" data-i18n-ph="exch.calculating" placeholder="Calculating..." readonly>
+        </div>
+        <div class="balance-line"><span data-i18n="exch.available">Available Balance</span>: <span id="toBal">0.0000</span> <span id="toBalCoin">BTC</span></div>
+      </div>
+
+      <div class="exchange-rate" id="rateLine">Exchange Rate: 1 USDT = 1.0000 USDT</div>
+      <div class="exchange-rate" style="border-top:none;padding-top:0;"><span data-i18n="exch.estimatedFee">Estimated fee</span>: 0.10%</div>
+
+      <button class="exchange-btn" data-i18n="exch.now" onclick="doExchange()">Exchange Now</button>
+    </div>
+
+    <div class="exchange-history">
+      <h3 class="section-title" style="margin-bottom:12px;" data-i18n="exch.history">Exchange History</h3>
+      <div id="histList">
+        <div class="record-item">
+          <div><span class="exchange-pair">USDT</span><svg class="arrow-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12H19M19 12L12 5M19 12L12 19"/></svg><span class="exchange-pair">ETH</span></div>
+          <div class="record-time">2026-07-30 16:02</div>
+        </div>
+        <div class="record-item">
+          <div><span class="exchange-pair">USDT</span><svg class="arrow-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12H19M19 12L12 5M19 12L12 19"/></svg><span class="exchange-pair">SOL</span></div>
+          <div class="record-time">2026-07-28 10:44</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast-overlay" id="toastBox"></div>
+
+  <script>
+    function toast(type, msg) {
+      var box = document.getElementById('toastBox');
+      var el = document.createElement('div');
+      el.className = 'toast-message toast-' + type;
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, 2000);
+    }
+
+    var EXCHANGE_FEE = 0.1;
+    var uid = TrustApp.getUserId();
+
+    // The DB session restore is async: getUserId() is null until it resolves,
+    // so we must re-derive the identity on every read instead of taking the
+    // boot-time snapshot (otherwise balances belong to the wrong account).
+    function refreshUid() {
+      var n = TrustApp.getUserId();
+      if (n !== uid) {
+        uid = n;
+        updateBals();
+        renderHist();
+      }
+      return uid;
+    }
+
+    function allCoins() {
+      var out = [];
+      ['USDT', 'USDC'].forEach(function (c) { if (out.indexOf(c) === -1) out.push(c); });
+      var crypto = (TrustApp.MARKET && TrustApp.MARKET.crypto) || [];
+      crypto.forEach(function (d) { if (d.s && out.indexOf(d.s) === -1) out.push(d.s); });
+      return out;
+    }
+
+    // Live prices (exchange page only): batch Binance ticker, refreshed on an
+    // interval + on tab focus. Falls back to the platform market snapshot and
+    // finally to a 1:1 rate so the page keeps working offline.
+    var EX_LIVE = {};
+    var EX_LIVE_AT = 0;
+    var EX_LIVE_SYMS = ['BTC', 'ETH', 'LTC', 'XRP', 'DOGE', 'TON', 'ADA', 'BNB', 'TRX', 'UNI', 'AVAX'];
+    function liveSrc(sym) { return (sym === 'USDT' || sym === 'USDC') ? 1 : (EX_LIVE[sym] || 0); }
+    function fetchLivePrices(done) {
+      var pairs = EX_LIVE_SYMS.map(function (s) { return s + 'USDT'; });
+      fetch('https://api.binance.com/api/v3/ticker/price?symbols=' + encodeURIComponent(JSON.stringify(pairs)), { credentials: 'omit' })
+        .then(function (r) { return r.json(); })
+        .then(function (arr) {
+          if (!arr || !arr.length || !arr[0].symbol) throw new Error('empty ticker');
+          arr.forEach(function (t) { var s = String(t.symbol).replace(/USDT$/, ''); EX_LIVE[s] = parseFloat(t.price) || 0; });
+          EX_LIVE_AT = Date.now();
+          if (done) done(true);
+        })
+        .catch(function () {
+          // Live feed unavailable (blocked/offline): warm the platform market
+          // snapshot instead so the fallback rate is as fresh as possible.
+          if (typeof TrustApp.fetchMarket === 'function') {
+            TrustApp.fetchMarket(function () { if (done) done(false); });
+          } else if (done) done(false);
+        });
+    }
+    function refreshPrices() { fetchLivePrices(function () { calc(); }); }
+
+    function rateOf(sym) {
+      if (sym === 'USDT' || sym === 'USDC') return 1;
+      var lv = liveSrc(sym);
+      if (lv > 0) return lv;
+      var d = TrustApp.findCoin ? TrustApp.findCoin(sym) : null;
+      return d ? (parseFloat(d.price) || 1) : 1;
+    }
+
+    function rate(sel) { return rateOf(sel.value); }
+
+    function buildOptions(selected) {
+      return allCoins().map(function (s) {
+        return '<option value="' + s + '"' + (s === selected ? ' selected' : '') + '>' + s + '</option>';
+      }).join('');
+    }
+
+    function fmtAmt(n, coin) {
+      var dec = (coin === 'BTC' || coin === 'ETH') ? 4 : 2;
+      return (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    }
+
+    function updateBals() {
+      refreshUid();
+      var f = document.getElementById('fromCoin').value;
+      var t = document.getElementById('toCoin').value;
+      var elF = document.getElementById('fromBal');
+      var elT = document.getElementById('toBal');
+      var elT2 = document.getElementById('toBalCoin');
+      if (elF) elF.textContent = fmtAmt(TrustApp.getBalance(uid, f), f);
+      if (elT) elT.textContent = fmtAmt(TrustApp.getBalance(uid, t), t);
+      if (elT2) elT2.textContent = t;
+    }
+
+    function calc() {
+      var amt = parseFloat(document.getElementById('fromAmount').value) || 0;
+      var fromR = rate(document.getElementById('fromCoin'));
+      var toR = rate(document.getElementById('toCoin'));
+      var usd = amt * fromR;
+      var recv = usd / toR * (1 - EXCHANGE_FEE / 100);
+      document.getElementById('toAmount').value = recv === 0 ? '' : recv.toFixed(recv < 0.01 ? 8 : (recv < 10 ? 4 : 2));
+      document.getElementById('rateLine').textContent = TrustApp.t('exch.rate') + ': 1 ' + document.getElementById('fromCoin').value + ' = ' + (fromR / toR).toFixed(6) + ' ' + document.getElementById('toCoin').value + (EX_LIVE_AT > 0 ? ' live' : ' static');
+    }
+
+    function setMax() {
+      document.getElementById('fromAmount').value = parseFloat(document.getElementById('fromBal').textContent.replace(/,/g, ''));
+      calc();
+    }
+
+    function getExchanges() {
+      // Exchange history is stored as DB transactions (type 'exchange').
+      refreshUid();
+      try {
+        return (TrustApp.getTxns() || []).filter(function (t) { return t.type === 'exchange' && String(t.uid) === String(uid); }).map(function (t) {
+          var m = /EX\s+(\S+)\s+([\d.]+)-\>\s*(\S+)\s+([\d.eE+\-]+)/.exec(t.description || t.note || '');
+          var fromAmount = parseFloat(t.amount) || 0;
+          var to = m ? m[3] : '?';
+          var toAmount = m ? (parseFloat(m[4]) || 0) : 0;
+          return { uid: t.uid, from: t.coin, fromAmount: fromAmount, to: to, toAmount: toAmount, at: t.createdAt || t.created_at || t.at || '' };
+        });
+      } catch (e) { return []; }
+    }
+
+    function renderHist() {
+      var list = getExchanges();
+      var box = document.getElementById('histList');
+      if (!box) return;
+      if (!list.length) { box.innerHTML = '<div class="empty-text" style="padding:20px 0;text-align:center;color:#999;font-size:13px;">' + TrustApp.t('exch.noYet') + '</div>'; return; }
+      box.innerHTML = list.slice().reverse().map(function (e) {
+        var arrow = '<svg class="arrow-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12H19M19 12L12 5M19 12L12 19"/></svg>';
+        return '<div class="record-item"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">'
+          + '<span class="exchange-pair">' + fmtAmt(e.fromAmount, e.from) + ' ' + e.from + '</span>' + arrow
+          + '<span class="exchange-pair">' + fmtAmt(e.toAmount, e.to) + ' ' + e.to + '</span></div>'
+          + '<div class="record-time">' + (e.at || '').replace('T', ' ').slice(0, 16) + '</div></div>';
+      }).join('');
+    }
+
+    function doExchange() {
+      refreshUid();
+      if (!uid) { toast('error', TrustApp.t('common.loginRequired') || 'Please login first'); return; }
+      var amt = parseFloat(document.getElementById('fromAmount').value) || 0;
+      var f = document.getElementById('fromCoin').value, t = document.getElementById('toCoin').value;
+      if (amt <= 0) { toast('error', TrustApp.t('exch.enterAmount')); return; }
+      if (f === t) { toast('error', TrustApp.t('exch.sameCoin')); return; }
+      var bal = TrustApp.getBalance(uid, f);
+      if (amt > bal) { toast('error', TrustApp.t('exch.insufficient').replace('{c}', f)); return; }
+      var usd = amt * rateOf(f);
+      var recv = usd / rateOf(t) * (1 - EXCHANGE_FEE / 100);
+      TrustApp.addBalance(uid, f, -amt);
+      TrustApp.addBalance(uid, t, recv);
+      try { TrustApp.addTxn({ uid: uid, account: uid, type: 'exchange', coin: f, amount: amt, status: 'confirmed', note: 'EX ' + f + ' ' + amt + '->' + t + ' ' + recv }); } catch (e2) {}
+      toast('success', TrustApp.t('exch.success'));
+      document.getElementById('fromAmount').value = '';
+      document.getElementById('toAmount').value = '';
+      calc();
+      updateBals();
+      renderHist();
+    }
+
+    document.getElementById('fromCoin').innerHTML = buildOptions('USDT');
+    document.getElementById('toCoin').innerHTML = buildOptions('BTC');
+    document.getElementById('fromAmount').addEventListener('input', calc);
+    document.getElementById('fromCoin').onchange = function () { updateBals(); calc(); };
+    document.getElementById('toCoin').onchange = function () { updateBals(); calc(); };
+    window.addEventListener('storage', function (e) {
+      if (e.key === 'trustBalances' || e.key === null) updateBals();
+    });
+    window.addEventListener('trustsync:user_balances', function () { updateBals(); });
+    window.addEventListener('trustsync:transactions', function () { renderHist(); });
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) { updateBals(); refreshPrices(); }
+    });
+    setInterval(function () { updateBals(); renderHist(); }, 3000);
+    setInterval(refreshPrices, 30000);
+    // The real identity only appears after the async session restore; refresh
+    // the balance + history the moment it lands so we never show another
+    // account's (or zero) balances.
+    if (TrustApp.restoreSession) TrustApp.restoreSession().then(function () { refreshUid(); });
+    if (window.DB && DB.onReady) DB.onReady(function () { refreshUid(); });
+    refreshPrices();
+    updateBals();
+    calc();
+    renderHist();
+  </script>
+</body>
+</html>
+
