@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Trust â€” export data</title>
+  <title>Trust ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â export data</title>
   <style>
     body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
     .card { max-width: 640px; margin: 48px auto; background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 28px; }
@@ -16,17 +16,17 @@
 <body>
   <div class="card">
     <h1>Export database data</h1>
-    <p>Downloads all Trust data currently held in Supabase (users, balances, transactions, loans, trades, AI orders, chat, verifications, settingsâ€¦) as a <code>trust-backup.json</code> file.</p>
+    <p>Downloads all Trust data currently held in Supabase (users, balances, transactions, loans, trades, AI orders, chat, verifications, settingsÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦) as a <code>trust-backup.json</code> file.</p>
     <button onclick="download()">Download trust-backup.json</button>
     <div id="status"></div>
   </div>
-  <script src="scripts/config.js?v=20260926d"></script>
-  <script src="scripts/supabase-client.js?v=20260926d"></script>
-  <script src="scripts/db.js?v=20260926d"></script>
+  <script src="scripts/config.js?v=20260926f"></script>
+  <script src="scripts/supabase-client.js?v=20260926f"></script>
+  <script src="scripts/db.js?v=20260926f"></script>
   <script>
     function download() {
       var st = document.getElementById('status');
-      st.textContent = 'Waiting for databaseâ€¦';
+      st.textContent = 'Waiting for databaseÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦';
       if (typeof DB !== 'undefined' && DB && DB.onReady) {
         DB.onReady(function () { doDownload(st); });
       } else {

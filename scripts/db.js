@@ -261,13 +261,19 @@ var TrustDB = (function () {
     },
 
     _adoptSession: function (session) {
+      var self_ = this;
       this._session = session || null;
       this._authUser = session && session.user ? session.user : null;
 
       // is_admin lives in the profile table, not the JWT, and the token is not
       // re-issued when it changes. Read it from the row we already cache, and
       // fall back to false so an admin-only control is never briefly shown.
-      var row = this._authUser ? this._cache.users.find(function (u) { return u.id === self._authUser.id; }) : null;
+      //
+      // This closed over `self`, which in a browser is window, not this object.
+      // self._authUser was therefore always undefined, no row ever matched, and
+      // isAdmin was stuck at false -- so the admin pages could never tell an
+      // admin apart from a normal user.
+      var row = this._authUser ? this._cache.users.find(function (u) { return u.id === self_._authUser.id; }) : null;
       this.isAdmin = !!(row && row.is_admin);
     },
 
@@ -391,6 +397,41 @@ var TrustDB = (function () {
     // `account` may be either. The phone path additionally needs the Phone
     // provider enabled in the dashboard; without it GoTrue answers "Phone
     // logins are not enabled", which is passed straight through.
+    // GoTrue reports quota problems with a 429 and a terse body. Passing
+    // "email rate limit exceeded" through verbatim tells the visitor nothing
+    // about what to do, and the usual root cause is a project setting rather
+    // than anything the visitor did wrong, so name the actual fix.
+    _authError: function (e, action) {
+      var msg = (e && e.message) || String(e);
+      var status = e && (e.status || e.status_code);
+      var low = String(msg).toLowerCase();
+
+      if (status === 429 || /rate limit|too many requests|over_email_send_rate_limit|over_sms_send_rate_limit/.test(low)) {
+        if (action === 'signup') {
+          return new Error(
+            'Too many confirmation emails have been sent from this site. ' +
+            'Wait about an hour and try again. To remove this limit entirely, ' +
+            'the site owner can turn off "Confirm email" in Supabase under ' +
+            'Authentication -> Sign In / Providers -> Email: new accounts are ' +
+            'then signed in immediately and no email is sent at all.'
+          );
+        }
+        return new Error('Too many attempts. Wait a few minutes, then try again.');
+      }
+
+      // Any trigger failure collapses into this one string, so pass on the
+      // reference and where to read the cause instead of leaving a dead end.
+      if (/database error saving new user/i.test(msg)) {
+        return new Error(
+          'The database rejected the new account: the on_auth_user_created ' +
+          'trigger raised an error. Open Dashboard -> Logs -> Postgres Logs ' +
+          'and read the entry at this time. (ref ' + ((e && (e.error_id || e.id)) || 'n/a') + ')'
+        );
+      }
+
+      return new Error(msg);
+    },
+
     register: function (account, password, extra, accountType) {
       var self_ = this;
       var id = this._authIdent(account, accountType);
@@ -411,18 +452,7 @@ var TrustDB = (function () {
         return lib.auth.signUp(creds);
       }).then(function (res) {
         if (res.error) {
-          var e = res.error;
-          // GoTrue reports any trigger failure with this one generic string,
-          // so pass on the reference and where to actually read the cause
-          // instead of leaving a dead end.
-          if (/database error saving new user/i.test(e.message || '')) {
-            throw new Error(
-              'The database rejected the new account: the on_auth_user_created ' +
-              'trigger raised an error. Open Dashboard -> Logs -> Postgres Logs ' +
-              'and read the entry at this time. (ref ' + (e.error_id || e.id || 'n/a') + ')'
-            );
-          }
-          throw new Error(e.message);
+          throw self_._authError(res.error, 'signup');
         }
 
         // With "Confirm email" on, GoTrue returns a user but no session. Say so
@@ -475,6 +505,13 @@ var TrustDB = (function () {
         return lib.auth.signInWithPassword(creds);
       }).then(function (res) {
         if (res.error) {
+          // A quota rejection is not a wrong password. Falling through to the
+          // generic message below told someone with the right password that
+          // their password was wrong, purely because they had tried a few
+          // times. Check the status first, then apply the anti-enumeration rule.
+          if (res.error.status === 429 || /rate limit|too many requests/i.test(res.error.message || '')) {
+            throw self_._authError(res.error, 'login');
+          }
           // Do not distinguish "no such account" from "wrong password": saying
           // which one it was turns the sign-in form into an account enumerator.
           throw new Error(id.kind === 'phone'
@@ -770,6 +807,7 @@ var TrustDB = (function () {
     enqueue: function (table) { return this.pullBlob(table); },
 
     _applyRows: function (table, rows, startTs) {
+      var self_ = this;
       var keyField = this._keyField(table);
       // Map the table onto its cache slot. This has to cover every table in
       // _query(), not just the v1 names: an unmapped name lands in the
@@ -801,17 +839,20 @@ var TrustDB = (function () {
         var incoming = {};
         rows.forEach(function (r) { (incoming[r.uid] = incoming[r.uid] || []).push(r); });
         Object.keys(incoming).forEach(function (u0) {
-          var list = self._cache.chatMessages[u0] = self._cache.chatMessages[u0] || [];
+          // self_ , not self: in a browser `self` is window, so self._cache was
+          // undefined and the first chat message threw a TypeError here, which
+          // aborted the merge and left the chat list empty.
+          var list = self_._cache.chatMessages[u0] = self_._cache.chatMessages[u0] || [];
           var byId = {};
           incoming[u0].forEach(function (r) { byId[r.id] = r; });
           for (var i0 = list.length - 1; i0 >= 0; i0--) {
             var m0 = list[i0];
             if (m0.id in byId) { list[i0] = byId[m0.id]; delete byId[m0.id]; }
-            else if ((self._rowAt['chat_messages:' + m0.id] || 0) <= startTs) list.splice(i0, 1);
+            else if ((self_._rowAt['chat_messages:' + m0.id] || 0) <= startTs) list.splice(i0, 1);
           }
           for (var k0 in byId) {
             list.push(byId[k0]);
-            self._rowAt['chat_messages:' + byId[k0].id] = Date.now();
+            self_._rowAt['chat_messages:' + byId[k0].id] = Date.now();
           }
         });
       } else if (table === 'app_settings' || table === 'admin_settings') {

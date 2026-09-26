@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Trust â€” Database status</title>
+  <title>Trust ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Database status</title>
   <style>
     body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
     .card { max-width: 680px; margin: 48px auto; background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 28px; }
@@ -23,33 +23,33 @@
 <body>
   <div class="card">
     <h1>Supabase database status</h1>
-    <p>All application data lives in your Supabase project. Connection settings are edited directly in <code>scripts/config.js</code> â€” nothing is stored in the browser.</p>
+    <p>All application data lives in your Supabase project. Connection settings are edited directly in <code>scripts/config.js</code> ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â nothing is stored in the browser.</p>
 
-    <div class="row"><b>Project URL</b><span id="dbUrl">â€¦</span></div>
-    <div class="row"><b>Anon key</b><span id="dbAnon">â€¦</span></div>
-    <div class="row"><b>Connection</b><span id="dbState">checkingâ€¦</span></div>
-    <div class="row"><b>Users in DB</b><span id="dbUsers">â€¦</span></div>
+    <div class="row"><b>Project URL</b><span id="dbUrl">ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</span></div>
+    <div class="row"><b>Anon key</b><span id="dbAnon">ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</span></div>
+    <div class="row"><b>Connection</b><span id="dbState">checkingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</span></div>
+    <div class="row"><b>Users in DB</b><span id="dbUsers">ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</span></div>
 
     <button onclick="testDb()">Test connection</button>
     <div id="status"></div>
 
     <h1 style="margin-top:28px;">One-time SQL setup</h1>
-    <p>Run these in your Supabase project â†’ SQL Editor, in order. Each is safe to re-run.</p>
+    <p>Run these in your Supabase project ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ SQL Editor, in order. Each is safe to re-run.</p>
     <ol>
-      <li><code>supabase/v2/01_schema.sql</code> â€” tables, indexes, triggers</li>
-      <li><code>supabase/v2/02_rls.sql</code> â€” row level security policies</li>
-      <li><code>supabase/v2/03_functions.sql</code> â€” RPCs (trading, admin, ledger)</li>
-      <li><code>supabase/v2/04_realtime.sql</code> â€” realtime publication</li>
-      <li><code>supabase/v2/05_seed.sql</code> â€” markets, products, settings</li>
-      <li><code>supabase/v2/06_auth.sql</code> â€” auth trigger, then follow the dashboard checklist at the bottom of that file</li>
-      <li>Replace the <code>CHANGE_ME_â€¦</code> deposit addresses seeded in step 5 with wallets you control.</li>
+      <li><code>supabase/v2/01_schema.sql</code> ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â tables, indexes, triggers</li>
+      <li><code>supabase/v2/02_rls.sql</code> ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â row level security policies</li>
+      <li><code>supabase/v2/03_functions.sql</code> ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â RPCs (trading, admin, ledger)</li>
+      <li><code>supabase/v2/04_realtime.sql</code> ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â realtime publication</li>
+      <li><code>supabase/v2/05_seed.sql</code> ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â markets, products, settings</li>
+      <li><code>supabase/v2/06_auth.sql</code> ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â auth trigger, then follow the dashboard checklist at the bottom of that file</li>
+      <li>Replace the <code>CHANGE_ME_ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</code> deposit addresses seeded in step 5 with wallets you control.</li>
       <li>Wait for Supabase to refresh its schema cache, then reload the site.</li>
     </ol>
     <p>See <code>supabase/v2/README.md</code> for what changed and the table mapping the front end still needs.</p>
   </div>
-  <script src="scripts/config.js?v=20260926d"></script>
-  <script src="scripts/supabase-client.js?v=20260926d"></script>
-  <script src="scripts/db.js?v=20260926d"></script>
+  <script src="scripts/config.js?v=20260926f"></script>
+  <script src="scripts/supabase-client.js?v=20260926f"></script>
+  <script src="scripts/db.js?v=20260926f"></script>
   <script>
     function setHtml(id, s) { document.getElementById(id).textContent = s; }
     function testDb() {
@@ -63,14 +63,14 @@
     }
     function refresh() {
       setHtml('dbUrl', SITE_CONFIG.DB_URL || 'not set');
-      setHtml('dbAnon', (SITE_CONFIG.DB_ANON_KEY || '').slice(0, 24) + 'â€¦');
+      setHtml('dbAnon', (SITE_CONFIG.DB_ANON_KEY || '').slice(0, 24) + 'ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦');
       setHtml('dbState', DB.connected ? 'Connected' : 'Not connected');
       try { setHtml('dbUsers', String(DB.getUsers ? (DB.getUsers() || []).length : '?')); } catch (e) { setHtml('dbUsers', '?'); }
     }
     document.onreadystatechange = function () {
       if (document.readyState === 'interactive') {
         setHtml('dbUrl', SITE_CONFIG.DB_URL || 'not set');
-        setHtml('dbAnon', (SITE_CONFIG.DB_ANON_KEY || '').slice(0, 24) + 'â€¦');
+        setHtml('dbAnon', (SITE_CONFIG.DB_ANON_KEY || '').slice(0, 24) + 'ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦');
         if (typeof DB !== 'undefined' && DB && DB.onReady) DB.onReady(refresh);
         if (DB && DB.connected) refresh(); else setHtml('dbState', 'Not connected');
         document.getElementById('status').textContent = '';

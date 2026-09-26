@@ -9,10 +9,10 @@
   <link rel="icon" type="image/png" href="favicon.png">
   <title>Trade - Trust</title>
   <link rel="stylesheet" href="styles.css">
-  <script src="scripts/config.js?v=20260926d"></script>
-  <script src="scripts/supabase-client.js?v=20260926d"></script>
-    <script src="scripts/db.js?v=20260926d"></script>
-  <script src="app.js?v=20260926d"></script>
+  <script src="scripts/config.js?v=20260926f"></script>
+  <script src="scripts/supabase-client.js?v=20260926f"></script>
+    <script src="scripts/db.js?v=20260926f"></script>
+  <script src="app.js?v=20260926f"></script>
 </head>
 <body>
   <div id="app">
@@ -82,7 +82,7 @@
       <div class="submit-modal">
         <header>
           <span id="submitTitle">BTC/USDT Trade</span>
-          <button class="close-btn" onclick="closeSubmit()">Ã—</button>
+          <button class="close-btn" onclick="closeSubmit()">ÃƒÆ’Ã¢â‚¬â€</button>
         </header>
         <div class="summary-card">
           <div class="time-select-container">
@@ -118,7 +118,7 @@
   <!-- TIME SHEET -->
   <div class="sheet-overlay" id="timeSheet" style="display:none;" onclick="this.style.display='none'">
     <div class="sheet" onclick="event.stopPropagation()">
-      <div class="sheet-header"><h3>Select Duration</h3><button onclick="document.getElementById('timeSheet').style.display='none'">Ã—</button></div>
+      <div class="sheet-header"><h3>Select Duration</h3><button onclick="document.getElementById('timeSheet').style.display='none'">ÃƒÆ’Ã¢â‚¬â€</button></div>
       <div class="sheet-item active" onclick="pickDuration(60,20)"><span>60s</span><span class="odds">20%</span></div>
       <div class="sheet-item" onclick="pickDuration(120,30)"><span>120s</span><span class="odds">30%</span></div>
       <div class="sheet-item" onclick="pickDuration(300,40)"><span>300s</span><span class="odds">40%</span></div>
@@ -128,7 +128,7 @@
   <!-- WALLET SHEET -->
   <div class="sheet-overlay" id="walletSheet" style="display:none;" onclick="this.style.display='none'">
     <div class="sheet" onclick="event.stopPropagation()">
-      <div class="sheet-header"><h3>Select Wallet</h3><button onclick="document.getElementById('walletSheet').style.display='none'">Ã—</button></div>
+      <div class="sheet-header"><h3>Select Wallet</h3><button onclick="document.getElementById('walletSheet').style.display='none'">ÃƒÆ’Ã¢â‚¬â€</button></div>
       <div class="sheet-item active" onclick="pickWallet('USDT')"><span>USDT</span><span class="odds">0.00</span></div>
       <div class="sheet-item" onclick="pickWallet('BTC')"><span>BTC</span><span class="odds">0.00</span></div>
     </div>
@@ -139,7 +139,7 @@
     <div class="countdown-modal">
       <header style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
         <span style="font-size:18px;font-weight:600;color:#131f30;">Order Countdown</span>
-        <button class="close-btn" onclick="closeCountdown()">Ã—</button>
+        <button class="close-btn" onclick="closeCountdown()">ÃƒÆ’Ã¢â‚¬â€</button>
       </header>
       <div class="order-info-card" id="countdownInfo"></div>
       <div style="display:flex;justify-content:center;margin:24px 0;">
@@ -158,9 +158,9 @@
     <div class="result-modal">
       <header style="display:flex;justify-content:space-between;align-items:center;">
         <span style="font-size:18px;font-weight:600;color:#131f30;">Settlement Result</span>
-        <button class="close-btn" onclick="document.getElementById('resultOverlay').style.display='none'">Ã—</button>
+        <button class="close-btn" onclick="document.getElementById('resultOverlay').style.display='none'">ÃƒÆ’Ã¢â‚¬â€</button>
       </header>
-      <div class="result-icon win" id="resultIcon">âœ“</div>
+      <div class="result-icon win" id="resultIcon">ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“</div>
       <div class="result-amount profit" id="resultAmount">+80.00</div>
       <div class="result-info" id="resultInfo"></div>
       <div class="result-btns">
@@ -408,7 +408,7 @@
       var icon = document.getElementById('resultIcon');
       var amtEl = document.getElementById('resultAmount');
       icon.className = 'result-icon ' + (win ? 'win' : 'lose');
-      icon.textContent = win ? 'âœ“' : 'X';
+      icon.textContent = win ? 'ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“' : 'X';
       amtEl.className = 'result-amount ' + (win ? 'profit' : 'loss');
       amtEl.textContent = (win ? '+' : '') + profit.toFixed(2);
       document.getElementById('resultInfo').innerHTML =
@@ -434,7 +434,7 @@
         var recLabel = r.coin.indexOf('/') >= 0 ? r.coin : r.coin + '/' + (r.alias || 'USDT');
         var recUnit = r.unit || r.alias || 'USDT';
         html += '<div class="trade-record-item">'
-          + '<div class="trade-record-cell"><span class="record-label">' + recLabel + ' Â· ' + r.time + '</span>'
+          + '<div class="trade-record-cell"><span class="record-label">' + recLabel + ' Ãƒâ€šÃ‚Â· ' + r.time + '</span>'
           + '<div style="display:flex;justify-content:space-between;align-items:center;">'
           + '<span class="trade-record-direction ' + dirCls + '">' + (r.dir === 'up' ? 'Up' : 'Down') + '</span>'
           + '<span class="trade-record-status ' + st + '">' + stText + '</span></div>'
