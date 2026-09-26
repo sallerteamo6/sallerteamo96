@@ -13,7 +13,11 @@
     appTitle: 'Trust',
     logoPath: 'img/logo.png',
     defaultLanguage: 'en',
-    adminPassword: 'admin123',
+    // NOTE: there is deliberately no adminPassword here any more. The admin
+    // passphrase used to ship in this bundle and was compared in the browser,
+    // which meant anyone could read it from view-source and that it granted
+    // nothing server-side. It now lives hashed in public.admin_credentials and
+    // is checked by public.admin_login() -- see supabase/v2/13_admin_passphrase.sql.
     walletLoginEnabled: true,
     disablePasswordLogin: false,
     advancedAuthEnabled: false,
@@ -1626,6 +1630,12 @@
   }
 
   function getUsers() {
+    // An operator signed in with the admin passphrase has no is_admin row, so
+    // DB.getUsers() returns [] under RLS. Public admin_users() is the one read
+    // allowed to see those rows, and its result is cached here so this stays
+    // synchronous for the ~15 call sites that do .length / .map / .forEach.
+    if (_adminUsers && !isRealAdmin()) return _adminUsers.slice();
+
     if (dbReadable()) {
       try {
         // Admin/user lists exclude anonymous guest blocks (account = guest_*)
@@ -1753,6 +1763,85 @@
     try { sessionStorage.removeItem(ADMIN_UNLOCK_KEY); } catch (e) {}
   }
 
+  // ---- Server-verified admin passphrase ------------------------------------
+  // The browser never stores the correct passphrase. It sends whatever the
+  // operator typed to public.admin_login(), which compares it against a sha256
+  // hash in Postgres and returns a signed token good for one hour. That token
+  // is what unlocks public.admin_users(), the SECURITY DEFINER function that
+  // can read rows this session's RLS context would otherwise hide.
+  var ADMIN_TOKEN_KEY = 'trustAdminToken';
+
+  function adminToken() {
+    try { return sessionStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch (e) { return ''; }
+  }
+
+  function setAdminToken(t) {
+    try {
+      if (t) sessionStorage.setItem(ADMIN_TOKEN_KEY, t);
+      else sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    } catch (e) {}
+  }
+
+  function adminLogin(pass) {
+    if (!pass) return Promise.resolve({ ok: false, msg: 'Enter the admin password' });
+    if (typeof DB === 'undefined' || !DB || !DB.rpc) {
+      return Promise.resolve({ ok: false, msg: 'Backend not ready, try again in a moment' });
+    }
+    return DB.rpc('admin_login', { pass: pass }).then(function (tok) {
+      // NULL is the only failure signal, so the response does not reveal
+      // whether an operator exists.
+      if (!tok) return { ok: false, msg: 'Incorrect password' };
+      setAdminToken(String(tok));
+      return { ok: true };
+    }).catch(function (e) {
+      var m = String((e && e.message) || '');
+      // A missing function means 13_admin_passphrase.sql has not been applied.
+      if (/function .*admin_login|not found|404/i.test(m)) {
+        return { ok: false, msg: 'Admin sign-in is not set up on the database yet. Run supabase/v2/13_admin_passphrase.sql in the Supabase SQL editor.' };
+      }
+      return { ok: false, msg: m || 'Sign-in failed' };
+    });
+  }
+
+  // Snapshot of the user list obtained through the SECURITY DEFINER function.
+  // Cached so getUsers() can stay synchronous for its ~15 existing call sites.
+  var _adminUsers = null;
+
+  function adminUsersSnapshot() { return _adminUsers; }
+
+  function clearAdminUsers() {
+    _adminUsers = null;
+    setAdminToken('');
+    clearAdminUnlockedInTab();
+  }
+
+  function fetchAdminUsers() {
+    if (!adminToken()) return Promise.resolve([]);
+    if (typeof DB === 'undefined' || !DB || !DB.rpc) return Promise.resolve([]);
+    return DB.rpc('admin_users', { tok: adminToken() }).then(function (rows) {
+      _adminUsers = (rows || []).map(dbUserToApp);
+      return _adminUsers;
+    }).catch(function (e) {
+      var m = String((e && e.message) || '');
+      // Expired or tampered token: drop it rather than leaving a dead unlock
+      // that silently shows an empty list.
+      if (/token/i.test(m)) clearAdminUsers();
+      else console.warn('admin_users failed:', m);
+      return [];
+    });
+  }
+
+  // Once the snapshot lands, the pages that list users need to redraw. They all
+  // listen for trustsync events, and a few only listen for their own table, so
+  // the user-bearing ones are notified.
+  function notifyAdminUsersLoaded() {
+    try {
+      ['users', 'admin_users', 'user_balances'].forEach(function (t) {
+        window.dispatchEvent(new window.CustomEvent('trustsync:' + t, { detail: { source: 'admin-passphrase' } }));
+      });
+    } catch (e) {}
+  }
+
   // A user whose profile carries is_admin is never asked for the shared admin
   // password at all.
   function adminHasRealAccess() {
@@ -1774,33 +1863,80 @@
     try { return isUserAdmin(uid); } catch (e) { return false; }
   }
 
-  // One banner for every admin page, because they all call initAdminLock().
+  // A page can be unlocked and still read nothing: the shared password is a
+  // client-side check, so it grants no JWT claim and no is_admin flag, and RLS
+  // (users_select_own: id = auth.uid() or public.is_admin()) then returns an
+  // empty set. "No customers" and "you are not an admin" look identical, so say
+  // which one it is -- and hand over the exact statement, pre-filled with the
+  // signed-in account, instead of making the user look up their own email.
   function warnIfNotRealAdmin() {
     if (isRealAdmin()) return;
     if (document.getElementById('realAdminWarn')) return;
     if (!document.body) return;
 
+    var uid = null;
+    try { uid = getUserId(); } catch (e) {}
+    var acct = '';
+    if (uid) {
+      try {
+        var u = accountByUid(uid);
+        acct = String((u && (u.account || u.email)) || '');
+      } catch (e) {}
+    }
+
+    var sql = acct
+      ? "update public.users set is_admin = true where lower(account) = lower('" + acct.replace(/'/g, "''") + "');"
+      : '';
+
     var el = document.createElement('div');
     el.id = 'realAdminWarn';
 
-    var strong = document.createElement('strong');
-    strong.textContent = 'Not an admin account. ';
-    el.appendChild(strong);
+    var line = document.createElement('div');
+    line.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;';
 
-    el.appendChild(document.createTextNode(
-      'This panel is unlocked, but the signed-in account has no is_admin flag in the database, ' +
-      'so row-level security makes Supabase return nothing. Every list below will look empty. ' +
-      'Sign in with an account that is an admin, or grant it in the SQL editor: update public.users set is_admin = true where account = '
+    var msg = document.createElement('span');
+    var b = document.createElement('strong');
+    b.textContent = 'Admin data is hidden: ';
+    msg.appendChild(b);
+    msg.appendChild(document.createTextNode(
+      acct
+        ? 'your account "' + acct + '" has no is_admin flag in the database, so row-level security returns nothing. '
+        : 'you are not signed in, and the shared password cannot grant database access. '
     ));
+    line.appendChild(msg);
 
-    var code = document.createElement('code');
-    code.textContent = "'you@example.com'";
-    el.appendChild(code);
-    el.appendChild(document.createTextNode(';'));
+    if (sql) {
+      var copy = document.createElement('button');
+      copy.type = 'button';
+      copy.textContent = 'Copy fix SQL';
+      copy.style.cssText = 'cursor:pointer;border:1px solid rgba(255,255,255,.55);background:transparent;color:#fff;' +
+        'border-radius:6px;padding:4px 10px;font:600 12px/1.4 inherit;';
+      copy.onclick = function () {
+        var done = function () {
+          copy.textContent = 'Copied - paste into Supabase SQL Editor';
+          setTimeout(function () { copy.textContent = 'Copy fix SQL'; }, 4000);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(sql).then(done, function () { window.prompt('Copy this:', sql); });
+        } else {
+          window.prompt('Copy this:', sql);
+        }
+      };
+      line.appendChild(copy);
+    }
 
-    el.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:100000;background:#7c2d12;color:#fff;' +
-      'padding:10px 14px;font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;text-align:center;';
-    document.body.appendChild(el);
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Dismiss');
+    close.textContent = '\u00d7';
+    close.style.cssText = 'cursor:pointer;border:0;background:transparent;color:#fff;font-size:19px;line-height:1;padding:0 2px;opacity:.75;';
+    close.onclick = function () { el.remove(); };
+    line.appendChild(close);
+
+    el.appendChild(line);
+    el.style.cssText = 'position:sticky;top:0;z-index:100000;background:#7c2d12;color:#fff;' +
+      'padding:9px 14px;font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+    document.body.insertBefore(el, document.body.firstChild);
   }
 
   function initAdminLock() {
@@ -1844,30 +1980,44 @@
     var lock = document.getElementById('adminLock');
     var input = document.getElementById('adminPassInput');
     var err = document.getElementById('adminLockErr');
-    var cfg = getConfig();
+    var btn = lock ? lock.querySelector('.admin-lock-btn') : null;
     var pass = input ? input.value : '';
-    if (pass === (cfg.adminPassword || 'admin123')) {
-      markAdminUnlockedInTab();
-      var grant = function (tok) {
-        _session = _session || { token: tok, uid: null, is_guest: false, admin: false, language: null };
-        _session.admin = true;
-        if (tok) DB.updateSession(tok, { admin: true }).catch(function () {});
-      };
-      var tok = getToken();
-      if (tok) {
-        grant(tok);
-      } else {
-        tok = rndToken();
-        setToken(tok);
-        DB.createSession(tok, null, { language: _lang || langLabel('en') }).then(function () { grant(tok); }).catch(function () { grant(tok); });
-      }
-      if (lock) lock.style.display = 'none';
-      if (err) err.textContent = '';
-      if (input) input.value = '';
-      warnIfNotRealAdmin();
-    } else {
-      if (err) err.textContent = 'Incorrect password';
+
+    if (!pass) {
+      if (err) err.textContent = 'Enter the admin password';
+      return;
     }
+    if (btn) { btn.disabled = true; btn.textContent = 'Checking...'; }
+    if (err) err.textContent = '';
+
+    // Verified in Postgres, not here. This call is what makes the password
+    // worth anything: until now the comparison happened in the browser against
+    // a value that shipped in this bundle.
+    adminLogin(pass).then(function (res) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Unlock'; }
+      if (!res || !res.ok) {
+        if (err) err.textContent = (res && res.msg) || 'Incorrect password';
+        if (input) { input.value = ''; input.focus(); }
+        return;
+      }
+
+      markAdminUnlockedInTab();
+      if (lock) lock.style.display = 'none';
+      if (input) input.value = '';
+
+      // An operator holding the passphrase is not an admin account, so the
+      // normal RLS path stays empty. Pull the list through the SECURITY DEFINER
+      // function and let the pages redraw.
+      return fetchAdminUsers().then(function (rows) {
+        _session = _session || { token: getToken() || null, uid: null, is_guest: false, admin: true, language: null };
+        _session.admin = true;
+        notifyAdminUsersLoaded();
+        // Only complain if the server returned nothing: a passphrase holder who
+        // is not an is_admin account has no RLS access, so an empty list here
+        // means the read did not work, not that there are no customers.
+        if (!rows || !rows.length) setTimeout(warnIfNotRealAdmin, 50);
+      });
+    });
   }
 
   function logout() {
@@ -2973,13 +3123,17 @@ function addTxn(obj) {
   }
 
   function changeAdminPassword(currentPassword, newPassword) {
-    if (!currentPassword || !newPassword) return { ok: false, msg: 'Please fill in all fields' };
-    var cfg = getConfig();
-    if (currentPassword !== (cfg.adminPassword || 'admin123')) return { ok: false, msg: 'Current admin password is incorrect' };
-    if (String(newPassword).length < 6) return { ok: false, msg: 'New password must be at least 6 characters' };
-    cfg.adminPassword = newPassword;
-    saveConfig(cfg);
-    return { ok: true };
+    // The passphrase now lives hashed in public.admin_credentials and is only
+    // reachable from SQL, so this cannot be a client-side operation any more.
+    // Saying so plainly beats appearing to succeed and silently doing nothing.
+    if (!newPassword) return { ok: false, msg: 'Enter a new password' };
+    if (String(newPassword).length < 8) return { ok: false, msg: 'New password must be at least 8 characters' };
+    return {
+      ok: false,
+      msg: 'The admin password is now stored in the database and cannot be changed from here. ' +
+           'To rotate it, run the UPDATE at the bottom of supabase/v2/13_admin_passphrase.sql ' +
+           'in the Supabase SQL editor. That also signs out every unlocked admin tab.'
+    };
   }
 
   (function guardAuth() {
@@ -3412,6 +3566,10 @@ function addTxn(obj) {
     setUserAdmin: setUserAdmin,
     isCurrentUserAdmin: isCurrentUserAdmin,
     isRealAdmin: isRealAdmin,
+    adminLogin: adminLogin,
+    adminToken: adminToken,
+    fetchAdminUsers: fetchAdminUsers,
+    adminUsersSnapshot: adminUsersSnapshot,
     currentUser: currentUser,
     isUserActive: isUserActive,
     setUserStatus: setUserStatus,
