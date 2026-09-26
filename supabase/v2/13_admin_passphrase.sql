@@ -73,10 +73,7 @@ values (
   encode(digest('admin123', 'sha256'), 'hex'),
   encode(gen_random_bytes(32), 'hex')
 )
-on conflict (id) do update
-  set passphrase_hash = excluded.passphrase_hash,
-      token_secret    = excluded.token_secret,
-      updated_at      = now();
+on conflict (id) do nothing;
 
 -- ---------------------------------------------------------------------------
 --  3. Sign a short-lived token on a correct passphrase.
@@ -140,7 +137,7 @@ security definer
 set search_path = public, extensions
 as $$
 declare
-  parts    text[];
+  parts    text;
   expires  bigint;
   sig      text;
   secret   text;

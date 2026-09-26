@@ -53,7 +53,7 @@ var TrustDB = (function () {
     // Bumped whenever the auth/bootstrap path changes, so a page can prove
     // which build the browser actually loaded. A stale cached db.js was
     // indistinguishable from a bug that had not been fixed yet.
-    VERSION: 'v2.3.0-authfix',
+    VERSION: 'v2.4.1-admin-access',
     _diag: [],
     _diagLog: function (msg) {
       try {
@@ -485,52 +485,36 @@ var TrustDB = (function () {
           throw self_._authError(res.error, 'signup');
         }
 
-        // With "Confirm email" on, GoTrue returns a user but no session.
+        // With "Confirm email" on, GoTrue returns a user but no session. Say so
+        // rather than letting the caller treat it as a successful sign-in and
+        // then fail on the first protected query. The phone provider behaves
+        // the same way when SMS confirmation is on.
         //
-        // Rather than sending the visitor off to a confirm screen, try signing
-        // in with the credentials they just chose. Whenever the account is
-        // usable this completes signup with no extra step and no inbox round
-        // trip, and when it genuinely is not usable the sign-in error says
-        // exactly why -- which is far more useful than guessing from the
-        // absence of a session.
+        // Reaching either branch means the site is configured to require
+        // confirmation, which is a project setting rather than anything the
+        // visitor can act on. Both messages say so, and name the toggle,
+        // instead of telling someone to go and check an inbox that will
+        // either never arrive or arrive too slowly to be usable.
         if (!res.data.session) {
-          return self_._waitForClient().then(function (lib) {
-            var signIn = id.kind === 'phone'
-              ? { phone: id.value, password: password }
-              : { email: id.value, password: password };
-            return lib.auth.signInWithPassword(signIn);
-          }).then(function (si) {
-            if (si.error || !si.data || !si.data.session) {
-              if (id.kind === 'phone') {
-                return {
-                  ok: true,
-                  needsPhoneConfirm: true,
-                  message: 'Your account was created, but this site still asks for a ' +
-                    'phone confirmation code. To sign up with no code at all, turn off ' +
-                    'phone confirmation in Supabase under Authentication -> Providers -> ' +
-                    'Phone. (The Phone provider also has to be enabled and connected to a ' +
-                    'SMS provider first.)'
-                };
-              }
-              return {
-                ok: true,
-                needsEmailConfirm: true,
-                message: 'Your account was created, but this site still asks you to ' +
-                  'confirm by email, so you are not signed in yet. To make sign-up ' +
-                  'instant with no email, turn off "Confirm email" in Supabase under ' +
-                  'Authentication -> Sign In / Providers -> Email, then sign in again.'
-              };
-            }
-
-            self_._authUser = si.data.user;
-            self_._session = si.data.session;
-            self_._bootstrap();
-
-            return self_._loadTable('users', 'id').then(function () {
-              var row = self_._cache.users.find(function (u) { return u.id === self_._authUser.id; });
-              return { ok: true, user: self_._toV1User(row || self_._synthUser(self_._authUser)), autoSignedIn: true };
-            });
-          });
+          if (id.kind === 'phone') {
+            return {
+              ok: true,
+              needsPhoneConfirm: true,
+              message: 'Your account was created, but this site still asks for a ' +
+                'phone confirmation code. To sign up with no code at all, turn off ' +
+                'phone confirmation in Supabase under Authentication -> Providers -> ' +
+                'Phone. (The Phone provider also has to be enabled and connected to a ' +
+                'SMS provider first.)'
+            };
+          }
+          return {
+            ok: true,
+            needsEmailConfirm: true,
+            message: 'Your account was created, but this site still asks you to ' +
+              'confirm by email, so you are not signed in yet. To make sign-up ' +
+              'instant with no email, turn off "Confirm email" in Supabase under ' +
+              'Authentication -> Sign In / Providers -> Email, then sign in again.'
+          };
         }
 
         self_._authUser = res.data.user;
@@ -795,6 +779,20 @@ var TrustDB = (function () {
     _bootstrap: function () {
       var self_ = this;
       var signedIn = !!this._authUser;
+      // Resolve the signed-in account's server role before considering a stored
+      // shared-password token. An expired token must not override a real admin.
+      if (this._rolePromise) return this._rolePromise.then(function () { return self_._bootstrap(); });
+      var roleSession = signedIn && this._session && this._session.access_token;
+      if (signedIn && this._roleCheckedSession !== roleSession) {
+        this._roleCheckedSession = roleSession;
+        this._rolePromise = this.q('users?id=eq.' + encodeURIComponent(this._authUser.id) + '&select=id,is_admin', {}).then(function (rows) {
+          self_.isAdmin = !!(rows && rows[0] && rows[0].is_admin);
+        }, function (error) {
+          self_.isAdmin = false;
+          console.warn('Could not resolve account role:', error.message);
+        }).then(function () { self_._rolePromise = null; });
+        return this._rolePromise.then(function () { return self_._bootstrap(); });
+      }
 
       // Always public, always safe to try.
       var publicTables = ['coin_addresses', 'app_settings', 'products', 'investment_products'];
@@ -823,6 +821,7 @@ var TrustDB = (function () {
 
       return Promise.all(jobs).then(function () {
         self_._markConnected();
+        return true;
       });
     },
 
@@ -844,11 +843,38 @@ var TrustDB = (function () {
       var startTs = Date.now();
 
       var q = this._query(table);
-      return this.q(q.path, {}).then(function (rows) {
+      var token = '';
+      try {
+        if (/\/admin(?:-[a-z]+)?\.html$/.test(window.location.pathname)) token = sessionStorage.getItem('trustAdminToken') || '';
+      } catch (e) {}
+      var canonical = this._canonical(table);
+      var privateTables = ['users', 'balances', 'verifications', 'loans', 'transactions', 'contracts', 'investments', 'chat_messages'];
+      var read;
+      if (token && !this.isAdmin && privateTables.indexOf(canonical) !== -1) {
+        // Read-only, allowlisted RPC validates the existing signed admin token.
+        var page = function (offset, collected) {
+          return self_.rpc('admin_read_rows', {tok: token, table_name: canonical, row_offset: offset}).then(function (rows) {
+            rows = rows || [];
+            var all = collected.concat(rows);
+            return rows.length === 500 ? page(offset + 500, all) : all;
+          });
+        };
+        read = page(0, []);
+      } else {
+        var page = function (offset, collected) {
+          return self_.q(q.path + '&limit=500&offset=' + offset, {}).then(function (rows) {
+            rows = rows || [];
+            var all = collected.concat(rows);
+            return rows.length === 500 ? page(offset + 500, all) : all;
+          });
+        };
+        read = page(0, []);
+      }
+      return read.then(function (rows) {
         if (self_._loadSeq[table] !== mySeq) return (rows || []).length;
         rows = rows || [];
         self_._applyRows(table, rows, startTs);
-        self_._stashRows(table, rows);
+        if (!token) self_._stashRows(table, rows);
         return rows.length;
       });
     },

@@ -1,3 +1,6 @@
+-- Apply once in Supabase SQL Editor on the existing v2 database.
+-- Preserves admin password, existing UIDs, balances, and RLS policies.
+begin;
 -- ===========================================================================
 -- 11_uid_code.sql -- 6-digit public member number
 --
@@ -99,3 +102,79 @@ end $$;
 drop trigger if exists users_prepare on public.users;
 create trigger users_prepare before insert on public.users
   for each row execute function public.prepare_user();
+
+create or replace function public.admin_users(tok text)
+returns setof public.users
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  parts    text;
+  expires  bigint;
+  sig      text;
+  secret   text;
+  expected text;
+begin
+  if tok is null or position('.' in tok) = 0 then
+    raise exception 'invalid token';
+  end if;
+
+  parts := split_part(tok, '.', 1) || '|' || split_part(tok, '.', 2);
+  expires := split_part(parts, '|', 1)::bigint;
+  sig     := split_part(parts, '|', 2);
+
+  if expires < extract(epoch from now())::bigint then
+    raise exception 'token expired';
+  end if;
+
+  select token_secret into secret from public.admin_credentials where id = true;
+  if secret is null then
+    raise exception 'invalid token';
+  end if;
+
+  expected := encode(hmac(expires::text, secret, 'sha256'), 'hex');
+  if sig is distinct from expected then
+    raise exception 'invalid token';
+  end if;
+
+  return query select * from public.users order by created_at desc;
+end $$;
+
+
+create or replace function public.admin_read_rows(tok text, table_name text, row_offset integer default 0)
+returns jsonb language plpgsql security definer
+set search_path = public, extensions
+as $$
+declare result jsonb;
+begin
+  -- The existing server-side verifier rejects invalid/expired bearer tokens.
+  perform public.admin_users(tok);
+  if table_name not in ('users','balances','verifications','loans','transactions','contracts','investments','chat_messages')
+     or table_name is null then
+    raise exception 'table not allowed';
+  end if;
+  if row_offset is null or row_offset < 0 then raise exception 'invalid offset'; end if;
+  if table_name = 'investments' then
+    select coalesce(jsonb_agg(to_jsonb(r)), '[]'::jsonb) into result
+    from (select i.*, jsonb_build_object('code', p.code, 'name', p.name) as investment_products
+          from public.investments i left join public.investment_products p on p.id = i.product_id
+          order by i.id limit 500 offset row_offset) r;
+  elsif table_name = 'balances' then
+    select coalesce(jsonb_agg(to_jsonb(r)), '[]'::jsonb) into result
+    from (select * from public.balances order by uid, coin limit 500 offset row_offset) r;
+  elsif table_name = 'verifications' then
+    select coalesce(jsonb_agg(to_jsonb(r)), '[]'::jsonb) into result
+    from (select * from public.verifications order by uid limit 500 offset row_offset) r;
+  else
+    execute format('select coalesce(jsonb_agg(to_jsonb(r)), ''[]''::jsonb) from (select * from public.%I order by id limit 500 offset $1) r', table_name)
+      into result using row_offset;
+  end if;
+  return result;
+end $$;
+revoke all on function public.admin_users(text) from public;
+grant execute on function public.admin_users(text) to anon, authenticated;
+revoke all on function public.admin_read_rows(text,text,integer) from public;
+grant execute on function public.admin_read_rows(text,text,integer) to anon, authenticated;
+notify pgrst, 'reload schema';
+commit;

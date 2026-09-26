@@ -1099,68 +1099,23 @@
 
   var _lang = null;
 
-  // LANGS maps display label -> code, so it has to be reversed to answer the
-  // other direction. langLabel() previously indexed LANGS with a CODE, which
-  // can never match a label key, so it always returned 'English' and
-  // config.defaultLanguage was silently discarded.
-  var LANG_CODE_TO_LABEL = {};
-  (function () {
-    for (var k in LANGS) {
-      if (Object.prototype.hasOwnProperty.call(LANGS, k)) LANG_CODE_TO_LABEL[LANGS[k]] = k;
-    }
-  })();
-
-  // Canonical order, so every page shows the same list in the same sequence.
-  var LANG_ORDER = Object.keys(LANGS);
-
-  // Persian reads right to left; everything else is left to right.
-  var RTL_LANGS = { fa: true };
-
-  var LANG_KEY = 'st.lang';
-
-  function codeToLabel(code) {
-    return LANG_CODE_TO_LABEL[code] || 'English';
-  }
-
-  // Accepts either a label or a code so existing call sites keep working.
-  function langLabel(v) {
-    if (LANGS[v] !== undefined) return v;
-    return codeToLabel(v);
-  }
-
-  function isKnownLang(v) {
-    return !!(v && LANGS[v]);
+  function langLabel(code) {
+    return (LANGS && LANGS[code]) || 'English';
   }
 
   function getLang() {
-    if (isKnownLang(_lang)) return _lang;
-
-    // localStorage is checked before the database, and that ordering is the
-    // whole point: on a multi-page static site the database is only reachable
-    // for a signed-in user, so a logged-out visitor used to lose their choice
-    // on every page navigation and fall back to English.
-    var stored = null;
-    try { stored = localStorage.getItem(LANG_KEY); } catch (e) {}
-    if (isKnownLang(stored)) return stored;
-
-    var cfg = 'en';
-    try { if (getConfig().defaultLanguage) cfg = getConfig().defaultLanguage; } catch (e) {}
-    if (isKnownLang(cfg)) return cfg;          // stored as a label
-    if (LANG_CODE_TO_LABEL[cfg]) return codeToLabel(cfg); // stored as a code
-
+    if (_lang && LANGS[_lang]) return _lang;
+    var c = 'en';
+    try { if (getConfig().defaultLanguage) c = getConfig().defaultLanguage; } catch (e) {}
     var dbLang = null;
     try { if (dbActive() && DB.getSetting) dbLang = DB.getSetting('language'); } catch (e) {}
-    if (isKnownLang(dbLang)) return dbLang;
-
-    return 'English';
+    if (dbLang && LANGS[dbLang]) return dbLang;
+    return langLabel(c);
   }
 
   function setLang(el, label) {
-    if (!isKnownLang(label)) label = 'English';
+    if (!LANGS[label]) label = 'English';
     _lang = label;
-    // Persist locally as well as in the database. Without this the selection
-    // only lived in a JS variable, so it was lost on the next page load.
-    try { localStorage.setItem(LANG_KEY, label); } catch (e) {}
     if (dbActive()) {
       try {
         if (_session && _session.uid != null && !_session.is_guest) DB.setUserLanguage(_session.uid, label).catch(function () {});
@@ -1173,38 +1128,6 @@
     if (menu) menu.style.display = 'none';
   }
 
-  // Build the language menu from LANGS instead of trusting hardcoded HTML.
-  //
-  // index/login/register each had 11 language labels pasted in as literal text,
-  // and those labels had been saved as double-encoded UTF-8 (mojibake). The
-  // click handler then called setLang(this, '<garbage>'), LANGS[garbage] was
-  // undefined, and setLang quietly fell back to English -- so every language
-  // looked like a button that did nothing.
-  //
-  // Rendering from LANGS deletes that duplicate copy of the labels, so the two
-  // lists can never drift apart or corrupt again.
-  function renderLangMenu() {
-    var menu = document.getElementById('langMenu');
-    if (!menu) return;
-    if (menu.getAttribute('data-rendered') === '1' && menu.children.length === LANG_ORDER.length) return;
-
-    menu.textContent = '';
-    LANG_ORDER.forEach(function (label) {
-      var div = document.createElement('div');
-      div.className = 'language-option';
-      div.setAttribute('data-lang', label);
-      div.setAttribute('role', 'menuitem');
-      div.setAttribute('tabindex', '0');
-      div.textContent = label;
-      div.addEventListener('click', function () { setLang(div, label); });
-      div.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setLang(div, label); }
-      });
-      menu.appendChild(div);
-    });
-    menu.setAttribute('data-rendered', '1');
-  }
-
   function t(key) {
     var e = I18N[key];
     if (!e) return '';
@@ -1214,16 +1137,6 @@
 
   function applyI18n() {
     var lang = getLang();
-    var code = LANGS[lang] || 'en';
-
-    renderLangMenu();
-
-    // Persian is right-to-left. Without this the document keeps dir="ltr" and
-    // the translated text is laid out in the wrong direction.
-    try {
-      document.documentElement.setAttribute('dir', RTL_LANGS[code] ? 'rtl' : 'ltr');
-    } catch (e) {}
-
     var btn = document.querySelector('.language-btn');
     if (btn) {
       var chevron = btn.querySelector('svg');
@@ -1232,11 +1145,8 @@
       btn.appendChild(document.createTextNode(label));
       if (chevron) btn.appendChild(chevron);
     }
-    // Match on data-lang rather than textContent. textContent also picks up
-    // any flag or badge a theme puts inside the option, so the comparison
-    // failed and the active language was never highlighted.
     document.querySelectorAll('.language-option').forEach(function (o) {
-      o.classList.toggle('active', o.getAttribute('data-lang') === lang);
+      o.classList.toggle('active', o.textContent.trim() === lang);
     });
     document.querySelectorAll('[data-i18n]').forEach(function (el) {
       var v = t(el.getAttribute('data-i18n'));
@@ -1271,7 +1181,10 @@
     var idEl = document.querySelector('.menu-id');
     if (!idEl) return;
     var uid = getUserId();
-    idEl.textContent = 'ID: ' + (uid || 'Not Logged In');
+    var profile = uid ? accountByUid(uid) : null;
+    var memberId = profile && (profile.uid_code || profile.uidCode);
+    idEl.textContent = 'ID: ' + (memberId || uid || 'Not Logged In');
+    idEl.style.overflowWrap = 'anywhere';
     // Admin button in the side menu: show whenever the current user has
     // admin access (session.admin flag OR users.is_admin), refreshed on every
     // session restore / DB-ready / realtime user event.
@@ -1541,7 +1454,7 @@
 
   function dbUserToApp(u) {
     return {
-      uid: u.uid,
+      uid: u.uid != null ? u.uid : u.id,
       account: u.account,
       password: u.password_hash,
       password_hash: u.password_hash,
@@ -1724,7 +1637,7 @@
     // DB.getUsers() returns [] under RLS. Public admin_users() is the one read
     // allowed to see those rows, and its result is cached here so this stays
     // synchronous for the ~15 call sites that do .length / .map / .forEach.
-    if (_adminUsers && !isRealAdmin()) return _adminUsers.slice();
+    if (_adminUsers && adminToken() && !isRealAdmin()) return _adminUsers.slice();
 
     if (dbReadable()) {
       try {
@@ -1901,25 +1814,75 @@
 
   function clearAdminUsers() {
     _adminUsers = null;
+    _verifiedAdminToken = '';
+    if (typeof DB !== 'undefined' && DB && DB._cache) {
+      ['users','loans','transactions','trades','aiOrders','contracts','investments'].forEach(function (key) { DB._cache[key] = []; });
+      ['userBalances','verifications','chatMessages'].forEach(function (key) { DB._cache[key] = {}; });
+    }
     setAdminToken('');
     clearAdminUnlockedInTab();
   }
 
+  var _adminRefresh = null;
   function fetchAdminUsers() {
-    if (!adminToken()) return Promise.resolve([]);
-    if (typeof DB === 'undefined' || !DB || !DB.rpc) return Promise.resolve([]);
-    return DB.rpc('admin_users', { tok: adminToken() }).then(function (rows) {
-      _adminUsers = (rows || []).map(dbUserToApp);
-      return _adminUsers;
-    }).catch(function (e) {
-      var m = String((e && e.message) || '');
-      // Expired or tampered token: drop it rather than leaving a dead unlock
-      // that silently shows an empty list.
-      if (/token/i.test(m)) clearAdminUsers();
-      else console.warn('admin_users failed:', m);
-      return [];
-    });
+    if (_adminRefresh) return _adminRefresh;
+    if (typeof DB === 'undefined' || !DB) return Promise.reject(new Error('Backend is not ready'));
+    if (!adminToken() && !isRealAdmin()) return Promise.reject(new Error('Admin sign-in required'));
+    var tables = ['balances', 'verifications', 'loans', 'transactions', 'contracts', 'investments', 'chat_messages'];
+    var requestToken = adminToken();
+    _adminRefresh = DB.pullBlob('users').then(function () {
+        if (requestToken !== adminToken()) throw new Error('Admin session changed; sign in again');
+        _adminUsers = DB.getUsers().map(dbUserToApp);
+        _verifiedAdminToken = requestToken;
+        var oldWarning = document.getElementById('realAdminWarn');
+        if (oldWarning) oldWarning.remove();
+        var lock = document.getElementById('adminLock');
+        if (lock) lock.style.display = 'none';
+        notifyAdminUsersLoaded();
+        // A failure in another section must not hide the loaded user list.
+        return Promise.allSettled(tables.map(function (table) { return DB.pullBlob(table); }));
+      }).then(function (results) {
+        var failures = results.map(function (result, i) { return result.status === 'rejected' ? tables[i] : null; }).filter(Boolean);
+        var banner = document.getElementById('adminDataError');
+        if (banner) banner.remove();
+        if (failures.length) {
+          banner = document.createElement('div'); banner.id = 'adminDataError';
+          banner.setAttribute('role', 'alert');
+          banner.style.cssText = 'background:#fff3cd;color:#664d03;padding:12px;';
+          banner.textContent = 'Users loaded. Some related data could not refresh: ' + failures.join(', ') + '. Check the database setup or connection and retry.';
+          document.body.prepend(banner);
+        }
+        notifyAdminUsersLoaded();
+        return _adminUsers;
+      }).catch(function (e) {
+        _verifiedAdminToken = '';
+        var message = String(e && e.message || e);
+        if (/invalid token|token expired/i.test(message)) {
+          clearAdminUsers();
+          var lock = document.getElementById('adminLock');
+          if (lock) lock.style.display = 'flex';
+        }
+        var banner = document.getElementById('adminDataError');
+        if (!banner && document.body) {
+          banner = document.createElement('div'); banner.id = 'adminDataError';
+          banner.setAttribute('role', 'alert');
+          banner.style.cssText = 'position:sticky;top:0;z-index:100001;background:#7c2d12;color:white;padding:12px;';
+          document.body.prepend(banner);
+        }
+        if (banner) banner.textContent = 'Admin data could not load. Apply supabase/v2/14_admin_data_fix.sql, then sign in again. ' + message;
+        throw e;
+      }).finally(function () { _adminRefresh = null; });
+    return _adminRefresh;
   }
+
+  // Passphrase sessions cannot subscribe to private RLS events. Poll while the
+  // admin page is visible and refresh when the operator returns to the tab.
+  function refreshAdminPage() {
+    if (!document.getElementById('adminLock') || document.hidden) return;
+    if (adminToken() || isRealAdmin()) fetchAdminUsers().catch(function () {});
+  }
+  setInterval(refreshAdminPage, 15000);
+  document.addEventListener('visibilitychange', refreshAdminPage);
 
   // Once the snapshot lands, the pages that list users need to redraw. They all
   // listen for trustsync events, and a few only listen for their own table, so
@@ -1932,112 +1895,20 @@
     } catch (e) {}
   }
 
-  // A user whose profile carries is_admin is never asked for the shared admin
-  // password at all.
-  function adminHasRealAccess() {
-    if (_session && _session.admin) return true;
-    try { if (isCurrentUserAdmin()) return true; } catch (e) {}
-    return false;
-  }
-
-  // True only when the signed-in account's own database row carries is_admin.
-  //
-  // Deliberately ignores _session.admin, which the shared admin password sets
-  // client-side. That flag hides the lock and nothing else: it is not in the
-  // JWT and not in the database, so RLS still refuses every query. Checking it
-  // here is what lets the panel explain an empty user list instead of showing
-  // "No registered users yet" and implying the site has no customers.
+  // Account permissions come from the active Supabase identity and profile.
+  // The app's older cookie/session object can lag behind that identity.
   function isRealAdmin() {
-    var uid = getUserId();
-    if (!uid) return false;
-    try { return isUserAdmin(uid); } catch (e) { return false; }
+    if (typeof DB === 'undefined' || !DB || !DB._authUser) return false;
+    var row = DB.getUserStr(DB._authUser.id);
+    return !!(row && row.is_admin === true);
   }
 
-  // A page can be unlocked and still read nothing: the shared password is a
-  // client-side check, so it grants no JWT claim and no is_admin flag, and RLS
-  // (users_select_own: id = auth.uid() or public.is_admin()) then returns an
-  // empty set. "No customers" and "you are not an admin" look identical, so say
-  // which one it is -- and hand over the exact statement, pre-filled with the
-  // signed-in account, instead of making the user look up their own email.
-  function warnIfNotRealAdmin() {
-    if (isRealAdmin()) return;
-    if (document.getElementById('realAdminWarn')) return;
-    if (!document.body) return;
-
-    var uid = null;
-    try { uid = getUserId(); } catch (e) {}
-    var acct = '';
-    if (uid) {
-      try {
-        var u = accountByUid(uid);
-        acct = String((u && (u.account || u.email)) || '');
-      } catch (e) {}
-    }
-
-    // Hand over the SECURITY DEFINER function, not a bare UPDATE.
-    //
-    // The raw UPDATE could never work: the users_guard_privileges trigger
-    // rejects any is_admin change unless is_admin() is already true, and
-    // is_admin() reads auth.uid() -- which is null in a SQL editor session.
-    // So the statement it used to suggest failed with
-    // "42501 is_admin cannot be changed by the account owner" every time.
-    // promote_first_admin() is the function written for exactly this, and it
-    // additionally records the promotion in audit_log.
-    var esc = acct.replace(/'/g, "''");
-    var sql = acct
-      ? "select public.promote_first_admin('" + esc + "');"
-      : '';
-
-    var el = document.createElement('div');
-    el.id = 'realAdminWarn';
-
-    var line = document.createElement('div');
-    line.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;';
-
-    var msg = document.createElement('span');
-    var b = document.createElement('strong');
-    b.textContent = 'Admin data is hidden: ';
-    msg.appendChild(b);
-    msg.appendChild(document.createTextNode(
-      acct
-        ? 'your account "' + acct + '" has no is_admin flag in the database, so row-level security returns nothing. ' +
-          'Run this once in the Supabase SQL Editor (the account must already exist and its email must be confirmed). '
-        : 'you are not signed in, and the shared password cannot grant database access. '
-    ));
-    line.appendChild(msg);
-
-    if (sql) {
-      var copy = document.createElement('button');
-      copy.type = 'button';
-      copy.textContent = 'Copy fix SQL';
-      copy.style.cssText = 'cursor:pointer;border:1px solid rgba(255,255,255,.55);background:transparent;color:#fff;' +
-        'border-radius:6px;padding:4px 10px;font:600 12px/1.4 inherit;';
-      copy.onclick = function () {
-        var done = function () {
-          copy.textContent = 'Copied - paste into Supabase SQL Editor';
-          setTimeout(function () { copy.textContent = 'Copy fix SQL'; }, 4000);
-        };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(sql).then(done, function () { window.prompt('Copy this:', sql); });
-        } else {
-          window.prompt('Copy this:', sql);
-        }
-      };
-      line.appendChild(copy);
-    }
-
-    var close = document.createElement('button');
-    close.type = 'button';
-    close.setAttribute('aria-label', 'Dismiss');
-    close.textContent = '\u00d7';
-    close.style.cssText = 'cursor:pointer;border:0;background:transparent;color:#fff;font-size:19px;line-height:1;padding:0 2px;opacity:.75;';
-    close.onclick = function () { el.remove(); };
-    line.appendChild(close);
-
-    el.appendChild(line);
-    el.style.cssText = 'position:sticky;top:0;z-index:100000;background:#7c2d12;color:#fff;' +
-      'padding:9px 14px;font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
-    document.body.insertBefore(el, document.body.firstChild);
+  var _verifiedAdminToken = '';
+  function hasAdminReadAccess() {
+    if (isRealAdmin()) return true;
+    var token = adminToken();
+    return !!(token && token === _verifiedAdminToken &&
+      Number(token.split('.')[0]) > Date.now() / 1000);
   }
 
   function initAdminLock() {
@@ -2056,7 +1927,10 @@
       // concluding that, rather than locking out someone who is an admin.
       var attempts = 0;
       var decide = function () {
-        if (adminHasRealAccess()) { lock.style.display = 'none'; warnIfNotRealAdmin(); return; }
+        if (isRealAdmin() || adminToken()) {
+          fetchAdminUsers().then(function () { lock.style.display = 'none'; }).catch(function () { lock.style.display = 'flex'; });
+          return;
+        }
 
         var uid = getUserId();
         if (uid && attempts < 6) {
@@ -2068,7 +1942,7 @@
             return;
           }
         }
-        if (adminUnlockedInTab()) { lock.style.display = 'none'; warnIfNotRealAdmin(); return; }
+        // An old browser unlock flag is not proof of server authorization.
         lock.style.display = 'flex';
       };
       var gate = getToken() ? restoreSession().catch(function () { return null; }) : Promise.resolve(null);
@@ -2113,11 +1987,11 @@
         _session = _session || { token: getToken() || null, uid: null, is_guest: false, admin: true, language: null };
         _session.admin = true;
         notifyAdminUsersLoaded();
-        // Only complain if the server returned nothing: a passphrase holder who
-        // is not an is_admin account has no RLS access, so an empty list here
-        // means the read did not work, not that there are no customers.
-        if (!rows || !rows.length) setTimeout(warnIfNotRealAdmin, 50);
+        // A successful empty response is a valid empty user list.
       });
+    }).catch(function (e) {
+      if (lock) lock.style.display = 'flex';
+      if (err) err.textContent = 'Could not load admin data. Apply 14_admin_data_fix.sql and retry.';
     });
   }
 
@@ -2126,7 +2000,7 @@
     closeWalletConnect();
     // Drop the tab unlock too, otherwise the next sign-in as a normal user
     // would still walk straight into the admin pages.
-    clearAdminUnlockedInTab();
+    clearAdminUsers();
   }
 
   // Dispatch trustsync event to refresh admin pages in real-time
@@ -3667,6 +3541,7 @@ function addTxn(obj) {
     setUserAdmin: setUserAdmin,
     isCurrentUserAdmin: isCurrentUserAdmin,
     isRealAdmin: isRealAdmin,
+    hasAdminReadAccess: hasAdminReadAccess,
     adminLogin: adminLogin,
     adminToken: adminToken,
     fetchAdminUsers: fetchAdminUsers,

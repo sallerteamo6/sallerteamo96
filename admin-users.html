@@ -9,10 +9,10 @@
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="img/logo.png">
   <link rel="stylesheet" href="styles.css">
-  <script src="scripts/config.js?v=20260926n"></script>
-  <script src="scripts/supabase-client.js?v=20260926n"></script>
-    <script src="scripts/db.js?v=20260926n"></script>
-  <script src="app.js?v=20260926n"></script>
+  <script src="scripts/config.js?v=20260926m"></script>
+  <script src="scripts/supabase-client.js?v=20260926m"></script>
+    <script src="scripts/db.js?v=20260926p"></script>
+  <script src="app.js?v=20260926p"></script>
   <style>
     .profit-toggle{border:none;border-radius:14px;padding:4px 14px;font-size:12px;font-weight:700;cursor:pointer;}
     .profit-toggle.on{background:#07c160;color:#fff;}
@@ -302,20 +302,9 @@
       var users = TrustApp.getUsers();
       renderStats();
       if (!users.length) {
-        // An empty list here is ambiguous: either the site genuinely has no
-        // accounts, or row-level security is withholding them because the
-        // signed-in account has no is_admin flag. Saying "No registered users
-        // yet" in the second case is actively misleading, so distinguish them.
-        var hidden = !!(TrustApp.isRealAdmin && !TrustApp.isRealAdmin());
-        box.innerHTML = '<tr><td colspan="8"><div class="empty-state"><span class="es-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-          (hidden
-            ? '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path>'
-            : '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle>') +
-          '</svg></span>' +
-          (hidden
-            ? '<div style="font-weight:600;margin-bottom:4px;">Users are hidden by row-level security</div>' +
-              '<div style="font-size:13px;opacity:.8;">This account is not an admin in the database, so Supabase returns no rows. Use the banner at the top to copy the statement that grants access.</div>'
-            : 'No registered users yet') +
+        var canRead = TrustApp.hasAdminReadAccess && TrustApp.hasAdminReadAccess();
+        box.innerHTML = '<tr><td colspan="8"><div class="empty-state">' +
+          (canRead ? 'No registered users yet' : 'Sign in as an admin to load users.') +
           '</div></td></tr>';
         return;
       }
@@ -330,15 +319,12 @@
     window.addEventListener('trustsync:users', function () {
       try { renderUsers(); } catch (e) {}
       if (editUid) { try { openEdit(editUid); } catch (e) {} }
-      if (DB && DB.pullBlob) DB.pullBlob('users').then(function () { try { renderUsers(); } catch (e) {} });
     });
     window.addEventListener('trustsync:user_balances', function () {
       try { renderUsers(); } catch (e) {}
-      if (DB && DB.pullBlob) DB.pullBlob('user_balances').then(function () { try { renderUsers(); } catch (e) {} });
     });
     window.addEventListener('trustsync:verifications', function () {
       try { renderUsers(); } catch (e) {}
-      if (DB && DB.pullBlob) DB.pullBlob('verifications').then(function () { try { renderUsers(); } catch (e) {} });
     });
     if (TrustApp.watchStorage) {
       TrustApp.watchStorage(['trustUsers', 'trustBalances', 'trustVerifications'], function () { renderUsers(); });
