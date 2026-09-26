@@ -300,9 +300,27 @@ var TrustDB = (function () {
       var self_ = this;
       var token = this._session && this._session.access_token;
 
+      // PostgREST authenticates the anon role from the `apikey` header, and
+      // rejects the request outright when it is missing -- even when a valid
+      // user bearer token is also present:
+      //   401 {"hint":"No 'apikey' request header or url param was found.",
+      //        "message":"No API key found in request"}
+      //
+      // supabase-js sets this on every call it makes, but q() is a hand-rolled
+      // fetch and bypasses the client, so it has to send the header itself.
+      // This stayed hidden while ENABLED was false: q() returned early, so no
+      // request was ever made and the missing header could not surface.
+      if (!this.anon) {
+        return Promise.reject(new Error(
+          'No API key configured. Set DB_ANON_KEY in scripts/config.js ' +
+          '(Supabase -> Project Settings -> API -> anon public).'
+        ));
+      }
+
       var headers = {
         'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
+        'Prefer': 'return=representation',
+        'apikey': this.anon
       };
       if (token) headers.Authorization = 'Bearer ' + token;
 
