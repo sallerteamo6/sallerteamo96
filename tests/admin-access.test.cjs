@@ -6,7 +6,7 @@ function fn(name){const start=source.indexOf('  function '+name+'(');return sour
  const context={console,Date,Promise,_adminRefresh:null,_verifiedAdminToken:'',_adminUsers:null,
    adminToken:()=> '9999999999.signature',notifyAdminUsersLoaded(){},dbUserToApp:u=>u,
    document:{getElementById:id=>nodes[id]||null,createElement:()=>({setAttribute(){},style:{}}),body:{prepend:b=>banners.push(b)}},
-   DB:{_authUser:null,getUserStr:()=>null,getUsers:()=>[],pullBlob:async()=>true}};
+   DB:{_pageTables:()=>['users','balances','loans'],_authUser:null,getUserStr:()=>null,getUsers:()=>[],pullBlob:async()=>true}};
  vm.createContext(context);
  for(const name of ['isRealAdmin','hasAdminReadAccess','fetchAdminUsers'])vm.runInContext(fn(name),context);
  assert.equal(context.hasAdminReadAccess(),false,'unvalidated token alone grants no access');

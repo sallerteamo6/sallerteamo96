@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260926q"></script>
-  <script src="app.js?v=20260926q"></script>
+    <script src="scripts/db.js?v=20260927a"></script>
+  <script src="app.js?v=20260927a"></script>
 </head>
 <body class="auth-page admin-page" style="background:#eef1f5;padding-bottom:30px;">
 
@@ -144,7 +144,7 @@
 
     var _userSig = '';
     function userSig() {
-      return TrustApp.getUsers().map(function (u) { return u.uid + ':' + u.account; }).join('|');
+      return TrustApp.getUsers().map(function (u) { return u.uid + ':' + u.account + ':' + u.email + ':' + u.uid_code; }).join('|');
     }
     function fillUsers() {
       var sel = document.getElementById('adjUser');
@@ -160,12 +160,13 @@
       users.forEach(function (u) {
         var o = document.createElement('option');
         o.value = u.uid;
-        o.textContent = u.account + ' (' + u.uid + ')';
+        o.textContent = (u.email || u.account || 'User') + ' — UID: ' + (u.uid_code || u.uid);
+        o.title = 'Account ID: ' + u.uid;
         sel.appendChild(o);
       });
       if (prev && users.some(function (u) { return String(u.uid) === String(prev); })) sel.value = prev;
       var q = new URLSearchParams(location.search);
-      if (!sel.value && q.get('u')) sel.value = q.get('u');
+      if (!prev && q.get('u') && users.some(function (u) { return String(u.uid) === q.get('u'); })) sel.value = q.get('u');
       try { refreshBal(); } catch (e) {}
     }
     fillUsers();

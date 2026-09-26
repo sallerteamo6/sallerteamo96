@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260926q"></script>
-  <script src="app.js?v=20260926q"></script>
+    <script src="scripts/db.js?v=20260927a"></script>
+  <script src="app.js?v=20260927a"></script>
   <style>
     .profit-toggle{border:none;border-radius:14px;padding:4px 14px;font-size:12px;font-weight:700;cursor:pointer;}
     .profit-toggle.on{background:#07c160;color:#fff;}
@@ -79,7 +79,7 @@
     </div>
 
     <div class="admin-search">
-      <input type="text" id="userSearch" placeholder="Search by name or email...">
+      <input type="text" id="userSearch" placeholder="Search email or UID...">
     </div>
 
     <div class="admin-panel">
@@ -164,21 +164,25 @@
     }
     function verCell(u) {
       var v = TrustApp.getVerification ? TrustApp.getVerification(u.uid) : null;
-      if (v && v.status === 'approved') return '<span class="badge green">Approved</span>';
-      var btn = '<button class="action-btn ab-green" onclick="verifyUser(\'' + esc(u.uid) + '\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Verify</button>';
+      if (v && v.status === 'approved') return '<span class="badge green">' + (v.verificationMethod === 'admin_override' ? 'Manually approved' : 'Approved') + '</span>';
+      var btn = '<button class="action-btn ab-green" onclick="verifyUser(\'' + esc(u.uid) + '\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Manually approve</button>';
       if (v && v.status === 'rejected') return '<span class="badge red">Rejected</span> ' + btn;
       if (v && v.status === 'pending') return '<span class="badge amber">Pending</span> ' + btn;
       return '<span class="muted" style="font-size:12.5px;">Not submitted</span> ' + btn;
     }
+    var userActionBusy = {};
     async function verifyUser(uid) {
+      if (userActionBusy[uid]) return;
+      userActionBusy[uid]=true;
+      try {
       var res = await TrustApp.adminApproveKyc(uid);
       if (!res.ok) { toast('error', res.msg); return; }
-      toast('success', 'KYC verified for ' + uid);
+      toast('success', 'Manual approval saved; documents were not reviewed');
       renderUsers();
+      } finally { delete userActionBusy[uid]; }
     }
     function profitCell(u) {
-      var on = TrustApp.getProfitMode ? TrustApp.getProfitMode(u.uid) : false;
-      return '<button class="profit-toggle ' + (on ? 'on' : 'off') + '" onclick="toggleProfit(\'' + esc(u.uid) + '\')">' + (on ? 'On' : 'Off') + '</button>';
+      return '<button class="profit-toggle off" disabled title="Forced winning outcomes are unavailable for live trading">Unavailable</button>';
     }
     function statusCell(u) {
       var active = TrustApp.isUserActive(u.uid);
@@ -197,7 +201,7 @@
       var b = TrustApp.getBalances(u.uid) || {};
       var info = '<div class="admin-modal-ava"' + (admin ? ' style="background:linear-gradient(135deg,#7c3aed,#a78bfa);"' : '') + '>' + esc((u.account || '?').charAt(0).toUpperCase()) + '</div>'
         + '<div><div class="admin-modal-name">' + esc(u.account) + (admin ? ' <span class="pill-sm" style="background:#f3e8ff;color:#7c3aed;">ADMIN</span>' : '') + '</div>'
-        + '<div class="admin-modal-uid">' + esc(u.uid) + ' &#183; joined ' + esc((u.createdAt || '').slice(0, 10) || '-') + '</div></div>';
+        + '<div class="admin-modal-uid">' + esc(u.uid_code || u.uid) + ' &#183; joined ' + esc((u.createdAt || '').slice(0, 10) || '-') + '</div></div>';
       var roleBtn = admin
         ? '<button class="action-btn ab-red" onclick="toggleAdmin(\'' + esc(u.uid) + '\')">Remove Admin</button>'
         : '<button class="action-btn ab-blue" onclick="toggleAdmin(\'' + esc(u.uid) + '\')">Make Admin</button>';
@@ -206,7 +210,7 @@
         : '<button class="action-btn ab-green" onclick="toggleStatus(\'' + esc(u.uid) + '\')">Activate</button>';
       var resolveVer = function (v) {
         if (!v) return 'Not submitted';
-        if (v.status === 'approved') return 'Approved';
+        if (v.status === 'approved') return v.verificationMethod === 'admin_override' ? 'Manually approved; documents not reviewed' : 'Approved';
         if (v.status === 'rejected') return 'Rejected' + (v.rejection_reason ? ' - ' + v.rejection_reason : '');
         if (v.status === 'pending') return 'Pending review';
         return 'Not submitted';
@@ -214,28 +218,32 @@
       var ver = TrustApp.getVerification ? TrustApp.getVerification(u.uid) : null;
       var verBtn = ver && ver.status === 'approved'
         ? '<span class="badge green">Approved</span>'
-        : '<button class="action-btn ab-green" onclick="verifyUser(\'' + esc(u.uid) + '\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Verify</button>';
+        : '<button class="action-btn ab-green" onclick="verifyUser(\'' + esc(u.uid) + '\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Manually approve</button>';
       var profit = TrustApp.getProfitMode ? TrustApp.getProfitMode(u.uid) : false;
-      var profitBtn = '<button class="profit-toggle ' + (profit ? 'on' : 'off') + '" onclick="toggleProfit(\'' + esc(u.uid) + '\')">' + (profit ? 'On' : 'Off') + '</button>';
+      var profitBtn = profitCell(u);
       document.getElementById('editUserInfo').innerHTML = info;
       document.getElementById('editModalBody').innerHTML =
         row('Account Status', active ? 'This account is currently active' : 'This account has been deactivated', statusBtn)
         + row('Verification (KYC)', resolveVer(ver), verBtn)
-        + row('Profit Mode', profit ? 'Profits are ON for this user' : 'Profits are OFF for this user', profitBtn)
+        + row('Profit Mode', 'Forced results are unavailable for live trading', profitBtn)
         + row('Admin Role', admin ? 'Has full admin access' : 'Standard user permissions', roleBtn)
         + row('USDT Balance', '$' + fmtAmt(b.USDT) + ' USDT', '<a class="action-btn ab-blue" href="admin-adjust.html?u=' + encodeURIComponent(u.uid) + '">Adjust Balance</a>')
-        + row('Delete User', 'Permanently remove this user and all their data', '<button class="action-btn ab-red" onclick="deleteUser(\'' + esc(u.uid) + '\')">Delete</button>');
+        + row('Archive User', 'Disable this account while retaining its records', '<button class="action-btn ab-red" onclick="deleteUser(\'' + esc(u.uid) + '\')">Archive</button>');
       document.getElementById('editModal').style.display = 'flex';
     }
-    function deleteUser(uid) {
+    async function deleteUser(uid) {
+      if (userActionBusy[uid]) return;
+      userActionBusy[uid]=true;
+      try {
       if (uid === TrustApp.getUserId()) { toast('error', 'You cannot delete your own account'); return; }
-      if (!confirm('PERMANENTLY DELETE this user and all their data (balances, history, chat)? This cannot be undone.')) return;
-      var res = TrustApp.removeUser(uid);
+      if (!confirm('Archive this account? Access will be disabled and its records retained.')) return;
+      var res = await TrustApp.removeUser(uid);
       if (!res.ok) { toast('error', res.msg); return; }
-      toast('success', 'Deleted user ' + (res.account || uid));
+      toast('success', 'Archived user ' + (res.account || uid));
       document.getElementById('editModal').style.display = 'none';
       editUid = null;
       renderUsers();
+      } finally { delete userActionBusy[uid]; }
     }
     function closeEditModal(ev) {
       if (ev && ev.target !== document.getElementById('editModal')) return;
@@ -246,28 +254,36 @@
       renderUsers();
       if (editUid) openEdit(editUid);
     }
-    function toggleAdmin(uid) {
+    async function toggleAdmin(uid) {
+      if (userActionBusy[uid]) return;
+      userActionBusy[uid]=true;
+      try {
       var admin = TrustApp.isUserAdmin(uid);
       if (admin && uid === TrustApp.getUserId()) {
         toast('error', 'You cannot remove your own admin permission');
         return;
       }
-      var res = TrustApp.setUserAdmin(uid, !admin);
+      var res = await TrustApp.setUserAdmin(uid, !admin);
       if (!res.ok) { toast('error', res.msg); return; }
       toast('success', (admin ? 'Removed admin permission from ' : 'Granted admin permission to ') + (res.user.account || uid));
       refreshEdit();
+      } finally { delete userActionBusy[uid]; }
     }
-    function toggleStatus(uid) {
+    async function toggleStatus(uid) {
+      if (userActionBusy[uid]) return;
+      userActionBusy[uid]=true;
+      try {
       if (uid === TrustApp.getUserId()) {
         toast('error', 'You cannot deactivate your own account');
         return;
       }
       var active = TrustApp.isUserActive(uid);
       if (active && !confirm('Deactivate this user? They will be unable to log in until reactivated.')) return;
-      var res = TrustApp.setUserStatus(uid, !active);
+      var res = await TrustApp.setUserStatus(uid, !active);
       if (!res.ok) { toast('error', res.msg); return; }
       toast('success', (active ? 'Deactivated ' : 'Activated ') + (res.user.account || uid));
       refreshEdit();
+      } finally { delete userActionBusy[uid]; }
     }
     function toggleProfit(uid) {
       var cur = TrustApp.getProfitMode(uid);
@@ -299,12 +315,13 @@
     }
     function renderUsers() {
       var box = document.getElementById('userRows');
-      var users = TrustApp.getUsers();
+      var query = document.getElementById('userSearch').value.trim().toLowerCase();
+      var users = TrustApp.getUsers().filter(function (u) { return [u.email,u.account,u.uid_code,u.uid].join(' ').toLowerCase().indexOf(query)!==-1; });
       renderStats();
       if (!users.length) {
         var canRead = TrustApp.hasAdminReadAccess && TrustApp.hasAdminReadAccess();
         box.innerHTML = '<tr><td colspan="8"><div class="empty-state">' +
-          (canRead ? 'No registered users yet' : 'Sign in as an admin to load users.') +
+          (canRead ? (query ? 'No matching users' : 'No registered users yet') : 'Sign in as an admin to load users.') +
           '</div></td></tr>';
         return;
       }
@@ -337,17 +354,9 @@
       renderUsers();
     }
     setTimeout(renderUsers, 150);
-    setInterval(renderUsers, 5000);
+    // Re-render only when data or the search filter changes.
     var searchBox = document.getElementById('userSearch');
-    searchBox.addEventListener('input', function () {
-      var q = searchBox.value.toLowerCase();
-      document.querySelectorAll('#userRows tr').forEach(function (r) {
-        r.style.display = r.textContent.toLowerCase().indexOf(q) !== -1 ? '' : 'none';
-      });
-      document.querySelectorAll('.admin-panel .admin-row-card').forEach(function (c) {
-        c.style.display = c.textContent.toLowerCase().indexOf(q) !== -1 ? '' : 'none';
-      });
-    });
+    searchBox.addEventListener('input', renderUsers);
   </script>
 </body>
 </html>

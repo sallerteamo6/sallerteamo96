@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="img/logo.png">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260926q"></script>
-  <script src="app.js?v=20260926q"></script>
+    <script src="scripts/db.js?v=20260927a"></script>
+  <script src="app.js?v=20260927a"></script>
   <style>
     *{margin:0;padding:0;box-sizing:border-box;}
     body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;background:#f7f8fa;color:#333;}
@@ -289,6 +289,7 @@
       try {
 
       if (!text.trim() && !pending.length) return;
+      uid = await TrustApp.ensureGuest();
       if (!uid) { toast('error', TrustApp.t('svc.unableConnect')); return; }
       await TrustApp.sendChatMsg(uid, 'user', text.trim(), pending);
       pending = [];
@@ -335,7 +336,7 @@
       if (e.key === 'Enter') sendMessage(e.target.value);
     });
     render();
-    setInterval(render, 2000);
+    // Messages repaint on data events, preserving scroll and attachment state.
   </script>
 <script>window.addEventListener("trustsync:chat_messages", render); window.addEventListener("trustlanguagechange", render);</script>
 </body>

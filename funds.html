@@ -12,8 +12,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260926q"></script>
-  <script src="app.js?v=20260926q"></script>
+    <script src="scripts/db.js?v=20260927a"></script>
+  <script src="app.js?v=20260927a"></script>
 </head>
 <body class="auth-page funds-page" style="background:#f5f5f5;">
 
@@ -418,6 +418,8 @@
       window.__pendingActions['submitDeposit'] = true;
       try {
 
+      await TrustApp.restoreSession();
+      if (window.DB && DB.ready) await DB.ready();
       refreshIdentity();
       if (!uid) { toast('error', 'Please login first'); return; }
       var coin = activeCoin('#coinCards');
@@ -450,11 +452,13 @@
       window.__pendingActions['submitWithdraw'] = true;
       try {
 
+      await TrustApp.restoreSession();
+      if (window.DB && DB.ready) await DB.ready();
       refreshIdentity();
       if (!uid) { toast('error', 'Please login first'); return; }
       var kyc = TrustApp.getVerification ? TrustApp.getVerification(uid) : null;
       if (!kyc || kyc.status !== 'approved') { toast('error', TrustApp.t('funds.kycBlock')); return; }
-      var dueLoans = TrustApp.getLoansForUser(uid).filter(async function (l) { return l.status === 'approved'; });
+      var dueLoans = TrustApp.getLoansForUser(uid).filter(function (l) { return l.status === 'approved'; });
       if (dueLoans.length) {
         var total = dueLoans.reduce(function (s, l) { return s + (parseFloat(l.amount) || 0) + (parseFloat(l.interest) || 0); }, 0);
         toast('error', TrustApp.t('funds.loanBlock').replace('{a}', fmtAmt(total, 'USDT')));

@@ -142,6 +142,17 @@
     return out;
   }
 
+  async function saveFundLimits(deposit, withdrawal) {
+    if (!Number.isFinite(deposit) || !Number.isFinite(withdrawal) || deposit < 0 || withdrawal < 0) return {ok:false,msg:'Enter valid non-negative amounts'};
+    if (!dbActive()) return {ok:false,msg:'Connection is not ready'};
+    try {
+      await DB.rpc('admin_save_fund_limits',{tok:adminToken() || null,p_deposit:deposit,p_withdrawal:withdrawal});
+      await DB.pullBlob('app_settings');
+      reloadConfigFromDb();
+      return {ok:true};
+    } catch(e) { return {ok:false,msg:e.message || 'Limits could not be saved'}; }
+  }
+
   function resetConfig() {
     if (dbActive() && DB.setSetting) DB.setSetting('config', JSON.stringify({})).catch(function () {});
     global.AppConfig = getConfigDefaults();
@@ -165,7 +176,7 @@
       try { applyI18n(); } catch (e) {}
       try { updateMenuUser(); } catch (e) {}
       try { migrateLegacyTrades(); } catch (e) {}
-      setTimeout(function () { try { settleExpiredTrades(); } catch (e) {} }, 0);
+      // Settlement is owned by the server; never attempt it during page load.
     }
     if (DB.onReady) DB.onReady(hook);
     if (typeof window !== 'undefined') {
@@ -178,7 +189,7 @@
     if (typeof document !== 'undefined') {
       restoreSession().then(function () {
         try { applyI18n(); updateMenuUser(); } catch (e) {}
-      });
+      }).catch(function () {});
     }
   })();
 
@@ -1227,13 +1238,14 @@
   }
 
   function getUserId() {
+    if (typeof DB !== 'undefined' && DB && DB.ENABLED) return DB._uid();
     return (_session && _session.uid != null) ? String(_session.uid) : null;
   }
 
   function isLoggedIn() {
     // Anyone with a DB identity counts as logged in, including guest rows
     // created by wallet-login / service chat (they register to become accounts).
-    return !!(_session && _session.uid != null);
+    return !!getUserId();
   }
 
   function updateMenuUser() {
@@ -1333,56 +1345,21 @@
   // as "logged out": the page guard would then bounce a freshly-logged-in
   // user back to the login screen. So transient lookup failures are retried
   // before we give up and report "no session".
+  var _restorePromise = null;
   function restoreSession() {
-    function getSessionWithRetry(tok, tries) {
-      var timeout = new Promise(function (_, reject) {
-        setTimeout(function () { reject(new Error('getSession timeout')); }, 5000);
-      });
-      return Promise.race([DB.getSession(tok), timeout]).then(function (s) {
-        if (!s) { _session = null; return null; }
-        _session = {
-          token: tok,
-          uid: s.uid == null ? null : s.uid,
-          is_guest: !!s.is_guest,
-          admin: !!s.admin,
-          language: s.language || null
-        };
-        if (!_lang && _session.language) _lang = langLabel(_session.language);
-        if (_session.uid != null && !_session.is_guest) {
-          try {
-            var dl = DB.getUserLanguage(_session.uid);
-            if (dl && LANGS[dl]) _lang = dl;
-          } catch (e) {}
-        }
-        return _session;
-      }).catch(function () {
-        if (tries > 0) {
-          return new Promise(function (res) {
-            setTimeout(function () { res(getSessionWithRetry(tok, tries - 1)); }, 1500);
-          });
-        }
-        return _session || null;
-      });
-    }
-    function doRestore() {
-      // Backend v2: the credential is Supabase Auth's JWT, persisted by
-      // supabase-js under its own storage key. The cookie read here is a v1
-      // leftover and is NOT written by every v2 sign-in path.
-      //
-      // The old code returned null immediately when that cookie was missing,
-      // without ever asking the database. Since the cookie is no longer the
-      // credential, a perfectly valid Supabase session was reported as "no
-      // session" and guardAuth bounced the user to the login page. Ask the DB
-      // first and treat the cookie as optional.
-      var tok = getToken();
-      if (!dbActive()) return Promise.resolve(_session || null);
-      return getSessionWithRetry(tok, 3);
-    }
-    if (dbActive()) return doRestore();
-    return new Promise(function (res) {
-      if (typeof DB !== 'undefined' && DB.onReady) DB.onReady(function () { res(doRestore()); });
-      else res(doRestore());
-    });
+    if (_restorePromise) return _restorePromise;
+    if (typeof DB === 'undefined' || !DB) return Promise.resolve(null);
+    // Identity must not wait for balances, images or the rest of the page data.
+    _restorePromise = DB.authReady(15000).then(function (ready) {
+      if (!ready) throw new Error('Authentication connection is not ready');
+      return DB.getSession(getToken());
+    }).then(function (session) {
+      _session = session ? {token:getToken(),uid:session.uid,is_guest:!!session.is_guest,
+        admin:!!session.admin,language:session.language || null} : null;
+      updateMenuUser();
+      return _session;
+    }).finally(function () { _restorePromise = null; });
+    return _restorePromise;
   }
 
   // Make sure a session row exists for the current cookie.
@@ -1431,18 +1408,17 @@
   function _clearSession() {
     var tok = getToken();
     _session = null;
-    if (tok && dbActive()) DB.deleteSession(tok).catch(function () {});
+    if (typeof DB !== 'undefined' && DB) DB.logout().catch(function () {});
     clearToken();
   }
 
   // service.html: ensure a usable identity (guest user row when not logged in).
   function ensureGuest() {
-    var uid = getUserId();
-    if (uid && _session && _session.uid != null) return Promise.resolve(uid);
-    // v2 has no guest accounts. A signed-out visitor cannot be handed a
-    // usable identity: the old path minted a row in the browser, which is
-    // exactly the hole v2 closed. Reject so the caller can ask for sign-in.
-    return Promise.reject(new Error('Please sign in to continue'));
+    return restoreSession().then(function () {
+      var uid = getUserId();
+      if (!uid) throw new Error('Please sign in to contact support');
+      return uid;
+    });
   }
 
   function currentUser() {
@@ -1514,7 +1490,7 @@
   function dbUserToApp(u) {
     return {
       uid: u.uid != null ? u.uid : u.id,
-      account: u.account,
+      account: u.account || u.email || u.phone || '',
       password: u.password_hash,
       password_hash: u.password_hash,
       email: u.email,
@@ -1549,7 +1525,7 @@
     try {
       if (dbActive() && t.uid != null && DB.getUserStr) {
         var u = DB.getUserStr(t.uid);
-        if (u) acct = u.account || '';
+        if (u) acct = u.email || u.account || u.phone || '';
       }
     } catch (e) {}
     var note = desc.replace(/^\[(debit|credit)\]\s*/, '');
@@ -1680,6 +1656,7 @@
   function dbVerToApp(v) {
     return {
       uid: v.uid,
+      verificationMethod: v.verification_method || 'documents',
       name: v.full_name || v.name || '',
       email: v.email || '',
       idNumber: v.id_number || '',
@@ -1894,7 +1871,7 @@
     if (_adminRefresh) return _adminRefresh;
     if (typeof DB === 'undefined' || !DB) return Promise.reject(new Error('Backend is not ready'));
     if (!adminToken() && !isRealAdmin()) return Promise.reject(new Error('Admin sign-in required'));
-    var tables = ['balances', 'verifications', 'loans', 'transactions', 'contracts', 'investments', 'chat_messages'];
+    var tables = DB._pageTables().filter(function (t) { return t !== 'users'; });
     var requestToken = adminToken();
     _adminRefresh = DB.pullBlob('users').then(function () {
         if (requestToken !== adminToken()) throw new Error('Admin session changed; sign in again');
@@ -1945,7 +1922,7 @@
   // admin page is visible and refresh when the operator returns to the tab.
   function refreshAdminPage() {
     if (!document.getElementById('adminLock') || document.hidden) return;
-    if (adminToken() || isRealAdmin()) fetchAdminUsers().catch(function () {});
+    if (adminToken() || isRealAdmin()) DB._syncVisible();
   }
   setInterval(refreshAdminPage, 15000);
   document.addEventListener('visibilitychange', refreshAdminPage);
@@ -2628,7 +2605,7 @@
   }
 
   function sendChatMsg(uid, from, text, attachments) {
-    if (!uid || !dbActive()) return Promise.reject(new Error('Chat is not connected. Please sign in and retry.'));
+    if (!uid || typeof DB === 'undefined' || !DB.ENABLED) return Promise.reject(new Error('Chat is not connected. Please sign in and retry.'));
     var body = String(text || '').slice(0,2000);
     var files = (attachments || []).slice(0,6);
     if (!body.trim() && !files.length) return Promise.reject(new Error('Enter a message or attach a file.'));
@@ -2689,7 +2666,7 @@
   }
 
   function accountByUid(uid) {
-    if (uid != null && dbActive()) {
+    if (uid != null && dbReadable()) {
       try {
         var raw = DB.getUserStr(uid);
         if (raw) return dbUserToApp(raw);
@@ -2748,31 +2725,17 @@
     return !!(u && (u.role === 'admin' || u.isAdmin === true || u.is_admin === true));
   }
 
-  function setUserAdmin(uid, val) {
-    if (dbActive()) {
-      var u = accountByUid(uid);
-      if (!u) return { ok: false, msg: 'User not found' };
-      DB.updateUser(uid, { is_admin: !!val }).then(function () {
-        _notifyChange('users');
-      }).catch(function (e) {
-        try { if (window.toast) toast('error', 'Failed to update: ' + e.message); } catch (e2) {}
-      });
-      u.role = val ? 'admin' : undefined;
-      u.isAdmin = val ? true : undefined;
-      u.is_admin = !!val;
-      return { ok: true, user: u };
-    }
-    var users = getUsers();
-    for (var i = 0; i < users.length; i++) {
-      if (String(users[i].uid) === String(uid)) {
-        if (val) { users[i].role = 'admin'; users[i].isAdmin = true; }
-        else { delete users[i].role; delete users[i].isAdmin; }
-        saveUsers(users);
-        return { ok: true, user: users[i] };
-      }
-    }
-    return { ok: false, msg: 'User not found' };
+  async function manageUser(uid, action, value) {
+    if (!dbActive()) return {ok:false,msg:'Connection is not ready'};
+    try {
+      var result = await DB.rpc('admin_manage_user',{tok:adminToken() || null,p_uid:String(uid),p_action:action,p_value:value == null ? null : String(value)});
+      await DB.pullBlob('users');
+      if (action === 'manual_verify') await DB.pullBlob('verifications');
+      return {ok:true,user:dbUserToApp(result.user),account:result.user.account};
+    } catch(e) { return {ok:false,msg:e.message || 'The change could not be saved'}; }
   }
+
+  function setUserAdmin(uid,val) { return manageUser(uid,'role',val ? 'true' : 'false'); }
 
   function isCurrentUserAdmin() {
     if (_session && _session.admin) return true;
@@ -2785,55 +2748,11 @@
   }
 
   function isUserActive(uid) {
-    var u = accountByUid(uid);
-    if (!u) return false;
-    return u.status !== 'inactive';
+    var u=accountByUid(uid);
+    return !!(u && u.status === 'active');
   }
-
-  function setUserStatus(uid, active) {
-    if (dbActive()) {
-      var u = accountByUid(uid);
-      if (!u) return { ok: false, msg: 'User not found' };
-      DB.updateUser(uid, { status: active ? 'active' : 'inactive' }).then(function () {
-        _notifyChange('users');
-      }).catch(function (e) {
-        try { if (window.toast) toast('error', 'Failed to update: ' + e.message); } catch (e2) {}
-      });
-      u.status = active ? 'active' : 'inactive';
-      return { ok: true, user: u };
-    }
-    var users = getUsers();
-    for (var i = 0; i < users.length; i++) {
-      if (String(users[i].uid) === String(uid)) {
-        users[i].status = active ? 'active' : 'inactive';
-        saveUsers(users);
-        return { ok: true, user: users[i] };
-      }
-    }
-    return { ok: false, msg: 'User not found' };
-  }
-
-  // permanently delete a user and every trace of their data
-  function removeUser(uid) {
-    if (!uid) return { ok: false, msg: 'Uid required' };
-    if (isUserAdmin(uid) && String(uid) === String(getUserId())) return { ok: false, msg: 'You cannot delete your own account' };
-    var user = accountByUid(uid);
-    if (!user) return { ok: false, msg: 'User not found' };
-
-    if (dbActive()) {
-      DB.deleteUser(uid).then(function () {
-        try { if (DB.pullBlob) DB.pullBlob('users').catch(function () {}); } catch (e) {}
-      }).catch(function (e) {
-        try { if (window.toast) toast('error', 'Failed to delete: ' + e.message); } catch (e2) {}
-      });
-      if (isLoggedIn() && getUserId() === uid) logout();
-      return { ok: true, account: user.account };
-    }
-
-    // no database configured: nothing stored locally, nothing to delete
-    if (isLoggedIn() && getUserId() === uid) logout();
-    return { ok: true, account: user.account };
-  }
+  function setUserStatus(uid,active) { return manageUser(uid,'status',active ? 'active' : 'suspended'); }
+  function removeUser(uid) { return manageUser(uid,'archive',null); }
 
   var VER_KEY = 'trustVerifications';
 
@@ -2850,13 +2769,8 @@
     return false;
   }
 
-  function setProfitMode(uid, on) {
-    if (!uid) return { ok: false, msg: 'User is required' };
-    if (dbActive()) {
-      DB.setUserProfitMode(uid, !!on).catch(function () {});
-      return { ok: true };
-    }
-    return { ok: false, msg: 'Database not configured' };
+  function setProfitMode() {
+    return {ok:false,msg:'Forced winning outcomes are unavailable for live trading. Use a separately labelled demo account for simulations.'};
   }
 
   function getCoinAddresses() {
@@ -2978,7 +2892,7 @@
     } catch(e) { return {ok:false,msg:e.message || 'Review could not be saved'}; }
   }
 
-  function adminApproveKyc(uid) { return setVerificationStatus(uid,'approved',''); }
+  function adminApproveKyc(uid) { return manageUser(uid,'manual_verify','Manual approval by administrator; documents not reviewed'); }
 
   function changePassword(uid, currentPassword, newPassword) {
     if (!uid) return { ok: false, msg: 'Please login first' };
@@ -3025,7 +2939,7 @@
       if (s.uid == null) return goLogin();
       // A confirmed identity may stay -- unless the account was deactivated.
       var u = accountByUid(getUserId());
-      if (u && u.status === 'inactive') {
+      if (u && u.status && u.status !== 'active') {
         try { logout(); } catch (e) {}
         return goLogin(true);
       }
@@ -3493,6 +3407,7 @@
     unlockAdmin: unlockAdmin,
     getConfig: getConfig,
     saveConfig: saveConfig,
+    saveFundLimits: saveFundLimits,
     resetConfig: resetConfig,
     getConfigDefaults: getConfigDefaults,
     marketToTradeQuery: marketToTradeQuery,
@@ -3538,13 +3453,6 @@
   global.TrustApp.getUserId = getUserId;
   global.TrustApp.aiProcess = aiProcess;
   global.aiProcess = aiProcess;
-
-  (function startAIEngine() {
-    try { aiProcess(); } catch (e) {}
-    setInterval(function () {
-      try { aiProcess(); } catch (e) {}
-    }, 30000);
-  })();
 
   (function bootAdminNavDrawer() {
     try {

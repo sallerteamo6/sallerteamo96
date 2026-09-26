@@ -53,7 +53,7 @@ var TrustDB = (function () {
     // Bumped whenever the auth/bootstrap path changes, so a page can prove
     // which build the browser actually loaded. A stale cached db.js was
     // indistinguishable from a bug that had not been fixed yet.
-    VERSION: 'v2.5.0-delivery-language',
+    VERSION: 'v2.6.0-session-stability',
     _diag: [],
     _diagLog: function (msg) {
       try {
@@ -253,7 +253,9 @@ var TrustDB = (function () {
         return lib.auth.getSession().then(function (res) {
           self_._adoptSession(res && res.data ? res.data.session : null);
           lib.auth.onAuthStateChange(function (_event, session) {
+            var previousUid = self_._uid();
             self_._adoptSession(session);
+            if (previousUid === self_._uid()) return;
             // The visible dataset changes wholesale on sign-in and sign-out, so
             // reload rather than merge, and tell every page to re-render.
             setTimeout(function () {
@@ -801,7 +803,7 @@ var TrustDB = (function () {
 
       // Always public, always safe to try.
       var publicTables = ['coin_addresses', 'app_settings', 'products', 'investment_products'];
-      var privateTables = ['users', 'balances', 'verifications', 'loans', 'transactions', 'contracts', 'investments', 'chat_messages'];
+      var privateTables = this._pageTables();
       var tables = signedIn ? publicTables.concat(privateTables) : publicTables;
 
       var jobs = tables.map(function (t) {
@@ -879,9 +881,14 @@ var TrustDB = (function () {
       return read.then(function (rows) {
         if (self_._loadSeq[table] !== mySeq) return (rows || []).length;
         rows = rows || [];
+        self_._snapshots = self_._snapshots || {};
+        self_._changed = self_._changed || {};
+        var snapshot = JSON.stringify(rows);
+        self_._changed[table] = self_._snapshots[table] !== snapshot;
+        self_._snapshots[table] = snapshot;
         self_._applyRows(table, rows, startTs);
         if (table === 'users') self_._adoptSession(self_._session);
-        if (!token) self_._stashRows(table, rows);
+        if (['coin_addresses','app_settings','products','investment_products'].indexOf(table) !== -1) self_._stashRows(table, rows);
         return rows.length;
       });
     },
@@ -893,7 +900,7 @@ var TrustDB = (function () {
       this._pulls = this._pulls || {};
       if (this._pulls[table]) return this._pulls[table];
       this._pulls[table] = this._loadTable(table).then(function () {
-        self_._dispatchTrustSync(table);
+        if (!self_._changed || self_._changed[table] !== false) self_._dispatchTrustSync(table);
         return true;
       }).finally(function () { delete self_._pulls[table]; });
       return this._pulls[table];
@@ -1050,8 +1057,7 @@ var TrustDB = (function () {
       // Only the tables a signed-in viewer can see. Subscribing to all of them
       // while signed out produces nothing but 401s on the channel.
       if (!this._uid()) return;
-      ['users', 'balances', 'transactions', 'contracts', 'investments', 'loans', 'chat_messages', 'verifications']
-        .forEach(function (t) { self_._subscribeTable(t); });
+      this._pageTables().forEach(function (t) { self_._subscribeTable(t); });
     },
 
     _adminTokenForPage: function () {
@@ -1068,14 +1074,23 @@ var TrustDB = (function () {
       this._syncVisible();
     },
 
+    _pageTables: function () {
+      var path = window.location.pathname;
+      if (/chat|service/.test(path)) return ['users','chat_messages'];
+      if (/admin-users/.test(path)) return ['users','balances','verifications'];
+      if (/funds/.test(path)) return ['users','transactions','balances','verifications','loans'];
+      if (/admin-adjust/.test(path)) return ['users','balances','transactions'];
+      if (/loan/.test(path)) return ['users','loans','balances'];
+      if (/authentication|advanced-auth|admin-verify/.test(path)) return ['users','verifications'];
+      if (/admin\.html$/.test(path)) return ['users','transactions','loans','verifications','chat_messages','balances'];
+      if (/trade|orders|admin-feed/.test(path)) return ['users','balances','contracts'];
+      if (/ai\.html|admin-quants/.test(path)) return ['users','balances','investments'];
+      return ['users','balances'];
+    },
+
     _syncVisible: function () {
       if (document.hidden || this._liveBusy || (!this._uid() && !this._adminTokenForPage())) return;
-      var path = window.location.pathname;
-      var tables = /chat|service/.test(path) ? ['users','chat_messages'] :
-        /funds/.test(path) ? ['users','transactions','balances'] :
-        /loan/.test(path) ? ['users','loans','balances'] :
-        /authentication|advanced-auth|admin-verify/.test(path) ? ['users','verifications'] :
-        /admin(?:-users)?\.html$/.test(path) ? ['users','transactions','loans','verifications','chat_messages','balances'] : [];
+      var tables = this._pageTables();
       var self_ = this;
       this._liveBusy = true;
       var token = this._adminTokenForPage();
@@ -1090,7 +1105,8 @@ var TrustDB = (function () {
       } else {
         this._lastPoll = this._lastPoll || {};
         job = Promise.allSettled(tables.filter(function (t) {
-          return !(self_._rtReady && self_._rtReady[t]) || Date.now() - (self_._lastPoll[t] || 0) > 10000;
+          var interval = self_._rtReady && self_._rtReady[t] ? 15000 : (t === 'chat_messages' ? 1500 : 5000);
+          return Date.now() - (self_._lastPoll[t] || 0) > interval;
         }).map(function (t) { return self_.pullBlob(t).then(function () { self_._lastPoll[t] = Date.now(); }); }));
       }
       return job.catch(function () { /* The admin access refresh reports expired credentials. */ })
@@ -1797,6 +1813,7 @@ var TrustDB = (function () {
         return lib.auth.getSession();
       }).then(function (res) {
         var s = res && res.data ? res.data.session : null;
+        self_._adoptSession(s);
         if (!s) return null;
         var row = self_._cache.users.find(function (u) { return u.id === s.user.id; });
         return {

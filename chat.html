@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260926q"></script>
-  <script src="app.js?v=20260926q"></script>
+    <script src="scripts/db.js?v=20260927a"></script>
+  <script src="app.js?v=20260927a"></script>
 </head>
 <body class="auth-page chat-page" style="background:#f5f5f5;">
 
@@ -72,7 +72,7 @@
       var input = document.getElementById('chatInput');
       var text = input.value.trim();
       if (!text) return;
-      uid = TrustApp.getUserId();
+      uid = await TrustApp.ensureGuest();
       await TrustApp.sendChatMsg(uid, 'user', text);
       input.value = '';
       lastSig = '';
@@ -88,7 +88,7 @@
       }
     });
     render();
-    setInterval(render, 2000);
+    // Messages repaint on data events, preserving scroll and attachment state.
     window.addEventListener('trustchat', render);
     // fast chat channel: pull only the chat blob ~1s so replies appear
     // without waiting for the 5s whole-app poll
