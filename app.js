@@ -1099,23 +1099,68 @@
 
   var _lang = null;
 
-  function langLabel(code) {
-    return (LANGS && LANGS[code]) || 'English';
+  // LANGS maps display label -> code, so it has to be reversed to answer the
+  // other direction. langLabel() previously indexed LANGS with a CODE, which
+  // can never match a label key, so it always returned 'English' and
+  // config.defaultLanguage was silently discarded.
+  var LANG_CODE_TO_LABEL = {};
+  (function () {
+    for (var k in LANGS) {
+      if (Object.prototype.hasOwnProperty.call(LANGS, k)) LANG_CODE_TO_LABEL[LANGS[k]] = k;
+    }
+  })();
+
+  // Canonical order, so every page shows the same list in the same sequence.
+  var LANG_ORDER = Object.keys(LANGS);
+
+  // Persian reads right to left; everything else is left to right.
+  var RTL_LANGS = { fa: true };
+
+  var LANG_KEY = 'st.lang';
+
+  function codeToLabel(code) {
+    return LANG_CODE_TO_LABEL[code] || 'English';
+  }
+
+  // Accepts either a label or a code so existing call sites keep working.
+  function langLabel(v) {
+    if (LANGS[v] !== undefined) return v;
+    return codeToLabel(v);
+  }
+
+  function isKnownLang(v) {
+    return !!(v && LANGS[v]);
   }
 
   function getLang() {
-    if (_lang && LANGS[_lang]) return _lang;
-    var c = 'en';
-    try { if (getConfig().defaultLanguage) c = getConfig().defaultLanguage; } catch (e) {}
+    if (isKnownLang(_lang)) return _lang;
+
+    // localStorage is checked before the database, and that ordering is the
+    // whole point: on a multi-page static site the database is only reachable
+    // for a signed-in user, so a logged-out visitor used to lose their choice
+    // on every page navigation and fall back to English.
+    var stored = null;
+    try { stored = localStorage.getItem(LANG_KEY); } catch (e) {}
+    if (isKnownLang(stored)) return stored;
+
+    var cfg = 'en';
+    try { if (getConfig().defaultLanguage) cfg = getConfig().defaultLanguage; } catch (e) {}
+    if (isKnownLang(cfg)) return cfg;          // stored as a label
+    if (LANG_CODE_TO_LABEL[cfg]) return codeToLabel(cfg); // stored as a code
+
     var dbLang = null;
     try { if (dbActive() && DB.getSetting) dbLang = DB.getSetting('language'); } catch (e) {}
-    if (dbLang && LANGS[dbLang]) return dbLang;
-    return langLabel(c);
+    if (isKnownLang(dbLang)) return dbLang;
+
+    return 'English';
   }
 
   function setLang(el, label) {
-    if (!LANGS[label]) label = 'English';
+    if (!isKnownLang(label)) label = 'English';
     _lang = label;
+    // Persist locally as well as in the database. Without this the selection
+    // only lived in a JS variable, so it was lost on the next page load.
+    try { localStorage.setItem(LANG_KEY, label); } catch (e) {}
     if (dbActive()) {
       try {
         if (_session && _session.uid != null && !_session.is_guest) DB.setUserLanguage(_session.uid, label).catch(function () {});
@@ -1128,6 +1173,38 @@
     if (menu) menu.style.display = 'none';
   }
 
+  // Build the language menu from LANGS instead of trusting hardcoded HTML.
+  //
+  // index/login/register each had 11 language labels pasted in as literal text,
+  // and those labels had been saved as double-encoded UTF-8 (mojibake). The
+  // click handler then called setLang(this, '<garbage>'), LANGS[garbage] was
+  // undefined, and setLang quietly fell back to English -- so every language
+  // looked like a button that did nothing.
+  //
+  // Rendering from LANGS deletes that duplicate copy of the labels, so the two
+  // lists can never drift apart or corrupt again.
+  function renderLangMenu() {
+    var menu = document.getElementById('langMenu');
+    if (!menu) return;
+    if (menu.getAttribute('data-rendered') === '1' && menu.children.length === LANG_ORDER.length) return;
+
+    menu.textContent = '';
+    LANG_ORDER.forEach(function (label) {
+      var div = document.createElement('div');
+      div.className = 'language-option';
+      div.setAttribute('data-lang', label);
+      div.setAttribute('role', 'menuitem');
+      div.setAttribute('tabindex', '0');
+      div.textContent = label;
+      div.addEventListener('click', function () { setLang(div, label); });
+      div.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setLang(div, label); }
+      });
+      menu.appendChild(div);
+    });
+    menu.setAttribute('data-rendered', '1');
+  }
+
   function t(key) {
     var e = I18N[key];
     if (!e) return '';
@@ -1137,6 +1214,16 @@
 
   function applyI18n() {
     var lang = getLang();
+    var code = LANGS[lang] || 'en';
+
+    renderLangMenu();
+
+    // Persian is right-to-left. Without this the document keeps dir="ltr" and
+    // the translated text is laid out in the wrong direction.
+    try {
+      document.documentElement.setAttribute('dir', RTL_LANGS[code] ? 'rtl' : 'ltr');
+    } catch (e) {}
+
     var btn = document.querySelector('.language-btn');
     if (btn) {
       var chevron = btn.querySelector('svg');
@@ -1145,8 +1232,11 @@
       btn.appendChild(document.createTextNode(label));
       if (chevron) btn.appendChild(chevron);
     }
+    // Match on data-lang rather than textContent. textContent also picks up
+    // any flag or badge a theme puts inside the option, so the comparison
+    // failed and the active language was never highlighted.
     document.querySelectorAll('.language-option').forEach(function (o) {
-      o.classList.toggle('active', o.textContent.trim() === lang);
+      o.classList.toggle('active', o.getAttribute('data-lang') === lang);
     });
     document.querySelectorAll('[data-i18n]').forEach(function (el) {
       var v = t(el.getAttribute('data-i18n'));
@@ -1884,8 +1974,18 @@
       } catch (e) {}
     }
 
+    // Hand over the SECURITY DEFINER function, not a bare UPDATE.
+    //
+    // The raw UPDATE could never work: the users_guard_privileges trigger
+    // rejects any is_admin change unless is_admin() is already true, and
+    // is_admin() reads auth.uid() -- which is null in a SQL editor session.
+    // So the statement it used to suggest failed with
+    // "42501 is_admin cannot be changed by the account owner" every time.
+    // promote_first_admin() is the function written for exactly this, and it
+    // additionally records the promotion in audit_log.
+    var esc = acct.replace(/'/g, "''");
     var sql = acct
-      ? "update public.users set is_admin = true where lower(account) = lower('" + acct.replace(/'/g, "''") + "');"
+      ? "select public.promote_first_admin('" + esc + "');"
       : '';
 
     var el = document.createElement('div');
@@ -1900,7 +2000,8 @@
     msg.appendChild(b);
     msg.appendChild(document.createTextNode(
       acct
-        ? 'your account "' + acct + '" has no is_admin flag in the database, so row-level security returns nothing. '
+        ? 'your account "' + acct + '" has no is_admin flag in the database, so row-level security returns nothing. ' +
+          'Run this once in the Supabase SQL Editor (the account must already exist and its email must be confirmed). '
         : 'you are not signed in, and the shared password cannot grant database access. '
     ));
     line.appendChild(msg);
