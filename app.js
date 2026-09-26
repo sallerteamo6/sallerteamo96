@@ -1761,6 +1761,48 @@
     return false;
   }
 
+  // True only when the signed-in account's own database row carries is_admin.
+  //
+  // Deliberately ignores _session.admin, which the shared admin password sets
+  // client-side. That flag hides the lock and nothing else: it is not in the
+  // JWT and not in the database, so RLS still refuses every query. Checking it
+  // here is what lets the panel explain an empty user list instead of showing
+  // "No registered users yet" and implying the site has no customers.
+  function isRealAdmin() {
+    var uid = getUserId();
+    if (!uid) return false;
+    try { return isUserAdmin(uid); } catch (e) { return false; }
+  }
+
+  // One banner for every admin page, because they all call initAdminLock().
+  function warnIfNotRealAdmin() {
+    if (isRealAdmin()) return;
+    if (document.getElementById('realAdminWarn')) return;
+    if (!document.body) return;
+
+    var el = document.createElement('div');
+    el.id = 'realAdminWarn';
+
+    var strong = document.createElement('strong');
+    strong.textContent = 'Not an admin account. ';
+    el.appendChild(strong);
+
+    el.appendChild(document.createTextNode(
+      'This panel is unlocked, but the signed-in account has no is_admin flag in the database, ' +
+      'so row-level security makes Supabase return nothing. Every list below will look empty. ' +
+      'Sign in with an account that is an admin, or grant it in the SQL editor: update public.users set is_admin = true where account = '
+    ));
+
+    var code = document.createElement('code');
+    code.textContent = "'you@example.com'";
+    el.appendChild(code);
+    el.appendChild(document.createTextNode(';'));
+
+    el.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:100000;background:#7c2d12;color:#fff;' +
+      'padding:10px 14px;font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;text-align:center;';
+    document.body.appendChild(el);
+  }
+
   function initAdminLock() {
     var lock = document.getElementById('adminLock');
     if (!lock) return;
@@ -1777,7 +1819,7 @@
       // concluding that, rather than locking out someone who is an admin.
       var attempts = 0;
       var decide = function () {
-        if (adminHasRealAccess()) { lock.style.display = 'none'; return; }
+        if (adminHasRealAccess()) { lock.style.display = 'none'; warnIfNotRealAdmin(); return; }
 
         var uid = getUserId();
         if (uid && attempts < 6) {
@@ -1789,10 +1831,9 @@
             return;
           }
         }
-        if (adminUnlockedInTab()) { lock.style.display = 'none'; return; }
+        if (adminUnlockedInTab()) { lock.style.display = 'none'; warnIfNotRealAdmin(); return; }
         lock.style.display = 'flex';
       };
-
       var gate = getToken() ? restoreSession().catch(function () { return null; }) : Promise.resolve(null);
       var ready = (typeof whenDbReady === 'function') ? whenDbReady(10000).catch(function () { return false; }) : Promise.resolve(false);
       Promise.all([gate, ready]).then(decide, decide);
@@ -1823,6 +1864,7 @@
       if (lock) lock.style.display = 'none';
       if (err) err.textContent = '';
       if (input) input.value = '';
+      warnIfNotRealAdmin();
     } else {
       if (err) err.textContent = 'Incorrect password';
     }
@@ -3369,6 +3411,7 @@ function addTxn(obj) {
     isUserAdmin: isUserAdmin,
     setUserAdmin: setUserAdmin,
     isCurrentUserAdmin: isCurrentUserAdmin,
+    isRealAdmin: isRealAdmin,
     currentUser: currentUser,
     isUserActive: isUserActive,
     setUserStatus: setUserStatus,
