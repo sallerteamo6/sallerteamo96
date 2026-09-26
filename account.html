@@ -10,10 +10,10 @@
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="img/logo.png">
   <link rel="stylesheet" href="styles.css">
-  <script src="scripts/config.js?v=20260926h"></script>
-  <script src="scripts/supabase-client.js?v=20260926h"></script>
-    <script src="scripts/db.js?v=20260926h"></script>
-  <script src="app.js?v=20260926h"></script>
+  <script src="scripts/config.js?v=20260926i"></script>
+  <script src="scripts/supabase-client.js?v=20260926i"></script>
+    <script src="scripts/db.js?v=20260926i"></script>
+  <script src="app.js?v=20260926i"></script>
 </head>
 <body class="account-page">
 
@@ -29,6 +29,13 @@
       <h2 class="title" data-i18n="acc.cryptoWallet">Crypto Wallet</h2>
       <p class="subtitle" data-i18n="acc.manageAssets">Manage Your Digital Assets</p>
       <div class="vip-badge" id="vipBadge" style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;"></div>
+      <div class="member-no" id="memberNo" style="display:none;align-items:center;gap:8px;margin-top:10px;">
+        <span data-i18n="acc.memberNo" style="opacity:.75;">Member No.</span>
+        <strong id="memberNoValue" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.5px;"></strong>
+        <button type="button" class="member-no-copy" id="memberNoCopy" title="Copy" style="background:transparent;border:0;color:inherit;cursor:pointer;padding:0;display:inline-flex;opacity:.8;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        </button>
+      </div>
     </div>
     <div class="title-icon">
       <svg width="64" height="64" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="white" stroke-width="2"/><path d="M2 10h20" stroke="white" stroke-width="2"/><circle cx="17" cy="14" r="1.5" fill="white"/></svg>
@@ -155,6 +162,31 @@
           + '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + v.color + '"><path d="M12 15l-5.5 3 1.5-6L2.5 7l6-.5L12 1l3.5 5.5 6 .5-5.5 5 1.5 6z"/></svg>'
           + v.label + '</span>';
       }
+      renderMemberNo();
+    }
+
+    // Six-digit member number, assigned by the prepare_user() trigger on
+    // signup. Hidden until the row has actually loaded, so it never renders as
+    // an empty or placeholder value.
+    var _memberNoShown = false;
+    function renderMemberNo() {
+      var wrap = document.getElementById('memberNo');
+      var val = document.getElementById('memberNoValue');
+      if (!wrap || !val || _memberNoShown) return;
+      var u = TrustApp.currentUser ? TrustApp.currentUser() : null;
+      var code = u && (u.uid_code || u.uidCode);
+      if (!code) return;
+      _memberNoShown = true;
+      val.textContent = code;
+      wrap.style.display = 'inline-flex';
+      var copy = document.getElementById('memberNoCopy');
+      if (copy) copy.onclick = function () {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(code).then(function () {
+            if (TrustApp.toast) TrustApp.toast('ok', 'Copied');
+          }).catch(function () {});
+        }
+      };
     }
 
     function scheduleRender() {

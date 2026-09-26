@@ -845,6 +845,7 @@
     /* ---- account ---- */
     'acc.title': { en: 'My Account', zh: '我的账户', ja: 'マイアカウント', ko: '내 계정', fa: 'حساب من', de: 'Mein Konto', fr: 'Mon compte', es: 'Mi cuenta', it: 'Il mio conto', pt: 'Minha conta', ru: 'Мой аккаунт' },
     'acc.vip': { en: 'VIP', zh: 'VIP', ja: 'VIP', ko: 'VIP', fa: 'VIP', de: 'VIP', fr: 'VIP', es: 'VIP', it: 'VIP', pt: 'VIP', ru: 'VIP' },
+    'acc.memberNo': { en: 'Member No.', zh: '会员编号', ja: '会員番号', ko: '회원 번호', fa: 'شماره عضویت', de: 'Mitglieds-Nr.', fr: 'N° de membre', es: 'N.º de socio', it: 'N. membro', pt: 'N.º de membro', ru: 'Номер участника' },
     'acc.cryptoWallet': { en: 'Crypto Wallet', zh: '加密钱包', ja: '暗号通貨ウォレット', ko: '암호화폐 지갑', fa: 'کیف پول ارز دیجیتال', de: 'Krypto-Wallet', fr: 'Portefeuille crypto', es: 'Billetera cripto', it: 'Portafoglio crypto', pt: 'Carteira cripto', ru: 'Крипто-кошелек' },
     'acc.manageAssets': { en: 'Manage Your Digital Assets', zh: '管理您的数字资产', ja: 'デジタル資産を管理', ko: '디지털 자산 관리', fa: 'دارایی‌های دیجیتال خود را مدیریت کنید', de: 'Verwalten Sie Ihre digitalen Vermögenswerte', fr: 'Gérez vos actifs numériques', es: 'Gestiona tus activos digitales', it: 'Gestisci i tuoi asset digitali', pt: 'Gerencie seus ativos digitais', ru: 'Управляйте своими цифровыми активами' },
     'acc.deposit': { en: 'Deposit', zh: '充值', ja: '入金', ko: '입금', fa: 'واریز', de: 'Einzahlen', fr: 'Dépôt', es: 'Depositar', it: 'Deposita', pt: 'Depositar', ru: 'Пополнить' },
@@ -1461,6 +1462,11 @@
       isAdmin: u.is_admin ? true : undefined,
       referral_code: u.referral_code,
       referred_by: u.referred_by,
+      // Six-digit public member number, assigned by the prepare_user() trigger
+      // in supabase/v2/11_uid_code.sql. This is the handle shown to the user
+      // and on admin screens; `uid` stays the internal uuid identity.
+      uid_code: u.uid_code || null,
+      uidCode: u.uid_code || null,
       language: u.language || 'en',
       profitMode: !!u.profit_mode,
       greeted: !!u.greeted,
@@ -1725,32 +1731,71 @@
     return Promise.resolve({ ok: false, msg: 'Wallet sign-in is not available on this build. Use email and password.' });
   }
 
-  function logout() {
-    _clearSession();
-    closeWalletConnect();
+  // The admin lock is answered ONCE per browser tab, not once per page.
+  //
+  // The old unlock lived in _session.admin and was pushed through
+  // DB.updateSession(), but that function only persists `language` and
+  // `is_guest` -- the admin flag was dropped on the floor. Navigating to
+  // another admin page therefore lost the unlock and asked again.
+  // sessionStorage survives same-tab navigation, which is exactly the scope
+  // the lock needs: a new tab or a fresh browser session asks once more.
+  var ADMIN_UNLOCK_KEY = 'trustAdminUnlocked';
+
+  function adminUnlockedInTab() {
+    try { return sessionStorage.getItem(ADMIN_UNLOCK_KEY) === '1'; } catch (e) { return false; }
+  }
+
+  function markAdminUnlockedInTab() {
+    try { sessionStorage.setItem(ADMIN_UNLOCK_KEY, '1'); } catch (e) {}
+  }
+
+  function clearAdminUnlockedInTab() {
+    try { sessionStorage.removeItem(ADMIN_UNLOCK_KEY); } catch (e) {}
+  }
+
+  // A user whose profile carries is_admin is never asked for the shared admin
+  // password at all.
+  function adminHasRealAccess() {
+    if (_session && _session.admin) return true;
+    try { if (isCurrentUserAdmin()) return true; } catch (e) {}
+    return false;
   }
 
   function initAdminLock() {
     var lock = document.getElementById('adminLock');
     if (!lock) return;
     try {
+      // Session restore is async and the users table may not have loaded yet.
+      // Deciding early would fail the is_admin check and prompt a real admin,
+      // so wait for both before deciding. The lock is visible by default
+      // (.admin-lock is display:flex), so this stays fail-closed: a slow or
+      // failed check leaves the lock up rather than exposing the page.
+      //
+      // whenDbReady() can resolve while DB.connected is still false, and
+      // accountByUid() returns null until the users row is cached -- so a real
+      // admin can briefly look like an ordinary user. Retry a few times before
+      // concluding that, rather than locking out someone who is an admin.
+      var attempts = 0;
       var decide = function () {
-        if (_session && _session.admin) { lock.style.display = 'none'; return; }
-        if (isCurrentUserAdmin()) { lock.style.display = 'none'; return; }
+        if (adminHasRealAccess()) { lock.style.display = 'none'; return; }
+
+        var uid = getUserId();
+        if (uid && attempts < 6) {
+          var row = null;
+          try { row = accountByUid(uid); } catch (e) {}
+          if (!row) {
+            attempts++;
+            setTimeout(decide, 600);
+            return;
+          }
+        }
+        if (adminUnlockedInTab()) { lock.style.display = 'none'; return; }
         lock.style.display = 'flex';
       };
-      // Session restore is async (DB read) and the DB itself may still be
-      // connecting when the page inline script runs. If we have a token, always
-      // wait for restore to finish before deciding, so a valid admin session is
-      // never blocked by a permanent lock.
-      if (getToken()) {
-        restoreSession().then(function (s) {
-          if (s && s.admin) lock.style.display = 'none';
-          else decide();
-        }).catch(function () { decide(); });
-        return;
-      }
-      decide();
+
+      var gate = getToken() ? restoreSession().catch(function () { return null; }) : Promise.resolve(null);
+      var ready = (typeof whenDbReady === 'function') ? whenDbReady(10000).catch(function () { return false; }) : Promise.resolve(false);
+      Promise.all([gate, ready]).then(decide, decide);
     } catch (e) {}
   }
 
@@ -1761,6 +1806,7 @@
     var cfg = getConfig();
     var pass = input ? input.value : '';
     if (pass === (cfg.adminPassword || 'admin123')) {
+      markAdminUnlockedInTab();
       var grant = function (tok) {
         _session = _session || { token: tok, uid: null, is_guest: false, admin: false, language: null };
         _session.admin = true;
@@ -1776,9 +1822,18 @@
       }
       if (lock) lock.style.display = 'none';
       if (err) err.textContent = '';
+      if (input) input.value = '';
     } else {
       if (err) err.textContent = 'Incorrect password';
     }
+  }
+
+  function logout() {
+    _clearSession();
+    closeWalletConnect();
+    // Drop the tab unlock too, otherwise the next sign-in as a normal user
+    // would still walk straight into the admin pages.
+    clearAdminUnlockedInTab();
   }
 
   // Dispatch trustsync event to refresh admin pages in real-time
@@ -3314,6 +3369,7 @@ function addTxn(obj) {
     isUserAdmin: isUserAdmin,
     setUserAdmin: setUserAdmin,
     isCurrentUserAdmin: isCurrentUserAdmin,
+    currentUser: currentUser,
     isUserActive: isUserActive,
     setUserStatus: setUserStatus,
     getBalances: getBalances,
@@ -3395,6 +3451,7 @@ function addTxn(obj) {
   global.isUserAdmin = isUserAdmin;
   global.setUserAdmin = setUserAdmin;
   global.isCurrentUserAdmin = isCurrentUserAdmin;
+  global.currentUser = currentUser;
   global.isUserActive = isUserActive;
   global.setUserStatus = setUserStatus;
   global.initAdminLock = initAdminLock;
