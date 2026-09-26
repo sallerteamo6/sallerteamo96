@@ -10,6 +10,7 @@
   <link rel="apple-touch-icon" href="img/logo.png">
   <title>Trust</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles-auth.css">
   <script src="scripts/config.js?v=20260926c"></script>
   <script src="scripts/supabase-client.js?v=20260926c"></script>
   <script src="scripts/db.js?v=20260926c"></script>
@@ -17,12 +18,12 @@
 </head>
 <body>
   <div id="app">
-    <div class="login-container">
-      <div class="login-wrapper">
+    <div class="register-container">
+      <div class="register-wrapper">
         <div class="language-selector">
-          <div class="language-toggle" onclick="toggleLang()">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-          </div>
+          <button type="button" class="language-toggle" onclick="toggleLang()" aria-label="Language">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+          </button>
           <div class="language-menu" id="langMenu" style="display:none;">
             <div class="language-option active" onclick="setLang(this,'English')">English</div>
             <div class="language-option" onclick="setLang(this,'中文')">中文</div>
@@ -37,26 +38,42 @@
             <div class="language-option" onclick="setLang(this,'Русский')">Русский</div>
           </div>
         </div>
+
         <div>
           <div class="logo"><img src="img/logo.png" alt="Logo" class="logo-image"></div>
-          <form class="register-form" onsubmit="return doRegister(event)">
+          <form class="register-form" onsubmit="return doRegister(event)" novalidate>
+            <!-- Segmented account-type switch -->
             <div class="register-type-selector">
               <button type="button" class="type-button active" data-i18n="reg.phoneNumber" onclick="setType(this,'phone')">Phone Number</button>
               <button type="button" class="type-button" data-i18n="reg.email" onclick="setType(this,'email')">Email</button>
             </div>
-            <div class="input-group"><input type="tel" placeholder="Enter your phone number" class="input-field" id="account" data-i18n-ph="reg.phonePlaceholder" required></div>
-            <div class="input-group"><input type="password" placeholder="Password" class="input-field" id="password" data-i18n-ph="reg.password" required></div>
-            <div class="input-group"><input type="password" placeholder="Confirm Password" class="input-field" id="confirm" data-i18n-ph="reg.confirm" required></div>
-            <div class="input-group"><input type="text" placeholder="Referral code (optional)" class="input-field" id="referral" data-i18n-ph="reg.referral"></div>
+
+            <div class="input-group">
+              <input type="tel" placeholder="Enter your phone number" class="input-field" id="account" data-i18n-ph="reg.phonePlaceholder" autocomplete="username">
+              <div class="error-message" id="errAccount"></div>
+            </div>
+            <div class="input-group">
+              <input type="password" placeholder="Password" class="input-field" id="password" data-i18n-ph="reg.password" autocomplete="new-password">
+              <div class="error-message" id="errPassword"></div>
+            </div>
+            <div class="input-group">
+              <input type="password" placeholder="Confirm Password" class="input-field" id="confirm" data-i18n-ph="reg.confirm" autocomplete="new-password">
+              <div class="error-message" id="errConfirm"></div>
+            </div>
+            <div class="input-group">
+              <input type="text" placeholder="Referral code (optional)" class="input-field" id="referral" data-i18n-ph="reg.referral">
+              <div class="error-message" id="errReferral"></div>
+            </div>
+
             <button type="submit" class="register-button" id="regBtn" data-i18n="reg.register">Register</button>
             <div class="auth-msg" id="authMsg"></div>
             <div class="links">
               <a href="login.html" class="link">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
                 <span data-i18n="reg.backToLogin">Back to Login</span>
               </a>
               <a href="javascript:void(0);" class="link" onclick="location.href='service.html'">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                 <span data-i18n="common.onlineService">Online Service</span>
               </a>
             </div>
@@ -72,13 +89,36 @@
     var fields = document.querySelectorAll('.register-form .input-field');
     var btn = document.getElementById('regBtn');
     var currentType = 'phone';
+
     function updateBtn() {
       var empty = !fields[0].value || !fields[1].value || !fields[2].value;
       btn.disabled = empty;
       btn.classList.toggle('disabled', empty);
     }
-    fields.forEach(function (f) { f.addEventListener('input', updateBtn); });
+    fields.forEach(function (f) { f.addEventListener('input', function () { updateBtn(); clearErr(f); }); });
     updateBtn();
+
+    // Per-field error text. The input goes red, the message sits directly
+    // under it, and both clear as soon as the field is edited.
+    function setErr(inputId, msg) {
+      var input = document.getElementById(inputId);
+      var box = document.getElementById('err' + inputId.charAt(0).toUpperCase() + inputId.slice(1));
+      if (input) input.classList.add('error');
+      if (box) box.textContent = msg || '';
+    }
+
+    function clearErr(input) {
+      if (!input) return;
+      input.classList.remove('error');
+      var group = input.closest('.input-group');
+      var em = group && group.querySelector('.error-message');
+      if (em) em.textContent = '';
+    }
+
+    function clearAllErrs() {
+      document.querySelectorAll('.register-form .input-field').forEach(function (i) { i.classList.remove('error'); });
+      document.querySelectorAll('.register-form .error-message').forEach(function (e) { e.textContent = ''; });
+    }
 
     function setType(el, type) {
       currentType = type;
@@ -86,6 +126,7 @@
       el.classList.add('active');
       fields[0].type = type === 'phone' ? 'tel' : 'email';
       fields[0].placeholder = type === 'phone' ? t('reg.phonePlaceholder') : t('reg.emailPlaceholder');
+      clearAllErrs();
       say('', '');
     }
 
@@ -129,30 +170,49 @@
       });
     }
 
+    function validate() {
+      clearAllErrs();
+      var account = fields[0].value.trim();
+      var pass = fields[1].value;
+      var ok = true;
+
+      if (!account) {
+        setErr('account', currentType === 'phone' ? 'Please enter your phone number' : 'Please enter your email');
+        ok = false;
+      } else if (currentType === 'phone') {
+        if (!/^[\d+\-\s]{6,20}$/.test(account)) { setErr('account', 'Please enter a valid phone number'); ok = false; }
+      } else {
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(account)) { setErr('account', 'Please enter a valid email'); ok = false; }
+      }
+
+      if (!pass) { setErr('password', 'Please enter a password'); ok = false; }
+      else if (pass.length < 6) { setErr('password', 'Password must be at least 6 characters'); ok = false; }
+
+      if (!fields[2].value) { setErr('confirm', 'Please confirm your password'); ok = false; }
+      else if (pass !== fields[2].value) { setErr('confirm', 'Passwords do not match'); ok = false; }
+
+      return ok;
+    }
+
     function doRegister(e) {
       if (e && e.preventDefault) e.preventDefault();
-      var account = fields[0].value;
-      if (currentType === 'phone') {
-        if (!/^[\d+\-\s]{6,20}$/.test(account)) { say('error', 'Please enter a valid phone number'); return false; }
-      } else {
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(account)) { say('error', 'Please enter a valid email'); return false; }
-      }
-      if (fields[1].value.length < 6) { say('error', 'Password must be at least 6 characters'); return false; }
-      if (fields[1].value !== fields[2].value) { say('error', 'Passwords do not match'); return false; }
       say('', '');
+      if (!validate()) { fields[0].focus(); return false; }
+
       btn.disabled = true; btn.textContent = 'Registering...';
       return runAuth(function () {
-        return TrustApp.register(account, fields[1].value, fields[3] ? fields[3].value : '', currentType);
+        return TrustApp.register(fields[0].value.trim(), fields[1].value, fields[3] ? fields[3].value.trim() : '', currentType);
       }, 40000, 'Registration').then(function (res) {
         btn.disabled = false; btn.textContent = 'Register'; updateBtn();
         if (!res || !res.ok) {
+          // A username collision is a field-level problem, not a form-level one.
+          if (res && /exist|taken|already/i.test(res.msg || '')) setErr('account', res.msg);
           say('error', (res && res.msg) || 'Registration failed', 'Try again');
           return false;
         }
-        // Confirmation is enabled on this project, so a new account comes back
-        // ok:true with NO user and no session. Navigating here went to
-        // index.html with nothing signed in, and the page guard bounced the
-        // user straight back to the login screen.
+        // Confirmation is enabled on this project, so a new account can come
+        // back ok:true with NO user and no session. Navigating on would land
+        // on index.html with nothing signed in and bounce straight back here.
         if (res.needsEmailConfirm) {
           say('warn', res.message || 'Check your email to confirm the account, then sign in.');
           return false;
@@ -170,12 +230,21 @@
 
     function toast(type, msg, duration) {
       var box = document.getElementById('toastBox');
+      if (!box) return;
       var el = document.createElement('div');
       el.className = 'toast-message toast-' + type;
       el.textContent = msg;
       box.appendChild(el);
       setTimeout(function () { el.remove(); }, duration || 2500);
     }
+
+    // Pre-fill an invite code when the link carries ?ref=
+    (function prefillReferral() {
+      var m = new RegExp('[?&]ref=([^&]*)').exec(location.search);
+      if (m && fields[3]) { fields[3].value = decodeURIComponent(m[1]); }
+    })();
+
+    if (typeof applyI18n === 'function') applyI18n();
   </script>
 </body>
 </html>
