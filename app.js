@@ -1099,33 +1099,27 @@
 
   var _lang = null;
 
-  function langLabel(code) {
-    return (LANGS && LANGS[code]) || 'English';
+  function langLabel(value) {
+    if (LANGS[value]) return value;
+    return Object.keys(LANGS).find(function (label) { return LANGS[label] === value; }) || 'English';
   }
 
   function getLang() {
+    try { var saved = localStorage.getItem('trustLanguage'); if (saved) return langLabel(saved); } catch (e) {}
     if (_lang && LANGS[_lang]) return _lang;
-    var c = 'en';
-    try { if (getConfig().defaultLanguage) c = getConfig().defaultLanguage; } catch (e) {}
-    var dbLang = null;
-    try { if (dbActive() && DB.getSetting) dbLang = DB.getSetting('language'); } catch (e) {}
-    if (dbLang && LANGS[dbLang]) return dbLang;
-    return langLabel(c);
+    if (_session && _session.language) return langLabel(_session.language);
+    return langLabel(getConfig().defaultLanguage || 'en');
   }
 
   function setLang(el, label) {
-    if (!LANGS[label]) label = 'English';
-    _lang = label;
-    if (dbActive()) {
-      try {
-        if (_session && _session.uid != null && !_session.is_guest) DB.setUserLanguage(_session.uid, label).catch(function () {});
-        var tok = getToken();
-        if (tok) DB.updateSession(tok, { language: label }).catch(function () {});
-      } catch (e) {}
-    }
+    _lang = langLabel(label);
+    try { localStorage.setItem('trustLanguage', LANGS[_lang]); } catch (e) {}
+    if (_session) _session.language = _lang;
+    if (dbActive() && DB._uid()) DB.setUserLanguage(DB._uid(), _lang).catch(function () {});
     applyI18n();
     var menu = document.getElementById('langMenu');
     if (menu) menu.style.display = 'none';
+    window.dispatchEvent(new CustomEvent('trustlanguagechange'));
   }
 
   function t(key) {
@@ -1137,6 +1131,9 @@
 
   function applyI18n() {
     var lang = getLang();
+    document.documentElement.lang = LANGS[lang] || 'en';
+    document.documentElement.dir = LANGS[lang] === 'fa' ? 'rtl' : 'ltr';
+    document.querySelectorAll('[data-language-select]').forEach(function (select) { select.value = LANGS[lang]; });
     var btn = document.querySelector('.language-btn');
     if (btn) {
       var chevron = btn.querySelector('svg');
@@ -1162,9 +1159,71 @@
     try { applyI18n(); } catch (e) {}
   });
 
+  // Shared selector for admin pages; customer menus use the same saved locale.
+  function setupLanguageControls() {
+    if (document.body && document.body.classList.contains('admin-page')) {
+      var host = document.querySelector('.admin-topbar');
+      if (host && !host.querySelector('[data-language-select]')) {
+        var select = document.createElement('select');
+        select.setAttribute('data-language-select', '');
+        select.setAttribute('aria-label', 'Language');
+        select.style.cssText = 'margin-inline-start:auto;max-width:140px;padding:8px;border:1px solid #d5dbe5;border-radius:8px;background:white;';
+        Object.keys(LANGS).forEach(function (label) { var option=document.createElement('option'); option.value=LANGS[label]; option.textContent=label; select.appendChild(option); });
+        select.onchange=function () { setLang(select, select.value); };
+        host.appendChild(select);
+      }
+    }
+    applyI18n();
+    translateAdminLabels();
+  }
+  var adminLabelSource = new WeakMap();
+  var adminTranslations = {
+    'Dashboard':['仪表板','ダッシュボード','대시보드','داشبورد','Übersicht','Tableau de bord','Panel','Panoramica','Painel','Обзор'],
+    'Users':['用户','ユーザー','사용자','کاربران','Benutzer','Utilisateurs','Usuarios','Utenti','Usuários','Пользователи'],
+    'User Management':['用户管理','ユーザー管理','사용자 관리','مدیریت کاربران','Benutzerverwaltung','Gestion des utilisateurs','Gestión de usuarios','Gestione utenti','Gestão de usuários','Управление пользователями'],
+    'Verification':['验证','本人確認','인증','احراز هویت','Verifizierung','Vérification','Verificación','Verifica','Verificação','Верификация'],
+    'Balance Adjuster':['余额调整','残高調整','잔액 조정','تنظیم موجودی','Saldoanpassung','Ajustement du solde','Ajustar saldo','Modifica saldo','Ajustar saldo','Коррекция баланса'],
+    'Deposits & Withdrawals':['存款与提款','入出金','입출금','واریز و برداشت','Ein- und Auszahlungen','Dépôts et retraits','Depósitos y retiros','Depositi e prelievi','Depósitos e saques','Ввод и вывод'],
+    'Coin Addresses':['币种地址','通貨アドレス','코인 주소','آدرس ارزها','Coin-Adressen','Adresses crypto','Direcciones cripto','Indirizzi crypto','Endereços cripto','Адреса валют'],
+    'Loans':['贷款','ローン','대출','وام‌ها','Darlehen','Prêts','Préstamos','Prestiti','Empréstimos','Займы'],
+    'Live Feed':['实时动态','ライブ履歴','실시간 내역','گزارش زنده','Live-Verlauf','Flux en direct','Actividad en vivo','Attività in tempo reale','Atividade ao vivo','События'],
+    'Customer Service':['客服','カスタマーサービス','고객 서비스','خدمات مشتریان','Kundenservice','Service client','Atención al cliente','Servizio clienti','Atendimento','Поддержка'],
+    'Settings':['设置','設定','설정','تنظیمات','Einstellungen','Paramètres','Configuración','Impostazioni','Configurações','Настройки'],
+    'Admin Access':['管理员访问','管理者アクセス','관리자 접근','دسترسی مدیر','Admin-Zugang','Accès administrateur','Acceso de administrador','Accesso amministratore','Acesso de administrador','Доступ администратора'],
+    'Unlock':['解锁','解除','잠금 해제','باز کردن','Entsperren','Déverrouiller','Desbloquear','Sblocca','Desbloquear','Разблокировать'],
+    'Account':['账户','アカウント','계정','حساب','Konto','Compte','Cuenta','Account','Conta','Аккаунт'],
+    'Balance':['余额','残高','잔액','موجودی','Guthaben','Solde','Saldo','Saldo','Saldo','Баланс'],
+    'Status':['状态','状態','상태','وضعیت','Status','Statut','Estado','Stato','Status','Статус'],
+    'Actions':['操作','操作','작업','عملیات','Aktionen','Actions','Acciones','Azioni','Ações','Действия'],
+    'Edit':['编辑','編集','편집','ویرایش','Bearbeiten','Modifier','Editar','Modifica','Editar','Изменить'],
+    'Approve':['批准','承認','승인','تأیید','Genehmigen','Approuver','Aprobar','Approva','Aprovar','Одобрить'],
+    'Reject':['拒绝','却下','거절','رد','Ablehnen','Rejeter','Rechazar','Rifiuta','Rejeitar','Отклонить'],
+    'Send':['发送','送信','보내기','ارسال','Senden','Envoyer','Enviar','Invia','Enviar','Отправить']
+  };
+  function translateAdminLabels() {
+    if (!document.body || !document.body.classList.contains('admin-page')) return;
+    var codes=['zh','ja','ko','fa','de','fr','es','it','pt','ru'];
+    var code=LANGS[getLang()], col=codes.indexOf(code);
+    document.querySelectorAll('.as-nav, .admin-topbar .at-title, h1, h2, h3, th, button, .admin-lock p').forEach(function (root) {
+      var walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT), node;
+      while ((node=walker.nextNode())) {
+        var original=adminLabelSource.get(node) || node.nodeValue;
+        var key=original.trim(), values=adminTranslations[key];
+        if (!values) continue;
+        adminLabelSource.set(node,original);
+        var translated=col<0 ? key : values[col];
+        var value=original.replace(key,translated);
+        if (node.nodeValue!==value) node.nodeValue=value;
+      }
+    });
+  }
+  document.addEventListener('DOMContentLoaded', setupLanguageControls);
+  window.addEventListener('trustlanguagechange', translateAdminLabels);
+  window.addEventListener('storage', function (event) { if (event.key==='trustLanguage') { _lang=null; applyI18n(); translateAdminLabels(); } });
+
   function toggleLang() {
     var m = document.getElementById('langMenu');
-    if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+    if (m) m.style.display = getComputedStyle(m).display === 'none' ? 'block' : 'none';
   }
 
   function getUserId() {
@@ -1288,7 +1347,7 @@
           admin: !!s.admin,
           language: s.language || null
         };
-        if (_session.language && LANGS[_session.language]) _lang = _session.language;
+        if (!_lang && _session.language) _lang = langLabel(_session.language);
         if (_session.uid != null && !_session.is_guest) {
           try {
             var dl = DB.getUserLanguage(_session.uid);
@@ -1483,7 +1542,7 @@
 
   function dbTxnToApp(t) {
     var dir = 'credit';
-    var desc = t.description || '';
+    var desc = t.note || t.description || '';
     var dirm = /^\[(debit|credit)\]\s*/.exec(desc);
     if (dirm) dir = dirm[1];
     var acct = '';
@@ -1508,11 +1567,18 @@
       id: String(t.id),
       uid: t.uid,
       account: acct || t.account || '',
-      type: t.type || 'deposit',
+      type: t.type === 'withdrawal' ? 'withdraw' : (t.type || 'deposit'),
       coin: t.coin || 'USDT',
       amount: parseFloat(t.amount) || 0,
-      status: t.status || 'completed',
+      status: t.status === 'approved' ? 'confirmed' : (t.status || 'completed'),
       note: note,
+      requestDetails: t.request_details || {},
+      method: t.request_details && t.request_details.method,
+      address: t.request_details && t.request_details.address,
+      holder: t.request_details && t.request_details.holder,
+      bank: t.request_details && t.request_details.bank,
+      card: t.request_details && t.request_details.card,
+      branch: t.request_details && t.request_details.branch,
       proof: proof,
       proof_name: proofName,
       proofName: proofName,
@@ -1528,11 +1594,11 @@
       id: l.id,
       uid: l.uid,
       account: l.account || '',
-      amount: parseFloat(l.amount) || 0,
+      amount: parseFloat(l.principal != null ? l.principal : l.amount) || 0,
       days: parseInt(l.days, 10) || 0,
       rate: parseFloat(l.rate) || 0,
       interest: parseFloat(l.interest) || 0,
-      status: l.status || 'pending',
+      status: l.status === 'repaid' ? 'paid' : (l.status || 'pending'),
       createdAt: l.created_at,
       created_at: l.created_at
     };
@@ -1614,12 +1680,12 @@
   function dbVerToApp(v) {
     return {
       uid: v.uid,
-      name: v.name || '',
+      name: v.full_name || v.name || '',
       email: v.email || '',
       idNumber: v.id_number || '',
       phone: v.phone || '',
-      idFront: v.id_front || '',
-      idBack: v.id_back || '',
+      idFront: v.id_front_url || v.id_front || '',
+      idBack: v.id_back_url || v.id_back || '',
       status: v.status || 'pending',
       submittedAt: v.submitted_at || null,
       reviewedAt: v.reviewed_at || null,
@@ -1637,7 +1703,7 @@
     // DB.getUsers() returns [] under RLS. Public admin_users() is the one read
     // allowed to see those rows, and its result is cached here so this stays
     // synchronous for the ~15 call sites that do .length / .map / .forEach.
-    if (_adminUsers && adminToken() && !isRealAdmin()) return _adminUsers.slice();
+    // The shared data cache is updated by both realtime and revision polling.
 
     if (dbReadable()) {
       try {
@@ -2071,47 +2137,13 @@
 // Local pending transactions (for immediate confirm before DB sync)
   var _pendingTxns = {};
 
-function addTxn(obj) {
-    var t = {
-      id: genId(obj.type || 'TXN'),
-      uid: obj.uid || '',
-      account: obj.account || '',
-      type: obj.type || 'deposit',
-      coin: obj.coin || 'USDT',
-      amount: Math.abs(parseFloat(obj.amount) || 0),
-      status: obj.status || 'pending',
-      note: obj.note || '',
-      proof: obj.proof || '',
-      proofName: obj.proofName || '',
-      createdAt: new Date().toISOString(),
-      db: false,
-      dbId: null
-    };
-    _pendingTxns[t.id] = t;
-    if (dbActive()) {
-      var dir = obj.dir === 'debit' ? 'debit' : 'credit';
-      var note = obj.note || '';
-      var desc = '[' + dir + '] ' + (obj.account && obj.account !== obj.uid ? obj.account + ' ' : '') + note;
-      DB.addTransaction({
-        uid: obj.uid || null,
-        type: obj.type || 'deposit',
-        coin: obj.coin || 'USDT',
-        amount: Math.abs(parseFloat(obj.amount) || 0),
-        status: obj.status || 'pending',
-        reference_id: '',
-        description: desc,
-        proof: obj.proof || '',
-        proof_name: obj.proofName || ''
-      }).then(function (row) {
-        if (row && row.id) {
-          _txnIdMap[t.id] = row.id;
-          t.db = true;
-          t.dbId = row.id;
-        }
-        _notifyChange('transactions');
-}).catch(function () {});
-    }
-    return t;
+  function addTxn(obj) {
+    if (!dbActive()) return Promise.reject(new Error('Connection is not ready. Please retry.'));
+    return DB.addTransaction({type:obj.type,coin:obj.coin || 'USDT',amount:Number(obj.amount),
+      note:obj.note || '',proof:obj.proof || '',proofName:obj.proofName || '',
+      request_details:{method:obj.method || null,address:obj.address || null,holder:obj.holder || null,
+        bank:obj.bank || null,card:obj.card || null,branch:obj.branch || null}
+    }).then(function (row) { _notifyChange('transactions'); return dbTxnToApp(row); });
   }
 
   function usdValue(coin) {
@@ -2123,46 +2155,10 @@ function addTxn(obj) {
   }
 
   function setTxnStatus(id, status) {
-    var txns = getTxns();
-    var txn = txns.find(function (t) { return String(t.id) === String(id); });
-    var local = txn || _pendingTxns[id] || null;
-    if (!txn && _txnIdMap[id]) {
-      var realId = _txnIdMap[id];
-      txn = txns.find(function (t) { return String(t.id) === String(realId); }) || txn;
-    }
-    if (!txn && local) txn = local;
-    var wasConfirmed = txn ? txn.status === 'confirmed' : false;
-    var out = {
-      id: id,
-      status: status,
-      uid: txn ? txn.uid : null,
-      coin: txn ? txn.coin : 'USDT',
-      amount: txn ? txn.amount : 0,
-      type: txn ? txn.type : 'deposit'
-    };
-    function finish() {
-      if (local) local.status = status;
-      _notifyChange('transactions');
-      // All crediting/debiting happens here (single source of truth), so admin
-      // pages never need to call addBalance after confirming.
-      if (status === 'confirmed' && txn && txn.uid != null && !wasConfirmed) {
-        var p = null;
-        try {
-          if (txn.type === 'deposit') {
-            p = addBalance(txn.uid, 'USDT', (parseFloat(txn.amount) || 0) * usdValue(txn.coin));
-          } else if (txn.type === 'withdraw') {
-            p = addBalance(txn.uid, txn.coin, -(parseFloat(txn.amount) || 0));
-          }
-        } catch (e) { p = null; }
-        if (p) return Promise.resolve(p).then(function () { return out; }).catch(function () { return out; });
-      }
-      return out;
-    }
-    if (dbActive()) {
-      var dbId = txn && txn.db ? id : ((txn && txn.dbId) || _txnIdMap[id] || id);
-      return DB.setTransactionStatus(dbId, status).then(finish).catch(function () { return out; });
-    }
-    return finish();
+    if (!dbActive()) return Promise.reject(new Error('Connection is not ready'));
+    return DB.setTransactionStatus(id,status === 'confirmed' ? 'approved' : status).then(function () {
+      return Promise.all([DB.pullBlob('transactions'),DB.pullBlob('balances')]);
+    }).then(function () { return {id:id,status:status}; });
   }
 
   var LOAN_KEY = 'trustLoans';
@@ -2181,42 +2177,15 @@ function addTxn(obj) {
   }
 
   function addLoan(obj) {
-    var l = {
-      id: genId('LOAN'),
-      uid: obj.uid || '',
-      account: obj.account || obj.uid || '',
-      amount: Math.abs(parseFloat(obj.amount) || 0),
-      days: parseInt(obj.days, 10) || 0,
-      rate: parseFloat(obj.rate) || 0,
-      interest: Math.abs(parseFloat(obj.interest) || 0),
-      status: obj.status || 'pending',
-      createdAt: new Date().toISOString()
-    };
-    if (dbActive()) {
-      DB.addLoan({ uid: obj.uid || null, account: obj.account || obj.uid || '', amount: l.amount, days: l.days, rate: l.rate, interest: l.interest }).then(function (row) {
-        if (row && row.id) l.id = row.id;
-        _notifyChange('loans');
-      }).catch(function () {});
-      return l;
-    }
-    return l;
+    if (!dbActive()) return Promise.reject(new Error('Connection is not ready. Please retry.'));
+    return DB.addLoan(obj).then(function (row) { _notifyChange('loans'); return dbLoanToApp(row); });
   }
 
-  function setLoanStatus(id, status) {
-    var out = { id: id, status: status, uid: null, amount: 0 };
-    var list = getLoans();
-    for (var i = 0; i < list.length; i++) {
-      if (String(list[i].id) === String(id)) {
-        list[i].status = status;
-        out.uid = list[i].uid;
-        out.amount = parseFloat(list[i].amount) || 0;
-      }
-    }
-    function done() { _notifyChange('loans'); return out; }
-    if (dbActive()) {
-      DB.updateLoanStatus(id, status).then(done).catch(function () {});
-    }
-    return done();
+  function setLoanStatus(id,status) {
+    if (!dbActive()) return Promise.reject(new Error('Connection is not ready'));
+    return DB.updateLoanStatus(id,status === 'paid' ? 'repaid' : status).then(function () {
+      return Promise.all([DB.pullBlob('loans'),DB.pullBlob('balances')]);
+    }).then(function () { return {id:id,status:status}; });
   }
 
   function legacyTradeToApp(x) {
@@ -2630,13 +2599,10 @@ function addTxn(obj) {
 
   var SUPPORT_GREETING = 'Hello! Welcome to Trust Wallet Support. How can I help you today?';
 
-  function ensureSupportGreeting(uid) {
-    if (!uid) return null;
-    if (dbActive()) {
-      if (DB.getUserGreeted(uid)) return null;
-      DB.setUserGreeted(uid).catch(function () {});
-    }
-    return sendChatMsg(uid, 'admin', SUPPORT_GREETING);
+  function ensureSupportGreeting() {
+    // The service page already renders a welcome. Do not send an admin message
+    // from a customer's session or mark a greeting as delivered before a write.
+    return null;
   }
 
   function getChat(uid) {
@@ -2662,23 +2628,12 @@ function addTxn(obj) {
   }
 
   function sendChatMsg(uid, from, text, attachments) {
-    if (!uid) return null;
-    var msg = {
-      mid: genId('CM'),
-      from: from === 'admin' ? 'admin' : 'user',
-      text: String(text || '').slice(0, 2000),
-      at: new Date().toISOString(),
-      seen: from === 'admin'
-    };
-    if (attachments && attachments.length) msg.attachments = attachments.slice(0, 6);
-    if (dbActive()) {
-      var extra = msg.attachments ? { attachments: msg.attachments } : null;
-      DB.sendChatMessage(uid, msg.from, msg.text, extra).then(function (row) {
-        if (row && row.id) msg.mid = String(row.id);
-        _notifyChange('chat_messages');
-      }).catch(function () {});
-    }
-    return msg;
+    if (!uid || !dbActive()) return Promise.reject(new Error('Chat is not connected. Please sign in and retry.'));
+    var body = String(text || '').slice(0,2000);
+    var files = (attachments || []).slice(0,6);
+    if (!body.trim() && !files.length) return Promise.reject(new Error('Enter a message or attach a file.'));
+    return DB.sendChatMessage(uid, from === 'admin' ? 'admin' : 'user', body, {attachments:files})
+      .then(function (row) { _notifyChange('chat_messages'); return row; });
   }
 
   function updateChatMsg(uid, key, text) {
@@ -2778,19 +2733,14 @@ function addTxn(obj) {
     }).join('');
   }
 
-  function adjustBalance(uid, coin, dir, amt, note) {
-    var user = accountByUid(uid);
-    if (!user) return { ok: false, msg: 'User not found' };
-    amt = Math.abs(parseFloat(amt) || 0);
-    if (amt <= 0) return { ok: false, msg: 'Amount must be greater than 0' };
-    var delta = dir === 'debit' ? -amt : amt;
-    addBalance(uid, coin, delta);
-    var t = addTxn({ uid: uid, account: user.account, type: 'adjust', coin: coin, amount: amt, status: 'confirmed', note: note || (dir === 'debit' ? 'Manual debit' : 'Manual credit') });
-    t.dir = dir === 'debit' ? 'debit' : 'credit';
-    var list = getTxns();
-    for (var i = 0; i < list.length; i++) { if (list[i].id === t.id) { list[i].dir = t.dir; break; } }
-    saveTxns(list);
-    return { ok: true, balance: getBalance(uid, coin) };
+  async function adjustBalance(uid,coin,dir,amt,note) {
+    if (!dbActive()) return {ok:false,msg:'Connection is not ready'};
+    amt=Math.abs(Number(amt));
+    if (!Number.isFinite(amt) || amt<=0) return {ok:false,msg:'Enter a valid amount'};
+    try {
+      var balance=await DB.addBalance(uid,coin,dir==='debit' ? -amt : amt,note || 'Manual balance adjustment');
+      return {ok:true,balance:balance};
+    } catch(e) { return {ok:false,msg:e.message || 'Balance adjustment failed'}; }
   }
 
   function isUserAdmin(uid) {
@@ -2979,55 +2929,24 @@ function addTxn(obj) {
     return m[uid] || null;
   }
 
-  function submitVerification(uid, data) {
-    if (!uid) return { ok: false, msg: 'Please login first' };
-    if (!data || !data.name || !data.idNumber || !data.idFront || !data.idBack) {
-      return { ok: false, msg: 'Please fill in all fields and upload both sides of your ID' };
-    }
-    if (dbActive()) {
-      var v = getVerification(uid);
-      if (v && v.status === 'pending') return { ok: false, msg: 'Your verification is already under review' };
-      DB.submitVerification(uid, {
-        name: String(data.name || '').slice(0, 120),
-        email: String(data.email || '').slice(0, 120),
-        idNumber: String(data.idNumber || '').slice(0, 80),
-        phone: String(data.phone || '').slice(0, 40),
-        id_front: String(data.idFront || ''),
-        id_back: String(data.idBack || '')
-      }).then(function () {
-        _notifyChange('verifications');
-      }).catch(function (e) {
-        try { if (window.toast) toast('error', 'Save failed: ' + e.message); } catch (e2) {}
-      });
-      return { ok: true };
-    }
-    return { ok: false, msg: 'Database not configured' };
+  async function submitVerification(uid, data) {
+    if (!uid) return {ok:false,msg:'Please login first'};
+    if (!data || !data.name || !data.idNumber || !data.idFront || !data.idBack) return {ok:false,msg:'Fill in all fields and upload both sides of your ID'};
+    if (!dbActive()) return {ok:false,msg:'Connection is not ready. Please retry.'};
+    var current = getVerification(uid);
+    if (current && current.status === 'pending') return {ok:false,msg:'Your verification is already under review'};
+    try {
+      await DB.submitVerification(uid, data);
+      _notifyChange('verifications');
+      return {ok:true};
+    } catch (e) { return {ok:false,msg:e.message || 'Verification could not be saved'}; }
   }
 
-  function submitAdvancedVerification(uid, data) {    if (!uid) return { ok: false, msg: 'Please login first' };
-    if (!data || !data.advanced) return { ok: false, msg: 'Please upload your handheld ID photo' };
-    if (!dbActive()) return { ok: false, msg: 'Database not configured' };
-    var v = getVerification(uid);
-    if (v && v.advancedStatus === 'pending') return { ok: false, msg: 'Your advanced verification is already under review' };
-    var fields = {
-      advanced: String(data.advanced || ''),
-      advanced_status: 'pending',
-      advanced_submitted_at: new Date().toISOString(),
-      advanced_reviewed_at: null,
-      advanced_note: ''
-    };
-    if (v) {
-      DB.updateVerificationAdvanced(uid, fields).catch(function (e) {
-        try { if (window.toast) toast('error', 'Save failed: ' + e.message); } catch (e2) {}
-      });
-    } else {
-      DB.submitVerification(uid, Object.assign({
-        name: '', email: '', idNumber: '', phone: '', id_front: '', id_back: ''
-      }, fields)).catch(function (e) {
-        try { if (window.toast) toast('error', 'Save failed: ' + e.message); } catch (e2) {}
-      });
-    }
-    return { ok: true };
+  async function submitAdvancedVerification(uid, data) {
+    if (!uid || !dbActive()) return {ok:false,msg:'Please sign in and wait for the connection.'};
+    if (!data || !data.advanced) return {ok:false,msg:'Please upload your handheld ID photo'};
+    try { await DB.submitAdvancedKyc(String(data.advanced)); return {ok:true}; }
+    catch (e) { return {ok:false,msg:e.message || 'Verification could not be saved'}; }
   }
 
   function getAdvancedVerification(uid) {
@@ -3042,51 +2961,24 @@ function addTxn(obj) {
     };
   }
 
-  function setAdvancedVerificationStatus(uid, status, note) {
-    if (!dbActive()) return { ok: false, msg: 'Database not configured' };
-    var v = getVerification(uid);
-    if (!v || !v.advanced) return { ok: false, msg: 'No advanced verification submission found' };
-    if (status !== 'approved' && status !== 'rejected') return { ok: false, msg: 'Invalid status' };
-    DB.updateVerificationAdvanced(uid, {
-      advanced_status: status,
-      advanced_note: String(note || '').slice(0, 300),
-      advanced_reviewed_at: new Date().toISOString()
-    }).then(function () {
-      _notifyChange('verifications');
-    }).catch(function () {});
-    return { ok: true };
+  async function setAdvancedVerificationStatus(uid,status,note) {
+    if (!dbActive()) return {ok:false,msg:'Connection is not ready'};
+    try {
+      await DB.rpc('admin_review_advanced_kyc',{p_uid:String(uid),p_status:status,p_reason:note || null});
+      await DB.pullBlob('verifications');return {ok:true};
+    } catch(e) { return {ok:false,msg:e.message || 'Review could not be saved'}; }
   }
 
-  function setVerificationStatus(uid, status, note) {
-    if (dbActive()) {
-      if (!getVerification(uid)) return { ok: false, msg: 'No verification submission found' };
-      if (status !== 'approved' && status !== 'rejected') return { ok: false, msg: 'Invalid status' };
-      DB.updateVerificationStatus(uid, status, { rejection_reason: String(note || '').slice(0, 300) }).then(function () {
-        _notifyChange('verifications');
-      }).catch(function () {});
-      return { ok: true };
-    }
-    return { ok: false, msg: 'Database not configured' };
+  async function setVerificationStatus(uid,status,note) {
+    if (!dbActive()) return {ok:false,msg:'Connection is not ready'};
+    if (!getVerification(uid)) return {ok:false,msg:'No verification submission found'};
+    try {
+      await DB.updateVerificationStatus(uid,status,{reason:String(note || '').slice(0,300)});
+      await DB.pullBlob('verifications');return {ok:true};
+    } catch(e) { return {ok:false,msg:e.message || 'Review could not be saved'}; }
   }
 
-  function adminApproveKyc(uid) {
-    if (!uid) return { ok: false, msg: 'No uid' };
-    if (dbActive()) {
-      var cur = getVerification(uid);
-      if (cur && cur.status === 'approved') return { ok: false, msg: 'Already approved' };
-      if (!cur) {
-        DB.submitVerification(uid, { name: '', email: '', idNumber: '', phone: '', id_front: '', id_back: '', status: 'approved' }).then(function () {
-          _notifyChange('verifications');
-        }).catch(function () {});
-      } else {
-        DB.updateVerificationStatus(uid, 'approved', { rejection_reason: '' }).then(function () {
-          _notifyChange('verifications');
-        }).catch(function () {});
-      }
-      return { ok: true };
-    }
-    return { ok: false, msg: 'Database not configured' };
-  }
+  function adminApproveKyc(uid) { return setVerificationStatus(uid,'approved',''); }
 
   function changePassword(uid, currentPassword, newPassword) {
     if (!uid) return { ok: false, msg: 'Please login first' };

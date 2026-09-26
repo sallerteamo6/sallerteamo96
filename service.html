@@ -11,8 +11,8 @@
   <link rel="apple-touch-icon" href="img/logo.png">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260926p"></script>
-  <script src="app.js?v=20260926p"></script>
+    <script src="scripts/db.js?v=20260926q"></script>
+  <script src="app.js?v=20260926q"></script>
   <style>
     *{margin:0;padding:0;box-sizing:border-box;}
     body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;background:#f7f8fa;color:#333;}
@@ -282,15 +282,23 @@
       renderPending();
     }
 
-    function sendMessage(text) {
+    async function sendMessage(text) {
+      if (window.__pendingActions && window.__pendingActions['sendMessage']) return;
+      window.__pendingActions = window.__pendingActions || {};
+      window.__pendingActions['sendMessage'] = true;
+      try {
+
       if (!text.trim() && !pending.length) return;
       if (!uid) { toast('error', TrustApp.t('svc.unableConnect')); return; }
-      TrustApp.sendChatMsg(uid, 'user', text.trim(), pending);
+      await TrustApp.sendChatMsg(uid, 'user', text.trim(), pending);
       pending = [];
       renderPending();
       document.getElementById('chatInput').value = '';
       pinnedBottom = true;
       render();
+      } catch (e) { toast('error', e.message || 'Could not send. Please retry.'); }
+      finally { window.__pendingActions['sendMessage'] = false; }
+
     }
 
     function render() {
@@ -329,5 +337,6 @@
     render();
     setInterval(render, 2000);
   </script>
+<script>window.addEventListener("trustsync:chat_messages", render); window.addEventListener("trustlanguagechange", render);</script>
 </body>
 </html>

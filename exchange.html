@@ -12,8 +12,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260926p"></script>
-  <script src="app.js?v=20260926p"></script>
+    <script src="scripts/db.js?v=20260926q"></script>
+  <script src="app.js?v=20260926q"></script>
 </head>
 <body class="auth-page exchange-page" style="background:#f5f7fa;">
 
@@ -249,7 +249,7 @@
       var recv = usd / rateOf(t) * (1 - EXCHANGE_FEE / 100);
       TrustApp.addBalance(uid, f, -amt);
       TrustApp.addBalance(uid, t, recv);
-      try { TrustApp.addTxn({ uid: uid, account: uid, type: 'exchange', coin: f, amount: amt, status: 'confirmed', note: 'EX ' + f + ' ' + amt + '->' + t + ' ' + recv }); } catch (e2) {}
+      try { TrustApp.addTxn({ uid: uid, account: uid, type: 'exchange', coin: f, amount: amt, status: 'confirmed', note: 'EX ' + f + ' ' + amt + '->' + t + ' ' + recv }).catch(function (e) { toast('error', e.message); }); } catch (e2) {}
       toast('success', TrustApp.t('exch.success'));
       document.getElementById('fromAmount').value = '';
       document.getElementById('toAmount').value = '';

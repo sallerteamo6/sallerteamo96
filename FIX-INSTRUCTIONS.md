@@ -1,35 +1,46 @@
-# Admin user data and hamburger UID repair
+# Install this update
 
-## Update: authorized admin access
+1. Keep a backup of your current website and database.
+2. If you have not already applied `supabase/v2/14_admin_data_fix.sql`, run it in Supabase SQL Editor first. It requires the existing v2 schema and admin-password setup.
+3. Run the NEW `supabase/v2/15_live_delivery.sql` in full. This step is required even if the previous fix was installed. It preserves your records, balances, UIDs, and admin password.
+4. Replace the website files with this folder's contents. Preserve your production `scripts/config.js` if its settings differ.
+5. Press Ctrl+Shift+R and sign in again on both customer and admin pages.
 
-This update removes the obsolete “Admin data is hidden” banner and the matching User Management empty-state restriction. Both verified admin-password sessions and signed-in database admins are recognized. An expired password-session token no longer overrides a signed-in database admin. Repeated fetch loops in Users, Loans, and Balance Adjuster are removed. An unrelated table failure no longer blocks the loaded user list.
+## What changed
 
-Replace the website files and press Ctrl+Shift+R. If you already successfully ran `14_admin_data_fix.sql` from the previous download, no additional SQL migration is needed. Otherwise apply it using the steps below. Database access still requires valid server authorization.
+- Language: repaired corrupted dropdown labels, corrected language code/name mapping, saved the selection across page loads, updated document language/direction, and added an admin language selector with translated navigation and common controls. Existing customer translation keys remain in use. Some untagged admin descriptions and dynamic messages remain English; user messages are not automatically translated.
+- Chat: corrected `chat`/`chat_messages` aliases; sends now wait for the server and retain the draft after failure. Incoming messages repaint the service page. Both database-admin accounts and verified admin-password sessions can send support replies. Customers cannot impersonate support.
+- Live delivery: corrected the Supabase realtime publication, restart subscriptions after auth changes, refresh after reconnect, and deduplicate simultaneous reads. Signed-in accounts receive Postgres changes. Password-admin sessions check compact revision counters every second while visible and download only changed tables. Connection and server latency still apply; offline tabs cannot receive instantly.
+- Deposits/withdrawals: submissions no longer claim success before being saved. The withdrawal enum now matches the database, and destination details and deposit proof are preserved and shown through the existing admin views.
+- Loans: corrected the principal/amount mapping and wait for a saved request before showing success.
+- KYC: corrected name and image mappings, fixed the admin page treating a boolean refresh result as verification data, and added authenticated submission functions for basic/advanced verification and rejected-application resubmission. Advanced submission requires approved basic verification.
+- Approval updates: await server results, refresh affected records, map UI statuses to database statuses, and remove duplicate client balance changes after transaction/loan approvals. Financial changes remain server-controlled.
+- Earlier admin user-list and hamburger UID repairs are included.
 
+## Permissions
 
-## Apply to the existing platform
+The admin-password credential allows protected data reads and support-chat replies/read receipts. Financial approvals, balance adjustments, and KYC review still require a signed-in account whose database profile has `is_admin = true`. Failed or unauthorized actions now report an error instead of pretending to succeed. This update does not promote accounts or disable row-level security.
 
-1. Back up the existing database and website files.
-2. In Supabase > SQL Editor, run `supabase/v2/14_admin_data_fix.sql` in full. This upgrades the existing v2 database; it does not reset the admin password or change balances. It includes the six-digit UID migration. It requires the existing schema and `13_admin_passphrase.sql` setup. If admin sign-in already works, do not rerun the older setup scripts.
-3. Upload the contents of this project folder to replace the existing website files. Preserve your production `scripts/config.js` settings if they differ.
-4. Refresh the browser and unlock admin again. If an older cached page remains, use Ctrl+Shift+R.
-5. Register a test account. Open Admin > Users, then visit another admin page and return. The user should appear within 15 seconds while admin is visible. Confirm the hamburger menu shows the same six-digit UID as Admin > Users.
+## Checks completed
 
-## Problems found and fixed
+All JavaScript files changed here and all inline page scripts passed syntax checks. These regression suites passed using mocked backend responses:
 
-- `admin_users` declared its token parser as `text[]` but used it as text, breaking the server-side user query.
-- Raw database rows contain `id`, but the app mapper only read `uid`. Admin user identities were lost, breaking related-record lookups.
-- Shared-password admin sign-in loaded users only. The new allowlisted read-only RPC loads related balances, verification, transactions, loans, investments, trades, and chat using the existing server-verified admin token. RLS and write permissions remain enforced.
-- The admin snapshot was not restored on page navigation. Admin now validates and reloads on entry, visible-tab return, and every 15 seconds while visible. Failed reads show an error rather than silently becoming an empty list.
-- The menu used the internal UUID instead of `uid_code`. It now displays the stable six-digit UID, preserving leading zeros. Until the profile arrives, it falls back to the actual UUID rather than inventing a number.
-- The backend startup promise did not return a successful value after loading. It now resolves true when the load attempt completes.
-- User reads now paginate in 500-row batches.
-- Rerunning the original admin setup no longer resets an existing password and signing secret.
+- `node tests/admin-uid.test.cjs`
+- `node tests/admin-access.test.cjs`
+- `node tests/delivery.test.cjs`
 
-## Validation and limits
+They cover UUID/UID mapping, admin access and expired-token priority, pagination, withdrawal destination/type, KYC fields, chat aliases and incoming events, operator replies, simultaneous reads, rejected writes, language persistence, and single server-controlled balance changes.
 
-Run `node tests/admin-uid.test.cjs` and `node tests/admin-access.test.cjs` for regression checks. JavaScript syntax and mocked data-flow tests passed locally. These checks do not contact the production database. The SQL migration was reviewed but could not be executed against a live PostgreSQL database in this environment.
+The live database was not accessed. The new SQL was reviewed but could not be executed here. Browser rendering tests could not run because the browser executable was unavailable. This is not a complete audit of trading, exchange, or investment settlement features.
 
-This repair covers admin reads and the menu UID. Shared-password access remains read-only; financial/admin write actions still require a signed-in account with database administrator permission. This is not a complete audit of trading, investment payouts, or other platform features.
+## Live acceptance check after installation
 
-If an account exists in Supabase Authentication but still does not appear after this repair, check whether it has a matching row in `public.users`. That indicates a separate missing profile/auth trigger issue; do not recreate accounts or overwrite balances to resolve it.
+Use a customer browser and a separate admin browser:
+
+1. Change language, reload, and confirm it stays selected. Confirm the admin selector updates navigation.
+2. Send chat messages both ways. Confirm they appear once, then reconnect a temporarily disconnected tab and confirm it catches up.
+3. Submit one deposit, withdrawal, loan, and basic KYC request from a test account. Confirm the matching admin page shows the correct account, amount, destination/proof, and ID images.
+4. Review test requests from a database-admin account; verify the customer receives updated status. Confirm approving once changes the balance once.
+5. Test a failed/offline submission. It must show an error and preserve the input; do not assume a request failed solely because its response timed out—check its history before retrying.
+
+Reference for realtime setup: https://supabase.com/docs/guides/realtime/postgres-changes

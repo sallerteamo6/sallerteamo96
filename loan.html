@@ -12,8 +12,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260926p"></script>
-  <script src="app.js?v=20260926p"></script>
+    <script src="scripts/db.js?v=20260926q"></script>
+  <script src="app.js?v=20260926q"></script>
 </head>
 <body class="auth-page loan-page" style="background:#f5f7fa;">
 
@@ -136,7 +136,12 @@ var plans = {
       }).join('');
     }
 
-    function applyLoan() {
+    async function applyLoan() {
+      if (window.__pendingActions && window.__pendingActions['applyLoan']) return;
+      window.__pendingActions = window.__pendingActions || {};
+      window.__pendingActions['applyLoan'] = true;
+      try {
+
       var uid = TrustApp.getUserId();
       if (!uid) { toast('error', 'Please login first'); return; }
       var amt = parseFloat(document.getElementById('loanAmount').value) || 0;
@@ -146,7 +151,7 @@ var plans = {
       var acc = uid;
       var u = TrustApp.accountByUid && TrustApp.accountByUid(uid);
       if (u && u.account) acc = u.account;
-      TrustApp.addLoan({
+      await TrustApp.addLoan({
         uid: uid,
         account: acc,
         amount: amt,
@@ -156,6 +161,9 @@ var plans = {
       });
       toast('success', TrustApp.t('loan.submitted'));
       renderRecords();
+      } catch (e) { toast('error', e.message || 'Could not send. Please retry.'); }
+      finally { window.__pendingActions['applyLoan'] = false; }
+
     }
 
 upd();
@@ -176,11 +184,11 @@ upd();
     var loanSyncDone = function () { loanSyncBusy = false; };
     setInterval(function () {
       if (document.hidden || loanSyncBusy) return;
-      if (typeof DB === 'undefined' || !DB.pullBlob || !DB.ENABLED) return;
+      if (typeof DB === 'undefined' || !DB.pullBlob || !DB.ENABLED || DB._liveTimer) return;
       loanSyncBusy = true;
       DB.pullBlob('loans').then(refreshAll).then(loanSyncDone, loanSyncDone);
     }, 1000);
   </script>
+<script>window.addEventListener("trustlanguagechange", function () { upd(); renderRecords(); });</script>
 </body>
 </html>
-

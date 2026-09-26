@@ -53,7 +53,7 @@ var TrustDB = (function () {
     // Bumped whenever the auth/bootstrap path changes, so a page can prove
     // which build the browser actually loaded. A stale cached db.js was
     // indistinguishable from a bug that had not been fixed yet.
-    VERSION: 'v2.4.1-admin-access',
+    VERSION: 'v2.5.0-delivery-language',
     _diag: [],
     _diagLog: function (msg) {
       try {
@@ -108,6 +108,8 @@ var TrustDB = (function () {
       ai_orders: 'investments',
       investments: 'investments',
       chat_messages: 'chat_messages',
+      chat: 'chat_messages',
+      chats: 'chat_messages',
       coin_addresses: 'coin_addresses',
       admin_settings: 'app_settings',
       app_settings: 'app_settings',
@@ -254,7 +256,10 @@ var TrustDB = (function () {
             self_._adoptSession(session);
             // The visible dataset changes wholesale on sign-in and sign-out, so
             // reload rather than merge, and tell every page to re-render.
-            self_._bootstrap();
+            setTimeout(function () {
+              self_._stopRealtime();
+              self_._bootstrap().then(function () { self_._startRealtime(); });
+            }, 0);
           });
         });
       });
@@ -340,7 +345,7 @@ var TrustDB = (function () {
       }).then(function (data) {
         var method = (opts.method || 'GET').toUpperCase();
         if (method !== 'GET' && opts.refreshCache !== false) {
-          self_._refreshTable(path.split('?')[0]);
+          return self_._refreshTable(path.split('?')[0]).then(function () { return data; });
         }
         return data;
       });
@@ -836,6 +841,7 @@ var TrustDB = (function () {
     },
 
     _loadTable: function (table, keyField) {
+      table = this._canonical(table);
       var self_ = this;
       self_._loadSeq = self_._loadSeq || {};
       var mySeq = (self_._loadSeq[table] || 0) + 1;
@@ -874,6 +880,7 @@ var TrustDB = (function () {
         if (self_._loadSeq[table] !== mySeq) return (rows || []).length;
         rows = rows || [];
         self_._applyRows(table, rows, startTs);
+        if (table === 'users') self_._adoptSession(self_._session);
         if (!token) self_._stashRows(table, rows);
         return rows.length;
       });
@@ -881,11 +888,15 @@ var TrustDB = (function () {
 
     // v1 name, kept because app.js calls it 35 times.
     pullBlob: function (table) {
+      table = this._canonical(table);
       var self_ = this;
-      return this._loadTable(table).then(function () {
+      this._pulls = this._pulls || {};
+      if (this._pulls[table]) return this._pulls[table];
+      this._pulls[table] = this._loadTable(table).then(function () {
         self_._dispatchTrustSync(table);
         return true;
-      });
+      }).finally(function () { delete self_._pulls[table]; });
+      return this._pulls[table];
     },
 
     fetchBlob: function (table) { return this.pullBlob(table); },
@@ -923,13 +934,13 @@ var TrustDB = (function () {
       } else if (table === 'chat_messages') {
         var incoming = {};
         rows.forEach(function (r) { (incoming[r.uid] = incoming[r.uid] || []).push(r); });
-        Object.keys(incoming).forEach(function (u0) {
+        Object.keys(Object.assign({}, self_._cache.chatMessages, incoming)).forEach(function (u0) {
           // self_ , not self: in a browser `self` is window, so self._cache was
           // undefined and the first chat message threw a TypeError here, which
           // aborted the merge and left the chat list empty.
           var list = self_._cache.chatMessages[u0] = self_._cache.chatMessages[u0] || [];
           var byId = {};
-          incoming[u0].forEach(function (r) { byId[r.id] = r; });
+          (incoming[u0] || []).forEach(function (r) { byId[r.id] = r; });
           for (var i0 = list.length - 1; i0 >= 0; i0--) {
             var m0 = list[i0];
             if (m0.id in byId) { list[i0] = byId[m0.id]; delete byId[m0.id]; }
@@ -1035,12 +1046,57 @@ var TrustDB = (function () {
 
     _startRealtime: function () {
       var self_ = this;
+      this._startLiveSync();
       // Only the tables a signed-in viewer can see. Subscribing to all of them
       // while signed out produces nothing but 401s on the channel.
       if (!this._uid()) return;
-      ['balances', 'transactions', 'contracts', 'investments', 'loans', 'chat_messages', 'verifications']
+      ['users', 'balances', 'transactions', 'contracts', 'investments', 'loans', 'chat_messages', 'verifications']
         .forEach(function (t) { self_._subscribeTable(t); });
     },
+
+    _adminTokenForPage: function () {
+      try { return /\/admin(?:-[a-z]+)?\.html$/.test(window.location.pathname) ? sessionStorage.getItem('trustAdminToken') || '' : ''; }
+      catch (e) { return ''; }
+    },
+
+    _startLiveSync: function () {
+      if (this._liveTimer) return;
+      var self_ = this;
+      this._liveTimer = setInterval(function () { self_._syncVisible(); }, 1000);
+      window.addEventListener('online', function () { self_._syncVisible(); });
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) self_._syncVisible(); });
+      this._syncVisible();
+    },
+
+    _syncVisible: function () {
+      if (document.hidden || this._liveBusy || (!this._uid() && !this._adminTokenForPage())) return;
+      var path = window.location.pathname;
+      var tables = /chat|service/.test(path) ? ['users','chat_messages'] :
+        /funds/.test(path) ? ['users','transactions','balances'] :
+        /loan/.test(path) ? ['users','loans','balances'] :
+        /authentication|advanced-auth|admin-verify/.test(path) ? ['users','verifications'] :
+        /admin(?:-users)?\.html$/.test(path) ? ['users','transactions','loans','verifications','chat_messages','balances'] : [];
+      var self_ = this;
+      this._liveBusy = true;
+      var token = this._adminTokenForPage();
+      var job;
+      if (token && !this.isAdmin) {
+        job = this.rpc('admin_live_revisions',{tok:token}).then(function (versions) {
+          self_._liveVersions = self_._liveVersions || {};
+          return Promise.allSettled(tables.filter(function (t) { return self_._liveVersions[t] !== versions[t]; }).map(function (t) {
+            return self_.pullBlob(t).then(function () { self_._liveVersions[t] = versions[t]; });
+          }));
+        });
+      } else {
+        this._lastPoll = this._lastPoll || {};
+        job = Promise.allSettled(tables.filter(function (t) {
+          return !(self_._rtReady && self_._rtReady[t]) || Date.now() - (self_._lastPoll[t] || 0) > 10000;
+        }).map(function (t) { return self_.pullBlob(t).then(function () { self_._lastPoll[t] = Date.now(); }); }));
+      }
+      return job.catch(function () { /* The admin access refresh reports expired credentials. */ })
+        .finally(function () { self_._liveBusy = false; });
+    },
+
 
     _stopRealtime: function () {
       var self_ = this;
@@ -1049,18 +1105,23 @@ var TrustDB = (function () {
         try { if (lib) lib.removeChannel(self_._channels[name]); } catch (e) {}
       });
       this._channels = {};
+      this._rtReady = {};
+      this._liveVersions = {};
     },
 
     _subscribeTable: function (table) {
       var self_ = this;
       if (typeof window === 'undefined' || !window.supabase) return;
+      if (this._channels[table]) return;
       try {
         var channel = window.supabase.channel('db2_' + table)
           .on('postgres_changes', { event: '*', schema: 'public', table: table }, function (payload) {
             self_._handleRealtime(table, payload);
           })
           .subscribe(function (status) {
-            if (status === 'SUBSCRIBED') console.log('Realtime: ' + table + ' subscribed');
+            self_._rtReady = self_._rtReady || {};
+            self_._rtReady[table] = status === 'SUBSCRIBED';
+            if (status === 'SUBSCRIBED') self_.pullBlob(table).catch(function () {});
             if (status === 'CHANNEL_ERROR') console.warn('Realtime: ' + table + ' channel error');
           });
         this._channels[table] = channel;
@@ -1085,6 +1146,7 @@ var TrustDB = (function () {
           if (eventType === 'DELETE') delete this._cache.verifications[old.uid];
           else this._cache.verifications[rec.uid] = rec;
           break;
+        case 'users':
         case 'loans':
         case 'transactions':
         case 'contracts':
@@ -1104,9 +1166,10 @@ var TrustDB = (function () {
           break;
         }
         case 'chat_messages': {
-          var cl = this._cache.chatMessages[rec.uid] = this._cache.chatMessages[rec.uid] || [];
+          var chatUid = rec.uid || old.uid;
+          var cl = this._cache.chatMessages[chatUid] = this._cache.chatMessages[chatUid] || [];
           if (eventType === 'DELETE') {
-            this._cache.chatMessages[rec.uid] = cl.filter(function (m) { return m.id !== old.id; });
+            this._cache.chatMessages[chatUid] = cl.filter(function (m) { return m.id !== old.id; });
           } else {
             var mi = cl.findIndex(function (m) { return m.id === rec.id; });
             if (mi >= 0) {
@@ -1313,7 +1376,7 @@ var TrustDB = (function () {
       var uid = this._needUid();
       var payload = {
         uid: uid,
-        type: data.type,
+        type: data.type === 'withdraw' ? 'withdrawal' : data.type,
         coin: data.coin,
         amount: data.amount,
         // v1 accepted whatever status the client sent. The insert policy only
@@ -1323,7 +1386,8 @@ var TrustDB = (function () {
         reference_id: data.reference || data.referenceId || null,
         proof_url: data.proof || data.proofUrl || null,
         proof_name: data.proof_name || data.proofName || null,
-        note: data.note || data.description || null
+        note: data.note || data.description || null,
+        request_details: data.request_details || {}
       };
       return this.q('transactions', { method: 'POST', body: payload })
         .then(function (rows) { return self_._toV1Transaction(rows[0]); });
@@ -1464,20 +1528,23 @@ var TrustDB = (function () {
 
     submitVerification: function (uid, data) {
       var self_ = this;
-      var target = String(uid || this._needUid());
-      var payload = {
-        uid: target,
-        full_name: data.fullName != null ? data.fullName : data.full_name,
-        email: data.email,
-        id_number: data.idNumber != null ? data.idNumber : data.id_number,
-        phone: data.phone,
-        id_front_url: data.idFrontUrl != null ? data.idFrontUrl : data.id_front_url,
-        id_back_url: data.idBackUrl != null ? data.idBackUrl : data.id_back_url,
-        status: 'pending',
-        submitted_at: new Date().toISOString()
-      };
-      return this.q('verifications', { method: 'POST', body: payload })
-        .then(function (rows) { return rows[0]; });
+      this._needUid();
+      return this.rpc('customer_submit_kyc', {
+        p_name:data.fullName || data.full_name || data.name || '', p_email:data.email || '',
+        p_number:data.idNumber || data.id_number || '',p_phone:data.phone || '',
+        p_front:data.idFront || data.idFrontUrl || data.id_front_url || data.id_front || '',
+        p_back:data.idBack || data.idBackUrl || data.id_back_url || data.id_back || ''
+      }).then(function (row) {
+        self_._handleRealtime('verifications',{eventType:'INSERT',new:row,old:{}});return row;
+      });
+    },
+
+    submitAdvancedKyc: function (image) {
+      var self_ = this;
+      this._needUid();
+      return this.rpc('customer_submit_advanced_kyc',{p_image:image}).then(function (row) {
+        self_._handleRealtime('verifications',{eventType:'UPDATE',new:row,old:{}});return row;
+      });
     },
 
     updateVerificationStatus: function (uid, status, extra) {
@@ -1544,8 +1611,16 @@ var TrustDB = (function () {
 
     sendChatMessage: function (uid, fromRole, message, extra) {
       var self_ = this;
-      var target = String(uid || this._needUid());
+      var token = this._adminTokenForPage();
       var e = extra || {};
+      if (fromRole === 'admin' && token && !this.isAdmin) {
+        return this.rpc('admin_support_send', {tok: token, p_uid: String(uid), p_body: message || '', p_attachments: e.attachments || []})
+          .then(function (row) {
+            self_._handleRealtime('chat_messages', {eventType:'INSERT',new:row,old:{}});
+            return self_._toV1Chat(row);
+          });
+      }
+      var target = String(uid || this._needUid());
       // from_role is forced to 'user' by an insert trigger for non-admins, so
       // whatever the client sends here cannot make this look like a support
       // reply. Sending 'admin' from the admin page is legitimate and allowed.
@@ -1564,6 +1639,8 @@ var TrustDB = (function () {
     },
 
     markChatRead: function (uid) {
+      var token = this._adminTokenForPage();
+      if (token && !this.isAdmin) return this.rpc('admin_support_read', {tok:token,p_uid:String(uid)}).then(function () { return this.pullBlob('chat_messages'); }.bind(this));
       var target = String(uid || this._uid());
       var msgs = this._cache.chatMessages[target] || [];
       var unread = msgs

@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260926p"></script>
-  <script src="app.js?v=20260926p"></script>
+    <script src="scripts/db.js?v=20260926q"></script>
+  <script src="app.js?v=20260926q"></script>
 </head>
 <body class="auth-page chat-page" style="background:#f5f5f5;">
 
@@ -63,24 +63,28 @@
       }).join('');
       box.scrollTop = box.scrollHeight;
     }
-    document.getElementById('chatSend').onclick = function () {
+    document.getElementById('chatSend').onclick = async function () {
+      if (window.__pendingActions && window.__pendingActions['customerSend']) return;
+      window.__pendingActions = window.__pendingActions || {};
+      window.__pendingActions['customerSend'] = true;
+      try {
+
       var input = document.getElementById('chatInput');
       var text = input.value.trim();
       if (!text) return;
-      TrustApp.sendChatMsg(uid, 'user', text);
+      uid = TrustApp.getUserId();
+      await TrustApp.sendChatMsg(uid, 'user', text);
       input.value = '';
       lastSig = '';
       render();
+      } catch (e) { toast('error', e.message || 'Could not send. Please retry.'); }
+      finally { window.__pendingActions['customerSend'] = false; }
+
     };
     document.getElementById('chatInput').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') {
         e.preventDefault();
-        var text = e.target.value.trim();
-        if (!text) return;
-        TrustApp.sendChatMsg(uid, 'user', text);
-        e.target.value = '';
-        lastSig = '';
-        render();
+        document.getElementById('chatSend').click();
       }
     });
     render();
@@ -92,7 +96,7 @@
     var chatSyncDone = function () { chatSyncBusy = false; };
     setInterval(function () {
       if (document.hidden || chatSyncBusy) return;
-      if (typeof DB === 'undefined' || !DB.pullBlob || !DB.ENABLED) return;
+      if (typeof DB === 'undefined' || !DB.pullBlob || !DB.ENABLED || DB._liveTimer) return;
       chatSyncBusy = true;
       DB.pullBlob('chat').then(function () { render(); }).then(chatSyncDone, chatSyncDone);
     }, 1000);

@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260926p"></script>
-  <script src="app.js?v=20260926p"></script>
+    <script src="scripts/db.js?v=20260926q"></script>
+  <script src="app.js?v=20260926q"></script>
   <style>
     .chat-layout{display:flex;gap:14px;align-items:flex-start;}
     .chat-users{width:280px;flex:none;background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:0 2px 12px rgba(19,31,48,.06);overflow:hidden;}
@@ -414,17 +414,25 @@
       renderPending();
     }
 
-    document.getElementById('chatSend').onclick = function () {
+    document.getElementById('chatSend').onclick = async function () {
+      if (window.__pendingActions && window.__pendingActions['supportSend']) return;
+      window.__pendingActions = window.__pendingActions || {};
+      window.__pendingActions['supportSend'] = true;
+      try {
+
       var input = document.getElementById('chatReply');
       var text = input.value.trim();
       if (!currentUid) { toast('error', 'Select a user first'); return; }
       if (!text && !pending.length) { toast('error', 'Type a reply or attach a file'); return; }
-      TrustApp.sendChatMsg(currentUid, 'admin', text, pending);
+      await TrustApp.sendChatMsg(currentUid, 'admin', text, pending);
       pending = [];
       renderPending();
       input.value = '';
       pinnedBottom = true;
       refresh();
+      } catch (e) { toast('error', e.message || 'Could not send. Please retry.'); }
+      finally { window.__pendingActions['supportSend'] = false; }
+
     };
     document.getElementById('attachBtn').onclick = function () {
       document.getElementById('attachInput').click();
@@ -445,7 +453,7 @@
     var chatSyncDone = function () { chatSyncBusy = false; };
     setInterval(function () {
       if (document.hidden || chatSyncBusy) return;
-      if (typeof DB === 'undefined' || !DB.pullBlob || !DB.ENABLED) return;
+      if (typeof DB === 'undefined' || !DB.pullBlob || !DB.ENABLED || DB._liveTimer) return;
       chatSyncBusy = true;
       DB.pullBlob('chat').then(function () { refresh(); }).then(chatSyncDone, chatSyncDone);
     }, 1000);

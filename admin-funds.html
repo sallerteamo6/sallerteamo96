@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260926p"></script>
-  <script src="app.js?v=20260926p"></script>
+    <script src="scripts/db.js?v=20260926q"></script>
+  <script src="app.js?v=20260926q"></script>
 </head>
 <body class="auth-page admin-page" style="background:#eef1f5;padding-bottom:30px;">
 
@@ -179,35 +179,51 @@
     var actionBtns = '<span class="wd-actions ab-group"><button class="action-btn ab-green" onclick="setDep(this,\'confirmed\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Confirm</button><button class="action-btn ab-red" onclick="setDep(this,\'rejected\')">Reject</button></span>';
     var wdBtns = '<span class="wd-actions ab-group"><button class="action-btn ab-green" onclick="setWd(this,\'confirmed\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Approve</button><button class="action-btn ab-red" onclick="setWd(this,\'rejected\')">Reject</button></span>';
 
-    function setDep(btn, status) {
+    async function setDep(btn, status) {
+      if (window.__pendingActions && window.__pendingActions['setDep']) return;
+      window.__pendingActions = window.__pendingActions || {};
+      window.__pendingActions['setDep'] = true;
+      try {
+
       var tr = btn.closest('tr, .admin-row-card');
       var id = tr.getAttribute('data-id');
-      var txn = TrustApp.getTxns().filter(function (t) { return String(t.id) === String(id); })[0];
+      var txn = TrustApp.getTxns().filter(async function (t) { return String(t.id) === String(id); })[0];
       if (status === 'confirmed') {
         if (!txn) { toast('error', 'Record not found'); renderAll(); return; }
         if (!TrustApp.isMarketLive()) { toast('error', 'Live market data not available yet. Deposits are confirmed at the live price only when the live price feed is connected.'); renderAll(); return; }
         if (!usdValue(txn.coin)) { toast('error', 'No live price for ' + txn.coin + ', cannot confirm'); renderAll(); return; }
-        TrustApp.setTxnStatus(id, status);
+        await TrustApp.setTxnStatus(id, status);
         var usd = (parseFloat(txn.amount) || 0) * usdValue(txn.coin);
-        toast('success', 'Deposit confirmed: credited ' + fmtAmt(usd, 'USDT') + ' USDT');
+        toast('success', 'Deposit approved and balance updated');
       } else {
-        TrustApp.setTxnStatus(id, status);
+        await TrustApp.setTxnStatus(id, status);
         toast('info', 'Deposit rejected');
       }
       renderAll();
+      } catch (e) { toast('error', e.message || 'Could not send. Please retry.'); }
+      finally { window.__pendingActions['setDep'] = false; }
+
     }
-    function setWd(btn, status) {
+    async function setWd(btn, status) {
+      if (window.__pendingActions && window.__pendingActions['setWd']) return;
+      window.__pendingActions = window.__pendingActions || {};
+      window.__pendingActions['setWd'] = true;
+      try {
+
       var tr = btn.closest('tr, .admin-row-card');
       var id = tr.getAttribute('data-id');
-      var txn = TrustApp.getTxns().filter(function (t) { return String(t.id) === String(id); })[0];
+      var txn = TrustApp.getTxns().filter(async function (t) { return String(t.id) === String(id); })[0];
       if (status === 'confirmed') {
         if (!txn) { toast('error', 'Record not found'); renderAll(); return; }
         var bal = TrustApp.getBalance(txn.uid, txn.coin);
         if (bal < (parseFloat(txn.amount) || 0)) { toast('error', 'Insufficient ' + txn.coin + ' balance (has ' + fmtAmt(bal, txn.coin) + ')'); renderAll(); return; }
       }
-      TrustApp.setTxnStatus(id, status);
+      await TrustApp.setTxnStatus(id, status);
       toast(status === 'confirmed' ? 'success' : 'error', 'Withdrawal ' + (status === 'confirmed' ? 'approved' : 'rejected'));
       renderAll();
+      } catch (e) { toast('error', e.message || 'Could not send. Please retry.'); }
+      finally { window.__pendingActions['setWd'] = false; }
+
     }
     function renderAll() {
       var txns = TrustApp.getTxns();
@@ -319,11 +335,7 @@
     if (TrustApp.watchStorage) {
       TrustApp.watchStorage(['trustTxns', 'trustBalances', 'trustUsers'], function () { renderAll(); });
     }
-    ['trustsync:txns', 'trustsync:balances', 'trustsync:users'].forEach(function (ev) {
-      window.addEventListener(ev, function () {
-        if (DB && DB.pullBlob) DB.pullBlob(ev.split(':')[1]).then(function () { renderAll(); });
-      });
-    });
+
         setInterval(function () { if (!document.hidden) renderAll(); }, 4000);
         applyMarketStatus();
         if (!TrustApp.isMarketLive() && tries > 0) {
@@ -331,6 +343,11 @@
         }
       });
     }
+    ['trustsync:txns', 'trustsync:balances', 'trustsync:users'].forEach(function (ev) {
+      window.addEventListener(ev, function () {
+        renderAll();
+      });
+    });
     loadMarket(50);
     // Wait for DB ready after market loads
     if (window.DB && DB.ready) DB.ready().then(renderAll);

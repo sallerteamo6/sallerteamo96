@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260926p"></script>
-  <script src="app.js?v=20260926p"></script>
+    <script src="scripts/db.js?v=20260926q"></script>
+  <script src="app.js?v=20260926q"></script>
 </head>
 <body class="auth-page admin-page" style="background:#eef1f5;padding-bottom:30px;">
 
@@ -137,26 +137,40 @@
       if (l.status === 'paid') return '<span class="badge blue">Paid</span>';
       return '<span class="badge amber">Pending</span>';
     }
-    function markPaid(btn, id) {
-      var found = TrustApp.setLoanStatus(id, 'paid');
+    async function markPaid(btn, id) {
+      if (window.__pendingActions && window.__pendingActions['markPaid']) return;
+      window.__pendingActions = window.__pendingActions || {};
+      window.__pendingActions['markPaid'] = true;
+      try {
+
+      var found = await TrustApp.setLoanStatus(id, 'paid');
       if (found) toast('success', 'Loan marked as paid');
       renderAll();
+      } catch (e) { toast('error', e.message || 'Could not send. Please retry.'); }
+      finally { window.__pendingActions['markPaid'] = false; }
+
     }
     var approveBtns = '<span class="wd-actions ab-group"><button class="action-btn ab-green" onclick="setLoan(this,\'approved\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Approve</button><button class="action-btn ab-red" onclick="setLoan(this,\'rejected\')">Reject</button></span>';
 
-    function setLoan(btn, status) {
+    async function setLoan(btn, status) {
+      if (window.__pendingActions && window.__pendingActions['setLoan']) return;
+      window.__pendingActions = window.__pendingActions || {};
+      window.__pendingActions['setLoan'] = true;
+      try {
+
       var tr = btn.closest('tr, .admin-row-card');
       var id = tr.getAttribute('data-id');
       var loan = null;
-      TrustApp.getLoans().forEach(function (l) { if (String(l.id) === String(id)) loan = l; });
+      TrustApp.getLoans().forEach(async function (l) { if (String(l.id) === String(id)) loan = l; });
       if (!loan) { toast('error', 'Loan not found'); renderAll(); return; }
       var wasPending = loan.status === 'pending';
-      var found = TrustApp.setLoanStatus(id, status);
-      if (found && status === 'approved' && wasPending && loan.uid != null && (parseFloat(loan.amount) || 0) > 0) {
-        TrustApp.addBalance(loan.uid, 'USDT', parseFloat(loan.amount));
-      }
+      var found = await TrustApp.setLoanStatus(id, status);
+
       toast(status === 'approved' ? 'success' : 'error', 'Loan ' + (status === 'approved' ? 'approved' : 'rejected'));
       renderAll();
+      } catch (e) { toast('error', e.message || 'Could not send. Please retry.'); }
+      finally { window.__pendingActions['setLoan'] = false; }
+
     }
     function renderStats() {
       var loans = TrustApp.getLoans();
@@ -224,7 +238,7 @@
     var loanSyncDone = function () { loanSyncBusy = false; };
     setInterval(function () {
       if (document.hidden || loanSyncBusy) return;
-      if (typeof DB === 'undefined' || !DB.pullBlob || !DB.ENABLED) return;
+      if (typeof DB === 'undefined' || !DB.pullBlob || !DB.ENABLED || DB._liveTimer) return;
       loanSyncBusy = true;
       DB.pullBlob('loans').then(renderAll).then(loanSyncDone, loanSyncDone);
     }, 1000);

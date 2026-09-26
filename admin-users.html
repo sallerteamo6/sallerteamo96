@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260926p"></script>
-  <script src="app.js?v=20260926p"></script>
+    <script src="scripts/db.js?v=20260926q"></script>
+  <script src="app.js?v=20260926q"></script>
   <style>
     .profit-toggle{border:none;border-radius:14px;padding:4px 14px;font-size:12px;font-weight:700;cursor:pointer;}
     .profit-toggle.on{background:#07c160;color:#fff;}
@@ -170,8 +170,8 @@
       if (v && v.status === 'pending') return '<span class="badge amber">Pending</span> ' + btn;
       return '<span class="muted" style="font-size:12.5px;">Not submitted</span> ' + btn;
     }
-    function verifyUser(uid) {
-      var res = TrustApp.adminApproveKyc(uid);
+    async function verifyUser(uid) {
+      var res = await TrustApp.adminApproveKyc(uid);
       if (!res.ok) { toast('error', res.msg); return; }
       toast('success', 'KYC verified for ' + uid);
       renderUsers();
