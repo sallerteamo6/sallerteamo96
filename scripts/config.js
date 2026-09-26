@@ -28,8 +28,14 @@
   // Normalize: strip trailing slashes and any /rest/v1 suffix.
   DB_URL = String(DB_URL || '').trim().replace(/\/rest\/v1\/*$/, '').replace(/\/+$/, '');
 
+  // A value is a placeholder when it is empty or still contains the literal
+  // marker. Note the !== -1: the original === -1 made a real, fully
+  // configured URL/KEY count as a placeholder, so ENABLED came out false on
+  // every page and supabase-client.js bailed out before loading anything. The
+  // app then sat on "Connecting to backend..." forever and sign-in could only
+  // fail with "Database not configured".
   var isPlaceholder = function (v) {
-    return !v || v.indexOf('YOUR-PROJECT') === -1;
+    return !v || v.indexOf('YOUR-PROJECT') !== -1;
   };
 
   global.SITE_CONFIG = {

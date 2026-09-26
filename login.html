@@ -11,10 +11,10 @@
   <title>Trust</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="styles-auth.css">
-  <script src="scripts/config.js?v=20260926c"></script>
-  <script src="scripts/supabase-client.js?v=20260926c"></script>
-  <script src="scripts/db.js?v=20260926c"></script>
-  <script src="app.js?v=20260926c"></script>
+  <script src="scripts/config.js?v=20260926d"></script>
+  <script src="scripts/supabase-client.js?v=20260926d"></script>
+  <script src="scripts/db.js?v=20260926d"></script>
+  <script src="app.js?v=20260926d"></script>
 </head>
 <body>
   <div id="app">
@@ -35,16 +35,16 @@
           </button>
           <div class="language-menu" id="langMenu" style="display:none;">
             <div class="language-option active" onclick="setLang(this,'English')">English</div>
-            <div class="language-option" onclick="setLang(this,'中文')">中文</div>
-            <div class="language-option" onclick="setLang(this,'日本語')">日本語</div>
-            <div class="language-option" onclick="setLang(this,'한국어')">한국어</div>
-            <div class="language-option" onclick="setLang(this,'فارسی')">فارسی</div>
+            <div class="language-option" onclick="setLang(this,'ä¸­æ–‡')">ä¸­æ–‡</div>
+            <div class="language-option" onclick="setLang(this,'æ—¥æœ¬èªž')">æ—¥æœ¬èªž</div>
+            <div class="language-option" onclick="setLang(this,'í•œêµ­ì–´')">í•œêµ­ì–´</div>
+            <div class="language-option" onclick="setLang(this,'ÙØ§Ø±Ø³ÛŒ')">ÙØ§Ø±Ø³ÛŒ</div>
             <div class="language-option" onclick="setLang(this,'Deutsch')">Deutsch</div>
-            <div class="language-option" onclick="setLang(this,'Français')">Français</div>
-            <div class="language-option" onclick="setLang(this,'Español')">Español</div>
+            <div class="language-option" onclick="setLang(this,'FranÃ§ais')">FranÃ§ais</div>
+            <div class="language-option" onclick="setLang(this,'EspaÃ±ol')">EspaÃ±ol</div>
             <div class="language-option" onclick="setLang(this,'Italiano')">Italiano</div>
-            <div class="language-option" onclick="setLang(this,'Português')">Português</div>
-            <div class="language-option" onclick="setLang(this,'Русский')">Русский</div>
+            <div class="language-option" onclick="setLang(this,'PortuguÃªs')">PortuguÃªs</div>
+            <div class="language-option" onclick="setLang(this,'Ð ÑƒÑÑÐºÐ¸Ð¹')">Ð ÑƒÑÑÐºÐ¸Ð¹</div>
           </div>
         </div>
 
@@ -65,8 +65,6 @@
             </div>
             <button type="submit" class="login-button" id="loginBtn" data-i18n="login.login">Login</button>
             <div class="auth-msg" id="authMsg"></div>
-            <div class="backend-state" id="backendState"><span class="dot"></span><span id="backendText">Checking backend...</span></div>
-            <div class="backend-diag" id="backendDiag"></div>
             <div class="links">
               <a href="register.html" class="link">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
@@ -241,49 +239,34 @@
     }
 
     // ---------------------------------------------------------------
-    //  Backend readout. Turns "stuck on Loading" into a readable state and
-    //  proves which build the browser actually loaded, so a stale cached
-    //  db.js is never mistaken for an unfixed bug.
+    //  Startup check. The always-on status line this replaced hid the one
+    //  thing that matters: if the Supabase client never loaded, sign-in
+    //  could only fail after ~25s with a misleading "Database not
+    //  configured". Say so once, up front, and only when it is broken.
+    //  DB.diag() is still available in the console for the detail.
     // ---------------------------------------------------------------
-    (function backendReadout() {
-      var wrap = document.getElementById('backendState');
-      var text = document.getElementById('backendText');
-      var diag = document.getElementById('backendDiag');
-      if (!wrap || !text || typeof DB === 'undefined') return;
-      var tries = 0;
-      function paint() {
-        var v = DB.VERSION || '?';
-        if (DB.connected) {
-          wrap.className = 'backend-state ok';
-          text.innerHTML = 'Backend connected &middot; build <b>' + v + '</b>';
-        } else if (tries > 24) {
-          wrap.className = 'backend-state bad';
-          text.innerHTML = 'Backend NOT connected &middot; build <b>' + v + '</b> &middot; ' +
-            '<a href="#" id="showDiag">details</a>';
-          var a = document.getElementById('showDiag');
-          if (a) a.onclick = function (ev) {
-            ev.preventDefault();
-            paintDiag();
-            return false;
-          };
-        } else {
-          wrap.className = 'backend-state wait';
-          text.innerHTML = 'Connecting to backend... &middot; build <b>' + v + '</b>';
-        }
-        tries++;
+    (function startupCheck() {
+      var wait = function (p) { return (p && p.then) ? p : Promise.resolve(p); };
+      var done = false;
+      var fail = function (msg) {
+        if (done) return;
+        done = true;
+        say('error', msg);
+      };
+      var settle = function () {
+        if (done) return;
+        if (typeof DB === 'undefined') { fail('Backend failed to load. Reload the page.'); return; }
+        // The client is up. A failed table load is not fatal to sign-in, so
+        // only the client failing counts as fatal here.
+        done = true;
+      };
+      try {
+        if (window.__supabaseError) { fail('Could not reach the server. Check your connection and reload.'); return; }
+        if (window.__supabaseReady) { wait(window.__supabaseReady).then(settle); return; }
+        settle();
+      } catch (e) {
+        fail('Backend failed to start: ' + (e && e.message));
       }
-      function paintDiag() {
-        var lines = [];
-        try { lines = DB.diag(); } catch (e) { lines = ['diag unavailable: ' + e.message]; }
-        diag.className = 'backend-diag on';
-        diag.textContent = lines.length ? lines.join('\n') : '(no diagnostics recorded)';
-      }
-      paint();
-      var iv = setInterval(function () {
-        paint();
-        if (DB.connected || tries > 24) clearInterval(iv);
-      }, 1000);
-      wrap.onclick = function () { if (diag.className.indexOf('on') === -1) paintDiag(); };
     })();
 
     // Remember-me: fill the saved account and pre-tick the box. The original
