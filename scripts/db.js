@@ -429,6 +429,18 @@ var TrustDB = (function () {
         );
       }
 
+      // The Phone provider ships disabled, so the Phone tab on the register
+      // form fails with GoTrue's terse "not enabled". Say which setting is
+      // missing instead of leaving a raw provider string on the form.
+      if (/phone logins? (is|are) not enabled|provider is not enabled|sign-?ups? (are|is) not allowed|not enabled/i.test(msg)) {
+        return new Error(
+          'That sign-in method is not enabled on this site. Phone numbers need the ' +
+          'Phone provider switched on in Supabase (Authentication -> Providers -> ' +
+          'Phone) and connected to an SMS service. Email sign-up works without any ' +
+          'of that.'
+        );
+      }
+
       return new Error(msg);
     },
 
@@ -459,18 +471,31 @@ var TrustDB = (function () {
         // rather than letting the caller treat it as a successful sign-in and
         // then fail on the first protected query. The phone provider behaves
         // the same way when SMS confirmation is on.
+        //
+        // Reaching either branch means the site is configured to require
+        // confirmation, which is a project setting rather than anything the
+        // visitor can act on. Both messages say so, and name the toggle,
+        // instead of telling someone to go and check an inbox that will
+        // either never arrive or arrive too slowly to be usable.
         if (!res.data.session) {
           if (id.kind === 'phone') {
             return {
               ok: true,
               needsPhoneConfirm: true,
-              message: 'Check your phone for the confirmation code, then sign in.'
+              message: 'Your account was created, but this site still asks for a ' +
+                'phone confirmation code. To sign up with no code at all, turn off ' +
+                'phone confirmation in Supabase under Authentication -> Providers -> ' +
+                'Phone. (The Phone provider also has to be enabled and connected to a ' +
+                'SMS provider first.)'
             };
           }
           return {
             ok: true,
             needsEmailConfirm: true,
-            message: 'Check your email to confirm the account, then sign in.'
+            message: 'Your account was created, but this site still asks you to ' +
+              'confirm by email, so you are not signed in yet. To make sign-up ' +
+              'instant with no email, turn off "Confirm email" in Supabase under ' +
+              'Authentication -> Sign In / Providers -> Email, then sign in again.'
           };
         }
 
