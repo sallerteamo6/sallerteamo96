@@ -340,27 +340,75 @@ var TrustDB = (function () {
     // Auth
     // =====================================================================
 
+    // Decide whether an account string is an email address or a phone number,
+    // and normalise it for Supabase.
+    //
+    // Phone numbers are stored and compared in E.164 form (+14155550100).
+    // Users type spaces, dashes, dots and brackets, and two people entering the
+    // same number differently must resolve to one auth identity, so all of that
+    // is stripped. A bare local number is rejected rather than guessed at,
+    // because inventing a country code would silently create an account under
+    // the wrong number.
+    _authIdent: function (account, hint) {
+      var raw = String(account == null ? '' : account).trim();
+      if (!raw) return { kind: 'empty', value: '' };
+
+      // An explicit choice from the Phone/Email toggle wins over inference.
+      if (hint === 'phone') return _asPhone(raw);
+      if (hint === 'email') return _asEmail(raw);
+
+      // No hint: fall back to sniffing, which is fine for the login form where
+      // there is no toggle.
+      if (raw.indexOf('@') !== -1) return _asEmail(raw);
+      return _asPhone(raw);
+
+      function _asEmail(v) {
+        var e = v.toLowerCase();
+        return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)
+          ? { kind: 'email', value: e }
+          : { kind: 'invalid', value: e, msg: 'Enter a valid email address' };
+      }
+      function _asPhone(v) {
+        var plus = v.charAt(0) === '+';
+        var digits = v.replace(/\D/g, '');
+        if (!digits) return { kind: 'invalid', value: v, msg: 'Enter a valid phone number' };
+        if (!plus) {
+          return {
+            kind: 'invalid', value: v,
+            msg: 'Phone numbers must include the country code, for example +14155550100'
+          };
+        }
+        if (digits.length < 8 || digits.length > 15) {
+          return { kind: 'invalid', value: v, msg: 'Enter a valid phone number with country code' };
+        }
+        return { kind: 'phone', value: '+' + digits };
+      }
+    },
+
     // v1 signature: register(account, password) -> { ok, user }
     //
-    // Supabase Auth addresses accounts by email, so `account` must be an email
-    // address here. A username or a 0x wallet would need a different provider
-    // configured in the dashboard; it is not supported by this flow.
-    register: function (account, password, extra) {
+    // Supabase Auth addresses an account by either email or phone, so
+    // `account` may be either. The phone path additionally needs the Phone
+    // provider enabled in the dashboard; without it GoTrue answers "Phone
+    // logins are not enabled", which is passed straight through.
+    register: function (account, password, extra, accountType) {
       var self_ = this;
-      var email = String(account || '').trim().toLowerCase();
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-        return Promise.reject(new Error('Enter a valid email address'));
+      var id = this._authIdent(account, accountType);
+      if (id.kind === 'invalid' || id.kind === 'empty') {
+        return Promise.reject(new Error(id.msg || 'Enter a valid email or phone number'));
       }
       if (!password || String(password).length < 8) {
         return Promise.reject(new Error('Password must be at least 8 characters'));
       }
 
+      // Only one of email/phone may be sent, and which one tells GoTrue which
+      // identity to create.
+      var creds = { password: password, options: { data: extra || {} } };
+      if (id.kind === 'phone') { creds.phone = id.value; creds.options.data = extra || {}; creds.options.data.login_method = 'phone'; }
+      else { creds.email = id.value; creds.options.data = extra || {}; creds.options.data.login_method = 'email'; }
+
       return this._waitForClient().then(function (lib) {
-        return lib.auth.signUp({
-          email: email,
-          password: password,
-          options: { data: extra || {} }
-        });
+        return lib.auth.signUp(creds);
       }).then(function (res) {
         if (res.error) {
           var e = res.error;
@@ -379,8 +427,16 @@ var TrustDB = (function () {
 
         // With "Confirm email" on, GoTrue returns a user but no session. Say so
         // rather than letting the caller treat it as a successful sign-in and
-        // then fail on the first protected query.
+        // then fail on the first protected query. The phone provider behaves
+        // the same way when SMS confirmation is on.
         if (!res.data.session) {
+          if (id.kind === 'phone') {
+            return {
+              ok: true,
+              needsPhoneConfirm: true,
+              message: 'Check your phone for the confirmation code, then sign in.'
+            };
+          }
           return {
             ok: true,
             needsEmailConfirm: true,
@@ -404,15 +460,26 @@ var TrustDB = (function () {
     // v1 signature: login(account, password) -> { ok, user }
     login: function (account, password) {
       var self_ = this;
-      var email = String(account || '').trim().toLowerCase();
+      var id = this._authIdent(account);
+      if (id.kind === 'invalid' || id.kind === 'empty') {
+        return Promise.reject(new Error(id.msg || 'Enter a valid email or phone number'));
+      }
+
+      // Same either way, but the key differs: GoTrue looks the identity up by
+      // whichever field is present.
+      var creds = { password: password };
+      if (id.kind === 'phone') creds.phone = id.value;
+      else creds.email = id.value;
 
       return this._waitForClient().then(function (lib) {
-        return lib.auth.signInWithPassword({ email: email, password: password });
+        return lib.auth.signInWithPassword(creds);
       }).then(function (res) {
         if (res.error) {
           // Do not distinguish "no such account" from "wrong password": saying
           // which one it was turns the sign-in form into an account enumerator.
-          throw new Error('Incorrect email or password');
+          throw new Error(id.kind === 'phone'
+            ? 'Incorrect phone number or password'
+            : 'Incorrect email or password');
         }
         self_._authUser = res.data.user;
         self_._session = res.data.session;
@@ -436,8 +503,14 @@ var TrustDB = (function () {
       if (String(newPassword).length < 6) return Promise.resolve({ ok: false, msg: 'New password must be at least 6 characters' });
       return this._waitForClient().then(function (lib) {
         var u = self_._authUser;
-        if (!u || !u.email) throw new Error('Please login first');
-        return lib.auth.reauthenticate({ email: u.email, password: currentPassword });
+        if (!u) throw new Error('Please login first');
+        // A phone account has no email, so reauthenticate against whichever
+        // identifier the identity actually owns. Passing email: null made
+        // GoTrue answer "invalid login credentials" for every phone user.
+        var who = u.email
+          ? { email: u.email, password: currentPassword }
+          : { phone: u.phone, password: currentPassword };
+        return lib.auth.reauthenticate(who);
       }).then(function (res) {
         if (res && res.error) throw new Error('Current password is incorrect');
         return self_._waitForClient();
@@ -476,8 +549,9 @@ var TrustDB = (function () {
       return {
         id: u.id,
         uid: u.id,                       // v1 callers that still read .uid
-        account: (u.email || u.id).toLowerCase(),
-        email: u.email,
+        account: String(u.email || u.phone || u.id).toLowerCase(),
+        email: u.email || null,
+        phone: u.phone || null,
         is_admin: false,
         is_guest: false,
         status: 'active',

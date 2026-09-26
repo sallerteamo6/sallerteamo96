@@ -1644,9 +1644,9 @@
     return uid;
   }
 
-  function register(account, password, referralCode) {
+  function register(account, password, referralCode, accountType) {
     account = trim(account);
-    if (!account || !password) return { ok: false, msg: 'Please fill in all fields' };
+    if (!account || !password) return Promise.resolve({ ok: false, msg: 'Please fill in all fields' });
     if (typeof DB === 'undefined' || !DB.register) {
       return Promise.resolve({ ok: false, msg: 'Database not configured' });
     }
@@ -1655,9 +1655,14 @@
     // in the browser. v2 has no client-created accounts and no browser-side
     // hashing, and GoTrue will not re-key an existing identity, so the
     // conversion is gone: every account is created through Supabase Auth.
+    //
+    // accountType is 'phone' or 'email'. The register form has a Phone/Email
+    // toggle, so the value alone cannot be classified reliably -- '+1 555
+    // 0100' and 'user@x.com' need to be told apart by the tab the user picked,
+    // not guessed, or an address containing a dot would be read as a phone.
     return whenDbReady().then(function (ready) {
       if (!ready) return { ok: false, msg: 'Database not configured. Check your connection and reload.' };
-      return DB.register(account, password);
+      return DB.register(account, password, null, accountType);
     }).then(function (res) {
       if (res.ok && res.user) {
         var user = res.user;
