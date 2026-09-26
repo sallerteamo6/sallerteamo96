@@ -101,6 +101,15 @@
       TrustApp.register(account, fields[1].value, fields[3] ? fields[3].value : '').then(function (res) {
         btn.disabled = false; btn.textContent = 'Register';
         if (!res.ok) { toast('error', res.msg || 'Registration failed'); return; }
+        // "Confirm email" is enabled on this project, so a new account comes
+        // back ok:true with NO user and no session. Navigating here went to
+        // index.html with nothing signed in, and the page guard bounced the
+        // user straight back to the login screen.
+        if (res.needsEmailConfirm) {
+          toast('info', res.message || 'Check your email to confirm the account, then sign in.', 6000);
+          btn.textContent = 'Confirm your email, then sign in';
+          return;
+        }
         toast('success', 'Registration successful. Your UID: ' + res.user.uid, 4500);
         setTimeout(function () { location.href = 'index.html'; }, 150);
       }).catch(function (err) {

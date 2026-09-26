@@ -34,12 +34,18 @@
     <div id="status"></div>
 
     <h1 style="margin-top:28px;">One-time SQL setup</h1>
+    <p>Run these in your Supabase project → SQL Editor, in order. Each is safe to re-run.</p>
     <ol>
-      <li>Open your Supabase project → SQL Editor.</li>
-      <li>Run <code>supabase/rls_fix.sql</code> (safe to re-run).</li>
-      <li>Run <code>supabase/db_all_pages_migration.sql</code> (safe to re-run).</li>
-      <li>Wait a few minutes for Supabase to refresh its schema cache, then reload the site.</li>
+      <li><code>supabase/v2/01_schema.sql</code> — tables, indexes, triggers</li>
+      <li><code>supabase/v2/02_rls.sql</code> — row level security policies</li>
+      <li><code>supabase/v2/03_functions.sql</code> — RPCs (trading, admin, ledger)</li>
+      <li><code>supabase/v2/04_realtime.sql</code> — realtime publication</li>
+      <li><code>supabase/v2/05_seed.sql</code> — markets, products, settings</li>
+      <li><code>supabase/v2/06_auth.sql</code> — auth trigger, then follow the dashboard checklist at the bottom of that file</li>
+      <li>Replace the <code>CHANGE_ME_…</code> deposit addresses seeded in step 5 with wallets you control.</li>
+      <li>Wait for Supabase to refresh its schema cache, then reload the site.</li>
     </ol>
+    <p>See <code>supabase/v2/README.md</code> for what changed and the table mapping the front end still needs.</p>
   </div>
   <script src="scripts/config.js"></script>
   <script src="scripts/supabase-client.js"></script>
@@ -49,7 +55,7 @@
     function testDb() {
       var st = document.getElementById('status');
       st.textContent = '';
-      DB.init({ url: SITE_CONFIG.DB_URL, anon: SITE_CONFIG.DB_ANON_KEY, service: SITE_CONFIG.DB_SERVICE_KEY, readonly: SITE_CONFIG.READONLY });
+      DB.init({ url: SITE_CONFIG.DB_URL, anon: SITE_CONFIG.DB_ANON_KEY, readonly: SITE_CONFIG.READONLY });
       DB.onReady(function () { refresh(); st.className = 'ok'; st.textContent = 'Connected to Supabase. Ready.'; });
       setTimeout(function () {
         if (!DB.connected) { st.className = 'bad'; st.textContent = 'Not connected. Check the Supabase URL/key and that the project is configured.'; }

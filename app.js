@@ -1298,8 +1298,16 @@
       });
     }
     function doRestore() {
+      // Backend v2: the credential is Supabase Auth's JWT, persisted by
+      // supabase-js under its own storage key. The cookie read here is a v1
+      // leftover and is NOT written by every v2 sign-in path.
+      //
+      // The old code returned null immediately when that cookie was missing,
+      // without ever asking the database. Since the cookie is no longer the
+      // credential, a perfectly valid Supabase session was reported as "no
+      // session" and guardAuth bounced the user to the login page. Ask the DB
+      // first and treat the cookie as optional.
       var tok = getToken();
-      if (!tok) { _session = null; return Promise.resolve(null); }
       if (!dbActive()) return Promise.resolve(_session || null);
       return getSessionWithRetry(tok, 3);
     }
@@ -1364,16 +1372,10 @@
   function ensureGuest() {
     var uid = getUserId();
     if (uid && _session && _session.uid != null) return Promise.resolve(uid);
-    return _ensureSessionRow().then(function (s) {
-      if (s.uid) return String(s.uid);
-      var createdAt = new Date().toISOString();
-      var used = {};
-      try { DB.usersList().forEach(function (u) { used[String(u.uid)] = true; }); } catch (e) {}
-      var gid = parseInt(DB._genUid(used), 10);
-      return DB.createUser('guest_' + rndToken().slice(0, 6), null, { uid: gid, created_at: createdAt, is_guest: true }).then(function () {
-        return _activateSession(gid, true, false, getLang()).then(function () { return String(gid); });
-      });
-    });
+    // v2 has no guest accounts. A signed-out visitor cannot be handed a
+    // usable identity: the old path minted a row in the browser, which is
+    // exactly the hole v2 closed. Reject so the caller can ask for sign-in.
+    return Promise.reject(new Error('Please sign in to continue'));
   }
 
   function currentUser() {
@@ -1621,26 +1623,11 @@
     if (!account || !password) return { ok: false, msg: 'Please fill in all fields' };
     if (typeof DB !== 'undefined' && DB.register && dbActive()) {
       var lang = getLang();
-      // If a guest user row was created for this browser (service.html), convert
-      // it to a real account, preserving the UID and balance history.
-      var guestUid = (_session && _session.is_guest && _session.uid != null) ? _session.uid : null;
-      var hasGuest = false;
-      if (guestUid != null) {
-        try { hasGuest = !!DB.getUserStr(guestUid); } catch (e) {}
-      }
-      var guestPending = null;
-      if (hasGuest) {
-        var g = DB.getUserStr(guestUid);
-        var h = DB._hashPassword(password, g.created_at || new Date().toISOString());
-        guestPending = DB.convertGuest(guestUid, account, h).then(function () {
-          return { ok: true, user: Object.assign({}, g, { account: account, password_hash: h, is_guest: false }) };
-        });
-      } else {
-        guestPending = Promise.resolve(null);
-      }
-      return guestPending.then(function (pre) {
-        return pre || DB.register(account, password);
-      }).then(function (res) {
+      // v1 converted a guest row into a real account here, hashing the password
+      // in the browser. v2 has no client-created accounts and no browser-side
+      // hashing, and GoTrue will not re-key an existing identity, so the
+      // conversion is gone: every account is created through Supabase Auth.
+      return DB.register(account, password).then(function (res) {
         if (res.ok && res.user) {
           var user = res.user;
           var code = trim(referralCode || '');
@@ -1690,30 +1677,11 @@
 
   function walletLogin(address) {
     if (!address) return { ok: false, msg: 'Invalid wallet address' };
-    if (dbActive()) {
-      var existing = null;
-      try {
-        DB.usersList().forEach(function (u) {
-          if (u.account && String(u.account).toLowerCase() === String(address).toLowerCase()) existing = u;
-        });
-      } catch (e) {}
-      var p = null;
-      if (existing) {
-        p = Promise.resolve(existing);
-      } else {
-        var createdAt = new Date().toISOString();
-        var used = {};
-        try { DB.usersList().forEach(function (u) { used[String(u.uid)] = true; }); } catch (e) {}
-        var wuid = parseInt(DB._genUid(used), 10);
-        p = DB.createUser(address, null, { uid: wuid, created_at: createdAt, is_guest: true });
-      }
-      return p.then(function (user) {
-        return _activateSession(user.uid, !!user.is_guest, false, getLang()).then(function () {
-          return { ok: true, user: user };
-        });
-      }).catch(function (e) { return { ok: false, msg: e.message }; });
-    }
-    return { ok: false, msg: 'Database not configured' };
+    // Backend v2 removed client-side account creation. GoTrue issues identities
+    // itself, and it will not mint a session for a bare wallet address: that
+    // needs a signature check (SIWE) that has no trusted path in the browser.
+    // Faking a row here would let anyone claim any address, so refuse instead.
+    return Promise.resolve({ ok: false, msg: 'Wallet sign-in is not available on this build. Use email and password.' });
   }
 
   function logout() {
@@ -2859,20 +2827,11 @@ function addTxn(obj) {
 
   function changePassword(uid, currentPassword, newPassword) {
     if (!uid) return { ok: false, msg: 'Please login first' };
-    if (!currentPassword || !newPassword) return { ok: false, msg: 'Please fill in all fields' };
-    if (dbActive()) {
-      var u = accountByUid(uid);
-      if (!u) return { ok: false, msg: 'Account not found' };
-      if (!(u.password_hash && DB._verifyPassword && DB._verifyPassword(u.password_hash, currentPassword, u.created_at))) return { ok: false, msg: 'Current password is incorrect' };
-      if (String(newPassword).length < 6) return { ok: false, msg: 'New password must be at least 6 characters' };
-      var nh = DB._hashPassword(newPassword, u.created_at);
-      DB.updateUser(uid, { password_hash: nh }).catch(function (e) {
-        try { if (window.toast) toast('error', 'Failed to update: ' + e.message); } catch (e2) {}
-      });
-      u.password_hash = nh; u.password = nh;
-      return { ok: true, user: u };
-    }
-    return { ok: false, msg: 'Database not configured' };
+    if (!dbActive()) return { ok: false, msg: 'Database not configured' };
+    if (!DB.changePassword) return { ok: false, msg: 'Password changes are handled by Supabase Auth' };
+    // Asynchronous: Supabase proves the current password with reauthenticate and
+    // then rotates the credential server-side.
+    return DB.changePassword(currentPassword, newPassword);
   }
 
   function changeAdminPassword(currentPassword, newPassword) {
@@ -2921,17 +2880,44 @@ function addTxn(obj) {
     function recheck() {
       if (redirected || inFlight) return;
       inFlight = true;
-      var resolved = false;
-      restoreSession().then(function (s) {
-        resolved = true;
+      var settled = false;
+      function finish(s) {
+        settled = true;
         inFlight = false;
         decide(s);
-      });
+      }
+
+      // Hard fallback. If the data layer never reports ready at all (no
+      // network, blocked CDN, misconfigured project) we must NOT leave a
+      // logged-out visitor sitting on a private page, so this still fires on
+      // its own clock.
       setTimeout(function () {
+        if (settled || redirected) return;
         inFlight = false;
-        if (redirected || resolved || (_session && _session.uid != null)) return;
+        if (_session && _session.uid != null) return;
         goLogin();
-      }, 8000);
+      }, 30000);
+
+      // Do not start the real grace clock until the data layer has booted.
+      // In v2 the first session answer is gated behind loading the Supabase
+      // client from a CDN and restoring the stored session, and restoreSession
+      // retries for up to ~18s on top of that. The old code started its 8s
+      // timer immediately, so an ordinary cold page load lost the race and a
+      // correctly signed-in user was redirected to login.
+      var ready = (typeof DB !== 'undefined' && DB.ready) ? DB.ready() : Promise.resolve();
+      ready.then(function () {
+        // 12s, not 8s: this now bounds only the session lookup, and
+        // getSessionWithRetry legitimately spends up to 5s on a slow first
+        // attempt before retrying. An 8s window cut it close enough to
+        // redirect a signed-in user on a poor connection.
+        setTimeout(function () {
+          if (settled || redirected) return;
+          inFlight = false;
+          if (_session && _session.uid != null) return;
+          goLogin();
+        }, 12000);
+        return restoreSession();
+      }).then(finish).catch(function () { finish(null); });
     }
     function check() {
       if (redirected) return;

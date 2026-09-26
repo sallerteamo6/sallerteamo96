@@ -1,37 +1,27 @@
-// Trust static clone -> Supabase import tool (Node 18+, plain fetch, service-role key).
+// Trust static clone -> Supabase import tool (Node 18+, plain fetch).
 //
 // Usage:
 //   1. In a browser, open export-local.html and download trust-backup.json.
-//   2. Service key is read from supabase/service-key.txt OR the
-//      SUPABASE_SERVICE_KEY env var. URL from supabase/service-url.txt OR
-//      SUPABASE_URL env var.
+//   2. Export credentials. The service_role key bypasses ALL row level
+//      security, so it is read from the environment only and is never stored
+//      in the repository:
+//        $env:SUPABASE_URL = 'https://xxxx.supabase.co'
+//        $env:SUPABASE_SERVICE_KEY = 'eyJ...'
 //   3. Run:   node scripts/import-local.mjs trust-backup.json
 //
-// This writes the app_meta blobs (so the site picks them up immediately) plus
-// the detailed tables, and records a row in `backups`.
+// This writes the app_meta blobs plus the detailed tables, and records a row
+// in `backups`. It targets the v1 table layout; see supabase/v2/README.md for
+// the v2 mapping before running it against a v2 project.
 
 import { readFileSync, existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const candidates = [here, join(here, '..', 'supabase')];
-const txt = (name) => {
-  for (const dir of candidates) {
-    const p = join(dir, name);
-    if (existsSync(p)) {
-      const v = readFileSync(p, 'utf8').trim();
-      if (v) return v;
-    }
-  }
-  return '';
-};
-
-const url = (process.env.SUPABASE_URL || txt('service-url.txt') || '').replace(/\/rest\/v1\/*$/, '').replace(/\/+$/, '');
-const key = process.env.SUPABASE_SERVICE_KEY || txt('service-key.txt') || '';
+const url = (process.env.SUPABASE_URL || '').replace(/\/rest\/v1\/*$/, '').replace(/\/+$/, '');
+const key = process.env.SUPABASE_SERVICE_KEY || '';
 
 if (!url || !key) {
-  console.error('Set SUPABASE_URL and SUPABASE_SERVICE_KEY (env), or create supabase/service-url.txt and supabase/service-key.txt.');
+  console.error('Set both environment variables first:');
+  console.error("  $env:SUPABASE_URL = 'https://xxxx.supabase.co'");
+  console.error("  $env:SUPABASE_SERVICE_KEY = 'eyJ...'");
   process.exit(1);
 }
 
