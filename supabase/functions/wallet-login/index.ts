@@ -57,14 +57,72 @@ function env(name: string): string {
   return e?.[name] ?? "";
 }
 
-function authHeaders(extra: Record<string, string> = {}) {
-  // SUPABASE_SERVICE_KEY was a local-script convention, not a hosted default.
-  // Prefer the injected key. Also support the new secret-key environment map.
-  let key = env("SUPABASE_SERVICE_ROLE_KEY") || env("SUPABASE_SERVICE_KEY");
-  if (!key) {
-    try { key = JSON.parse(env("SUPABASE_SECRET_KEYS") || "{}").default || ""; } catch { /* reported below */ }
+// The service credential, resolved once per isolate and then remembered.
+//
+// Supabase injects SUPABASE_SERVICE_ROLE_KEY automatically. On this project that
+// injected legacy JWT was measured answering 200, but the project's legacy *anon*
+// key was measured being refused outright and then accepted again, with no change
+// to the key string - the gateway's acceptance of legacy keys is not something
+// this file can assume. So the injected key is not trusted merely because it
+// exists: each candidate is tried against the project and the first one actually
+// accepted is used and cached. The current sb_secret_ key is preferred, since
+// that is the credential Supabase now treats as current.
+//
+// If no candidate passes the probe the preferred one is used anyway, so this can
+// never be worse than trusting the injected key, and the real call then reports
+// the real error.
+let resolvedKey: string | null = null;
+
+function serviceKeyCandidates(): string[] {
+  const out: string[] = [];
+  // Newest first: SUPABASE_SECRET_KEYS holds the sb_secret_ key.
+  try {
+    const map = JSON.parse(env("SUPABASE_SECRET_KEYS") || "{}");
+    if (map && typeof map.default === "string" && map.default) out.push(map.default);
+  } catch { /* not a JSON map; fall through to the individual variables */ }
+  for (const n of ["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_KEY"]) {
+    const v = env(n);
+    if (v && !out.includes(v)) out.push(v);
   }
-  if (!key || !env("SUPABASE_URL")) throw new Error("Missing server auth configuration");
+  return out;
+}
+
+async function serviceKey(): Promise<string> {
+  if (resolvedKey) return resolvedKey;
+  const url = env("SUPABASE_URL");
+  if (!url) throw new Error("Missing server auth configuration: SUPABASE_URL is not set");
+
+  const candidates = serviceKeyCandidates();
+  if (!candidates.length) {
+    throw new Error("Missing server auth configuration: no service key is available to this function");
+  }
+
+  // A cheap authenticated read. /auth/v1/settings needs only a valid key and
+  // returns the provider list, so it proves the credential without touching data.
+  for (const key of candidates) {
+    try {
+      const res = await fetch(`${url}/auth/v1/settings`, {
+        headers: {
+          apikey: key,
+          // An sb_secret_ key is not a JWT and must not be sent as a bearer token.
+          ...(key.startsWith("sb_secret_") ? {} : { Authorization: `Bearer ${key}` }),
+        },
+      });
+      if (res.ok) {
+        resolvedKey = key;
+        return key;
+      }
+    } catch { /* try the next candidate */ }
+  }
+
+  // Nothing verified. Carry on with the preferred candidate rather than refusing:
+  // the request it is about to make produces a better error than this would.
+  resolvedKey = candidates[0];
+  return resolvedKey;
+}
+
+async function authHeaders(extra: Record<string, string> = {}) {
+  const key = await serviceKey();
   return {
     apikey: key,
     ...(key.startsWith("sb_secret_") ? {} : { Authorization: `Bearer ${key}` }),
@@ -76,7 +134,7 @@ function authHeaders(extra: Record<string, string> = {}) {
 /** Call a Postgres function as the service role. */
 async function rpc<T = any>(fn: string, args: Record<string, unknown>): Promise<T> {
   const url = `${env("SUPABASE_URL")}/rest/v1/rpc/${fn}`;
-  const res = await fetch(url, { method: "POST", headers: authHeaders(), body: JSON.stringify(args) });
+  const res = await fetch(url, { method: "POST", headers: await authHeaders(), body: JSON.stringify(args) });
   const text = await res.text();
   if (!res.ok) throw new Error(text || `${fn} failed (${res.status})`);
   return text ? JSON.parse(text) : (null as T);
@@ -87,7 +145,7 @@ async function authAdmin(path: string, method: string, body?: unknown) {
   const url = `${env("SUPABASE_URL")}/auth/v1${path}`;
   const res = await fetch(url, {
     method,
-    headers: authHeaders(),
+    headers: await authHeaders(),
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await res.text();

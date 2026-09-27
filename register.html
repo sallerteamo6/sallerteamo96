@@ -186,7 +186,11 @@
       }
 
       if (!pass) { setErr('password', 'Please enter a password'); ok = false; }
-      else if (pass.length < 6) { setErr('password', 'Password must be at least 6 characters'); ok = false; }
+        // 8, not 6: the server has always refused anything shorter (db.js
+        // register), so a 6- or 7-character password was accepted by this form
+        // and then bounced back as a server error after the round trip. Check
+        // the same length the server does, so the message lands on the field.
+        else if (pass.length < 8) { setErr('password', 'Password must be at least 8 characters'); ok = false; }
 
       if (!fields[2].value) { setErr('confirm', 'Please confirm your password'); ok = false; }
       else if (pass !== fields[2].value) { setErr('confirm', 'Passwords do not match'); ok = false; }
@@ -217,10 +221,9 @@
           say('warn', res.message || 'Check your email to confirm the account, then sign in.');
           return false;
         }
-        if (res.needsPhoneConfirm) {
-          say('warn', res.message || 'Check your phone for the confirmation code, then sign in.');
-          return false;
-        }
+        // A phone account is created and signed in by the same request, so
+        // there is no code step and no branch for one. Reaching here means the
+        // account exists and the session is already in hand.
         say('ok', 'Account created. Signing you in...');
         btn.disabled = true; btn.textContent = 'Signing in...';
         setTimeout(function () { location.href = 'index.html'; }, 500);

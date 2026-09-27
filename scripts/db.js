@@ -40,6 +40,52 @@
 var TrustDB = (function () {
   'use strict';
 
+  // ======================================================================
+  //  A phone number is a password account, not an SMS identity.
+  // ======================================================================
+  //
+  // Registering a phone number used to require the Phone provider plus an SMS
+  // service, and it still ended in a code the member had to read off a handset.
+  // This site's phone sign-up is a phone number, a password and a confirmation
+  // of that password. Nothing else.
+  //
+  // GoTrue can only create a password identity from an email or a phone, and a
+  // phone identity cannot skip SMS confirmation unless the project turns on
+  // sms_autoconfirm, which is a server-side Auth setting. So the number is
+  // mapped to a deterministic pseudo-email and the already-enabled, already
+  // autoconfirmed Email provider creates the account. `signUp` then returns a
+  // session straight away, which is the whole point: no code, no SMS provider,
+  // no second request.
+  //
+  //   +15551234567  ->  p15551234567@phone.invalid
+  //
+  // The mapping has to be reversible and injective, or two people could end up
+  // sharing one account or one person could be signed in as another. E.164 is a
+  // `+` followed by 7 to 15 digits and nothing else, so `p` plus the digits is
+  // injective over that set and the pattern below is its exact inverse.
+  //
+  // `.invalid` is reserved by RFC 2606 precisely so it can never resolve. If
+  // email confirmation is ever switched back on, the address is undeliverable by
+  // construction rather than by luck, and the domain cannot be taken over.
+  var PHONE_AUTH_DOMAIN = 'phone.invalid';
+  var PHONE_AUTH_RE = /^p(\d{7,15})@phone\.invalid$/;
+
+  function phoneAuthEmail(e164) {
+    return 'p' + String(e164 || '').replace(/\D/g, '') + '@' + PHONE_AUTH_DOMAIN;
+  }
+  function phoneFromAuthEmail(value) {
+    var m = PHONE_AUTH_RE.exec(String(value == null ? '' : value).trim().toLowerCase());
+    return m ? '+' + m[1] : '';
+  }
+  // Anything that displays or matches an account string has to undo the mapping,
+  // or an operator reads "p15551234567@phone.invalid" in User Management and
+  // has no way to tell whose number it is. The real number is also kept in the
+  // identity's user_metadata, which is what the member's own screens read.
+  function accountForDisplay(value) {
+    var p = phoneFromAuthEmail(value);
+    return p || value;
+  }
+
   var self = {
     url: null,
     anon: null,
@@ -380,6 +426,10 @@ var TrustDB = (function () {
     // is stripped. A bare local number is rejected rather than guessed at,
     // because inventing a country code would silently create an account under
     // the wrong number.
+    //
+    // A phone also resolves to `authEmail`, the pseudo-email its password
+    // identity actually lives under. `value` stays the E.164 number so every
+    // existing caller, message and comparison still sees a phone number.
     _authIdent: function (account, hint) {
       var raw = String(account == null ? '' : account).trim();
       if (!raw) return { kind: 'empty', value: '' };
@@ -389,7 +439,9 @@ var TrustDB = (function () {
       if (hint === 'email') return _asEmail(raw);
 
       // No hint: fall back to sniffing, which is fine for the login form where
-      // there is no toggle.
+      // there is no toggle. A number that is already in mapped form is still a
+      // phone, so an operator pasting it from User Management signs in as one.
+      if (PHONE_AUTH_RE.test(raw.toLowerCase())) return _asPhone('+' + phoneFromAuthEmail(raw));
       if (raw.indexOf('@') !== -1) return _asEmail(raw);
       return _asPhone(raw);
 
@@ -412,7 +464,8 @@ var TrustDB = (function () {
         if (digits.length < 8 || digits.length > 15) {
           return { kind: 'invalid', value: v, msg: 'Enter a valid phone number with country code' };
         }
-        return { kind: 'phone', value: '+' + digits };
+        var e164 = '+' + digits;
+        return { kind: 'phone', value: e164, authEmail: phoneAuthEmail(e164) };
       }
     },
 
@@ -516,11 +569,25 @@ var TrustDB = (function () {
         return Promise.reject(new Error('Password must be at least 8 characters'));
       }
 
-      // Only one of email/phone may be sent, and which one tells GoTrue which
-      // identity to create.
+      // A phone number is created as a password identity under its mapped
+      // pseudo-email, so it needs no SMS provider and no confirmation code. Only
+      // one of email/phone may be sent to GoTrue, and which one it is tells
+      // GoTrue which kind of identity to create.
+      //
+      // The real number goes into user_metadata as well, so the member's own
+      // screens can show a phone number rather than the internal address. That
+      // metadata is user-editable and is never used to decide who anyone is.
       var creds = { password: password, options: { data: extra || {} } };
-      if (id.kind === 'phone') { creds.phone = id.value; creds.options.data = extra || {}; creds.options.data.login_method = 'phone'; }
-      else { creds.email = id.value; creds.options.data = extra || {}; creds.options.data.login_method = 'email'; }
+      if (id.kind === 'phone') {
+        creds.email = id.authEmail;
+        creds.options.data = extra || {};
+        creds.options.data.login_method = 'phone';
+        creds.options.data.phone = id.value;
+      } else {
+        creds.email = id.value;
+        creds.options.data = extra || {};
+        creds.options.data.login_method = 'email';
+      }
 
       return this._waitForClient().then(function (lib) {
         return lib.auth.signUp(creds);
@@ -529,28 +596,11 @@ var TrustDB = (function () {
           throw self_._authError(res.error, 'signup');
         }
 
-        // With "Confirm email" on, GoTrue returns a user but no session. Say so
-        // rather than letting the caller treat it as a successful sign-in and
-        // then fail on the first protected query. The phone provider behaves
-        // the same way when SMS confirmation is on.
-        //
-        // Reaching either branch means the site is configured to require
-        // confirmation, which is a project setting rather than anything the
-        // visitor can act on. Both messages say so, and name the toggle,
-        // instead of telling someone to go and check an inbox that will
-        // either never arrive or arrive too slowly to be usable.
+        // A phone account is signed in the moment it is created, so this branch
+        // is only reachable for an email account on a project that still has
+        // "Confirm email" on. Say so rather than letting the caller treat it as a
+        // successful sign-in and then fail on the first protected query.
         if (!res.data.session) {
-          if (id.kind === 'phone') {
-            return {
-              ok: true,
-              needsPhoneConfirm: true,
-              message: 'Your account was created, but this site still asks for a ' +
-                'phone confirmation code. To sign up with no code at all, turn off ' +
-                'phone confirmation in Supabase under Authentication -> Providers -> ' +
-                'Phone. (The Phone provider also has to be enabled and connected to a ' +
-                'SMS provider first.)'
-            };
-          }
           return {
             ok: true,
             needsEmailConfirm: true,
@@ -709,11 +759,9 @@ var TrustDB = (function () {
         return Promise.reject(new Error(id.msg || 'Enter a valid email or phone number'));
       }
 
-      // Same either way, but the key differs: GoTrue looks the identity up by
-      // whichever field is present.
-      var creds = { password: password };
-      if (id.kind === 'phone') creds.phone = id.value;
-      else creds.email = id.value;
+      // Same either way, but the key differs: a phone signs in under the same
+      // mapped pseudo-email it was registered with, so the two cannot drift.
+      var creds = { password: password, email: id.kind === 'phone' ? id.authEmail : id.value };
 
       return this._waitForClient().then(function (lib) {
         return lib.auth.signInWithPassword(creds);
@@ -797,12 +845,17 @@ var TrustDB = (function () {
 
     // A profile row for a moment before the cache has caught up.
     _synthUser: function (u) {
+      // A phone account's identity is a mapped pseudo-email, so the number is
+      // read back out of it (or out of user_metadata) before anything is shown.
+      // Otherwise the member's own account page displays the internal address.
+      var mapped = accountForDisplay(u.email || u.phone || u.id);
+      var phone = (u.user_metadata && u.user_metadata.phone) || phoneFromAuthEmail(u.email) || null;
       return {
         id: u.id,
         uid: u.id,                       // v1 callers that still read .uid
-        account: String(u.email || u.phone || u.id).toLowerCase(),
-        email: u.email || null,
-        phone: u.phone || null,
+        account: phone || String(mapped).toLowerCase(),
+        email: phone ? null : (u.email || null),
+        phone: phone,
         is_admin: false,
         is_guest: false,
         status: 'active',
@@ -826,6 +879,19 @@ var TrustDB = (function () {
       if (!u) return null;
       var out = Object.assign({}, u);
       out.uid = u.id;
+      // A profile row for a phone account stores the mapped pseudo-email in
+      // `account`, because that is the identity's email and the auth trigger
+      // derives the column from it. Undo the mapping wherever a row is read, so
+      // User Management, the account page and the member list all show the
+      // number an operator can actually read back to the member.
+      //
+      // This is display only. The stored value is what the server matches on,
+      // and nothing here changes what is sent to GoTrue.
+      if (u.account) out.account = accountForDisplay(u.account);
+      if (u.email) out.email = phoneFromAuthEmail(u.email) ? null : u.email;
+      if (!out.phone) {
+        out.phone = (u.user_metadata && u.user_metadata.phone) || phoneFromAuthEmail(u.account) || null;
+      }
     // v1 stored profit_mode / greeted as columns; v2 has greeted but not
     // profit_mode, so carry it in app_settings under the user's key.
     return out;

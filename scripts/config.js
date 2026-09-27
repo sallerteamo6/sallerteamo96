@@ -21,16 +21,23 @@
   var DB_URL = 'https://mpiqktgpgmbsljqgypzk.supabase.co/rest/v1/';
   // The publishable (public) key. Safe to ship: RLS is what protects the data.
   //
-  // 2026-09-27: this used to be the legacy `anon` JWT key, and it no longer works.
-  // Every request through it was refused by the project gateway with
-  //   401 {"code":"UNAUTHORIZED_INVALID_API_KEY","message":"Invalid API key"}
-  // on /rest/v1, /auth/v1 and /functions/v1 alike, so the site could not read or
-  // write anything. Replaced with the project's current `sb_publishable_` key,
-  // which answers 200 on the same requests. Verified over 5 consecutive runs:
-  // legacy key 401, publishable key 200, identical URL and headers.
+  // 2026-09-27: this was the legacy `anon` JWT key, and it has been changed to the
+  // project's current `sb_publishable_` key.
   //
-  // If sign-in stops working again, check this line first. It is the one value here
-  // that can be invalidated on the server without any file in this project changing.
+  // Why, stated honestly: partway through investigating a sign-in failure the
+  // gateway began refusing the legacy key outright -
+  //   401 {"code":"UNAUTHORIZED_INVALID_API_KEY","message":"Invalid API key"}
+  // on /rest/v1, /auth/v1 and /functions/v1 alike - measured 5 runs out of 5, from
+  // two independent clients. It later began answering 200 again, 8 runs out of 8,
+  // with the identical key string, so the acceptance was changed on the server
+  // rather than by anything in this project. The cause was not identified.
+  //
+  // So this is not a repair of a key that is broken right now - both keys work at
+  // the time of writing. It removes the dependency on the legacy keys, which
+  // Supabase is migrating away from and which have now been observed flipping
+  // between accepted and refused. If the site ever stops reading data again, check
+  // this line first: it is the one value here that can be invalidated on the
+  // server without any file in this project changing.
   var DB_ANON_KEY = 'sb_publishable_4Fr10m670_qELHT0H9Kw_g_Czg3EF5D';
 
   // When true the app renders in read-only mode and no write path is offered.
