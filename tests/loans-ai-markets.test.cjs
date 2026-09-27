@@ -200,9 +200,14 @@ function fn(source, name, indent = '  ') {
   assert.match(sql18, /\(s ->> 'due_at'\)::timestamptz <= now\(\)/);
   assert.match(sql18, /revoke all on function public\.settle_due_investments\(\) from public, anon, authenticated;/);
   assert.match(sql18, /grant execute on function public\.settle_due_investments\(\) to service_role;/);
-  assert.ok(fs.existsSync(path.join(root, 'scripts', 'settle-investments.mjs')), 'no settlement runner script');
-  const runner = fs.readFileSync(path.join(root, 'scripts', 'settle-investments.mjs'), 'utf8');
+  assert.ok(fs.existsSync(path.join(root, 'scripts', 'settle-everything.mjs')), 'no settlement runner script');
+  const runner = fs.readFileSync(path.join(root, 'scripts', 'settle-everything.mjs'), 'utf8');
   assert.match(runner, /rpc\/settle_due_investments/);
+  // It settles trades too, so an order nobody is watching still pays.
+  assert.match(runner, /rpc\/settle_due_contracts/);
+  assert.match(runner, /api\.binance\.com/);
+  assert.ok(!fs.existsSync(path.join(root, 'scripts', 'settle-investments.mjs')),
+    'the investments-only runner was replaced, not left behind as a second thing to schedule');
   // The service key comes from the environment only. config.js ships to every
   // visitor, so a key read from there would be a public bypass of row level
   // security. Comments are stripped first so the warning about it is not a hit.

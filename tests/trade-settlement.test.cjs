@@ -258,6 +258,86 @@ function fn(source, name, indent = '  ') {
   // schema agrees, so nobody "fixes" that one by hand and drifts from it.
   assert.match(schema, /status\s+text\s+not null default 'active'/);
 
+  // ---- 9. random() must not leak into numeric arithmetic ----------------
+  // The reported AI Quant failure was:
+  //   {"code":"42883","message":"function round(double precision, integer)
+  //    does not exist"}
+  // random() returns double precision, and double precision * numeric is double
+  // precision, so `round(rate_min + random() * band, 2)` is round(double, int),
+  // which does not exist. Every round(x, n) on a stored numeric column needs
+  // random() cast, or no cast at all.
+  const sqlDir2 = sqlDir;
+  for (const f of fs.readdirSync(sqlDir2).filter(x => x.endsWith('.sql'))) {
+    // Comments are stripped first: the corrective migrations quote the broken
+    // line in order to explain it, and a scan that read the comments would flag
+    // the explanation as the bug.
+    const s = fs.readFileSync(path.join(sqlDir2, f), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n').map(l => l.replace(/--.*$/, '')).join('\n');
+    // round(<expr containing random()>, n) without a ::numeric cast on random()
+    const re = /round\(\s*([^;]{0,220}?random\(\)[^;]{0,220}?),\s*\d+\s*\)/g;
+    let m;
+    while ((m = re.exec(s)) !== null) {
+      assert.ok(/random\(\)\s*::\s*numeric/.test(m[0]),
+        f + ': round() is fed a double precision random(). Cast it: ' + m[0].replace(/\s+/g, ' ').slice(0, 110));
+    }
+  }
+  assert.ok(fs.readFileSync(path.join(sqlDir, '20_payouts_multi_trade_numeric_fix.sql'), 'utf8')
+    .includes('random()::numeric'), 'the corrective migration must carry the cast');
+
+  // ---- 10. The stated payouts, and more than one order at a time ---------
+  const sql20 = fs.readFileSync(path.join(sqlDir, '20_payouts_multi_trade_numeric_fix.sql'), 'utf8');
+  assert.match(sql20, /when 60\s+then 20/);
+  assert.match(sql20, /when 120\s+then 30/);
+  assert.match(sql20, /when 300\s+then 40/);
+  // A fresh install must seed the same numbers, or it drifts from a live project.
+  const seed = fs.readFileSync(path.join(sqlDir, '05_seed.sql'), 'utf8');
+  assert.match(seed, /\(60::integer,\s+20::numeric\)/);
+  assert.match(seed, /\(120,\s+30\)/);
+  assert.match(seed, /\(300,\s+40\)/);
+  assert.ok(!/p\.payout_pct \+ d\.adjust/.test(seed), 'the durations must not be derived from the product default');
+  // Several orders on one market at once, each debiting its own stake. The guard
+  // message is quoted in migration 20's comment to explain the removal, so the
+  // code is checked with comments stripped.
+  const sql20Code = sql20.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map(l => l.replace(/--.*$/, '')).join('\n');
+  assert.match(sql20, /create or replace function public\.open_trade\(/);
+  assert.ok(!/an order for this market is still running/.test(sql20Code),
+    'the one-order-per-market guard must be gone or a second trade is impossible');
+  // The only refusals open_trade may make are the per-order input validations.
+  // Nothing may refuse because another order happens to be running.
+  const openTradeBody = sql20Code.split('create or replace function public.open_trade')[1].split('\nend $$')[0];
+  const reasons = [...openTradeBody.matchAll(/raise exception '([^']+)'/g)].map(m => m[1]);
+  const expected = ['not signed in', 'account is not active', 'side must be up or down',
+    'entry price unavailable', 'amount must be positive', 'unknown market %, available: %',
+    'unknown duration % for market %, available: %', 'minimum amount is %'];
+  assert.deepEqual(reasons.map(r => r.replace(/\s+/g, ' ')), expected,
+    'open_trade refuses for something other than its own input, or lost a validation');
+  assert.ok(!/select 1 from public\.contracts\s+where uid = v_uid and status = 'open'/.test(openTradeBody),
+    'open_trade must not look for an already-running order on the same market');
+  assert.match(sql20, /v_balance := public\.post_ledger\(v_uid, coalesce\(p_coin, v_product\.quote_coin\), -p_amount,/);
+  // Closing the countdown must not abandon an order, so contracts settle without
+  // a browser.
+  assert.match(sql20, /create or replace function public\.settle_due_contracts\(p_prices jsonb\)/);
+  assert.match(sql20, /grant execute on function public\.settle_due_contracts\(jsonb\) to service_role;/);
+  assert.ok(!/to (anon|authenticated);[\s\S]{0,20}$/m.test(''), 'placeholder');
+  assert.match(sql20, /revoke all on function public\.settle_due_contracts\(jsonb\) from public, anon, authenticated;/);
+  assert.match(sql20, /for update of ct skip locked/);
+  assert.match(sql20, /v_price is null or v_price <= 0 then continue/, 'an unquoted market blocks rather than guessing');
+  // The page must not abandon an order when the window closes.
+  const closeFn = fn(trade, 'closeCountdown', '    ');
+  assert.match(closeFn, /rememberOrder\(/, 'closing the countdown must remember the order');
+  assert.ok(!/clearInterval\(countdownTimer\); countdownTimer = null; \}\s*\n\s*document\.getElementById\('countdownOverlay'\)\.style\.display = 'none';\s*\n\s*\}/.test(closeFn),
+    'closeCountdown must not simply hide the modal and drop the order');
+  assert.match(trade, /function cancelCountdown\(\)/);
+  assert.match(trade, /TrustApp\.cancelTrade\(id\)/);
+  assert.match(app, /cancelTrade: cancelTrade/);
+  assert.match(dbjs, /cancelTrade: function \(id\)/);
+  assert.match(trade, /onclick="closeCountdown\(\)"/);
+  assert.match(trade, /onclick="cancelCountdown\(\)"/);
+  // And a running order is not shown as a red 0.00 loss.
+  assert.match(trade, /Settles when the time is up/);
+  assert.match(trade, /: 'Running'/);
+
   // ---- 9. A failed settlement explains itself and keeps the details ------
   const errNodes = {};
   const el2 = id => errNodes[id] || (errNodes[id] = { id, className: '', textContent: '', innerHTML: '', style: {} });
@@ -315,5 +395,6 @@ function fn(source, name, indent = '  ') {
 
   console.log('PASS: clean encoding, server-settled profit and details in the result modal, priced from the database, ' +
     'ledger-backed open/settle, admin profit-mode switch on both scopes, a non-destructive admin list rebuild, ' +
-    'the contract_status enum cast, and a settlement failure that explains itself');
+    'the contract_status enum cast, random() kept out of numeric arithmetic, 20/30/40 payouts, concurrent orders, ' +
+    'background settlement, and a settlement failure that explains itself');
 })().catch(e => { console.error(e); process.exitCode = 1; });

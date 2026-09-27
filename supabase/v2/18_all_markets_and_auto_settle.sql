@@ -172,7 +172,13 @@ begin
     raise exception 'maximum for % is %', v_prod.name, v_prod.max_principal using errcode = '22023';
   end if;
 
-  v_rate := round(v_prod.rate_min + random() * greatest(0, v_prod.rate_max - v_prod.rate_min), 2);
+  -- random() is double precision and double precision * numeric is double
+  -- precision, so the un-cast version made this round(double precision,
+  -- integer), which does not exist. Keep the arithmetic in numeric space.
+  v_rate := round(
+              v_prod.rate_min::numeric
+              + random()::numeric * greatest(0::numeric, v_prod.rate_max - v_prod.rate_min),
+              2);
 
   -- due_at is a full day after the start, so a day is a real 24 hours rather
   -- than 24 hours after the last sweep happened to run. settle_due_investments

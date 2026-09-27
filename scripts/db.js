@@ -1620,6 +1620,19 @@ var TrustDB = (function () {
       });
     },
 
+    // Cancels a running order and returns the stake. The refund is posted by
+    // cancel_contract through post_ledger, so it is atomic with the status change
+    // and a member closing an order never has money stuck in an unsettled
+    // contract. Idempotent: a second call returns the stored row and pays nothing.
+    cancelTrade: function (id) {
+      var self_ = this;
+      return this.rpc('cancel_contract', { p_contract_id: String(id) }).then(function (row) {
+        var res = self_._toV1Trade(self_._cache.trades.find(function (c) { return String(c.id) === String(id); }));
+        return Promise.all([self_._refreshTable('contracts'), self_._refreshTable('balances')])
+          .then(function () { return res || row; });
+      });
+    },
+
     // ---- AI Quant investments ----
 
     // The plan catalogue, with the bounds open_investment enforces. The AI page

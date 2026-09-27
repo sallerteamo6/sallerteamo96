@@ -592,6 +592,13 @@ textarea.form-input{height:auto;padding:12px 15px;resize:vertical}
 .profit-preview .preview-value{font-size:28px;font-weight:700}
 .profit-preview .preview-value.profit{color:#13b26f}
 .profit-preview .preview-value.loss{color:#cf202f}
+/* The countdown offers two different exits, so they are named rather than left
+   as one ambiguous close button: letting the order run, or taking the stake back. */
+.cancel-order-btn{flex:1;padding:12px;border-radius:12px;font-size:13.5px;font-weight:600;cursor:pointer;
+  background:#fff;color:#5b616e;border:1px solid #e2e6ee;transition:all .2s}
+.cancel-order-btn:hover{background:#f5f7fa}
+.cancel-order-btn.refund{color:#cf202f;border-color:#f3d0d4}
+.cancel-order-btn.refund:hover{background:#fdf2f3}
 .result-modal{width:98%;max-width:480px;background:#fff;border-radius:20px;padding:24px;box-shadow:0 20px 60px rgba(19,31,48,.25);position:relative;text-align:center}
 .result-icon{width:80px;height:80px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:48px;font-weight:700;margin:1rem auto}
 .result-icon.win{background:#e6f7f0;color:#13b26f}

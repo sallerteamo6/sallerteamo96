@@ -9,22 +9,23 @@
 
 begin;
 
--- Tradable markets. payout_pct is the profit margin on a winning contract
--- (180 = an 80% return on stake). price_symbol is the Binance pair that
--- scripts/settle.mjs quotes to decide the outcome.
+-- Tradable markets. payout_pct here is only the default for a product added by
+-- hand; the rate actually charged is product_durations.payout_pct, which is 20%
+-- for 60s, 30% for 120s and 40% for 300s. price_symbol is the pair the
+-- settlement runner quotes to decide the outcome.
 insert into public.products (symbol, name, price_symbol, payout_pct, min_amount, quote_coin, sort_order) values
-  ('BTC',  'Bitcoin',      'BTCUSDT',  185, 10, 'USDT', 1),
-  ('ETH',  'Ethereum',     'ETHUSDT',  184, 10, 'USDT', 2),
-  ('SOL',  'Solana',       'SOLUSDT',  183, 10, 'USDT', 3),
-  ('BNB',  'BNB',          'BNBUSDT',  182, 10, 'USDT', 4),
-  ('XRP',  'XRP',          'XRPUSDT',  181, 10, 'USDT', 5),
-  ('DOGE', 'Dogecoin',     'DOGEUSDT', 180, 10, 'USDT', 6),
-  ('ADA',  'Cardano',      'ADAUSDT',  180, 10, 'USDT', 7),
-  ('DOT',  'Polkadot',     'DOTUSDT',  179, 10, 'USDT', 8),
-  ('LINK', 'Chainlink',    'LINKUSDT', 179, 10, 'USDT', 9),
-  ('AVAX', 'Avalanche',    'AVAXUSDT', 178, 10, 'USDT', 10),
-  ('TRX',  'TRON',         'TRXUSDT',  178, 10, 'USDT', 11),
-  ('LTC',  'Litecoin',     'LTCUSDT',  177, 10, 'USDT', 12)
+  ('BTC',  'Bitcoin',      'BTCUSDT',  30, 10, 'USDT', 1),
+  ('ETH',  'Ethereum',     'ETHUSDT',  30, 10, 'USDT', 2),
+  ('SOL',  'Solana',       'SOLUSDT',  30, 10, 'USDT', 3),
+  ('BNB',  'BNB',          'BNBUSDT',  30, 10, 'USDT', 4),
+  ('XRP',  'XRP',          'XRPUSDT',  30, 10, 'USDT', 5),
+  ('DOGE', 'Dogecoin',     'DOGEUSDT', 30, 10, 'USDT', 6),
+  ('ADA',  'Cardano',      'ADAUSDT',  30, 10, 'USDT', 7),
+  ('DOT',  'Polkadot',     'DOTUSDT',  30, 10, 'USDT', 8),
+  ('LINK', 'Chainlink',    'LINKUSDT', 30, 10, 'USDT', 9),
+  ('AVAX', 'Avalanche',    'AVAXUSDT', 30, 10, 'USDT', 10),
+  ('TRX',  'TRON',         'TRXUSDT',  30, 10, 'USDT', 11),
+  ('LTC',  'Litecoin',     'LTCUSDT',  30, 10, 'USDT', 12)
 on conflict (symbol) do update
   set payout_pct   = excluded.payout_pct,
       min_amount   = excluded.min_amount,
@@ -32,17 +33,21 @@ on conflict (symbol) do update
       sort_order   = excluded.sort_order;
 
 -- Contract durations per product, mirroring the durations the original app
--- offered (60s / 120s / 300s). Longer contracts pay slightly more.
+-- offered (60s / 120s / 300s).
+-- 60s = 20%, 120s = 30%, 300s = 40%. These are the profit margins shown on the
+-- order form and paid on a win, and they are stated here rather than derived
+-- from products.payout_pct so the number the site shows is the number charged.
 insert into public.product_durations (product_id, seconds, payout_pct)
-select p.id, d.seconds, p.payout_pct + d.adjust
+select p.id, d.seconds, d.payout
 from public.products p
 cross join (values
-  (60::integer, -2::numeric),
-  (120,           -1),
-  (300,            0)
-) as d(seconds, adjust)
+  (60::integer,  20::numeric),
+  (120,           30),
+  (300,           40)
+) as d(seconds, payout)
 on conflict (product_id, seconds) do update
-  set payout_pct = excluded.payout_pct;
+  set payout_pct = excluded.payout_pct,
+      is_active  = true;
 
 -- AI Quant products.
 insert into public.investment_products (code, name, period_days, rate_min, rate_max) values

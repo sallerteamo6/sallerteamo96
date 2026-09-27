@@ -501,7 +501,13 @@ begin
   end if;
 
   -- Draw the rate in the band. Two decimal places, matching numeric(6,2).
-  v_rate := round(v_prod.rate_min + random() * (v_prod.rate_max - v_prod.rate_min), 2);
+  -- random() is double precision, and double precision * numeric is double
+  -- precision, so without the cast the whole expression is a double and
+  -- round(double precision, integer) does not exist. Keep it in numeric space.
+  v_rate := round(
+              v_prod.rate_min::numeric
+              + random()::numeric * greatest(0::numeric, v_prod.rate_max - v_prod.rate_min),
+              2);
 
   -- Precompute the daily schedule so the front end can draw a progress bar
   -- without re-deriving the maths, and so every run of the same product shows

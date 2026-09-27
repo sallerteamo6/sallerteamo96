@@ -2403,6 +2403,22 @@
     });
   }
 
+  // Cancel a running order and take the stake back. The refund is the server's:
+  // one transaction that marks the order void and posts the amount through the
+  // ledger, so a member closing an order never has money stuck in a contract that
+  // nothing will settle. Idempotent - cancelling an already-settled order returns
+  // the stored row and pays nothing.
+  function cancelTrade(id) {
+    if (!dbActive()) return Promise.reject(new Error('Connection is not ready. Please retry.'));
+    if (!id) return Promise.reject(new Error('There is no order to cancel'));
+    var dbId = (_tradeIdMap && _tradeIdMap[String(id)]) || id;
+    return DB.cancelTrade(String(dbId)).then(function (res) {
+      _notifyChange('trades');
+      _notifyChange('user_balances');
+      return res;
+    });
+  }
+
   // Odds and the minimum stake for a market/duration, from the database. Used
   // to label the order form; open_trade re-reads the same rows before charging.
   function getTradeTerms(symbol, seconds) {
@@ -3761,6 +3777,7 @@
     addTrade: addTrade,
     openTrade: openTrade,
     settleTrade: settleTrade,
+    cancelTrade: cancelTrade,
     refreshTrade: refreshTrade,
     getTradeTerms: getTradeTerms,
     updateTrade: updateTrade,

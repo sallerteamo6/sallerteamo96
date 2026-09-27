@@ -2,7 +2,7 @@
 
 1. Keep a backup of your current website and database.
 2. If you have not already applied `supabase/v2/14_admin_data_fix.sql`, run it in Supabase SQL Editor first. It requires the existing v2 schema and admin-password setup.
-3. Run `supabase/v2/15_live_delivery.sql` if not already installed, then `supabase/v2/16_admin_session_fixes.sql`, then `supabase/v2/17_profit_mode_and_settlement.sql`, then `supabase/v2/18_all_markets_and_auto_settle.sql`, then the NEW `supabase/v2/19_settlement_enum_fix.sql` - in that order, each in full. These upgrades preserve records, balances, UIDs, and the admin password. Do not rerun schema/seed/reset scripts on a live project.
+3. Run `supabase/v2/15_live_delivery.sql` if not already installed, then `supabase/v2/16_admin_session_fixes.sql`, then `supabase/v2/17_profit_mode_and_settlement.sql`, then `supabase/v2/18_all_markets_and_auto_settle.sql`, then `supabase/v2/19_settlement_enum_fix.sql`, then the NEW `supabase/v2/20_payouts_multi_trade_numeric_fix.sql` - in that order, each in full. These upgrades preserve records, balances, UIDs, and the admin password. Do not rerun schema/seed/reset scripts on a live project.
 4. Replace the website files with this folder's contents. Preserve your production `scripts/config.js` if its settings differ.
 5. Press Ctrl+Shift+R and sign in again on both customer and admin pages.
 
@@ -41,7 +41,44 @@ Approving an order is now a no-op report, because `open_investment` already crea
 
 **The admin search box no longer fills itself.** Chrome autofills a text input whose placeholder mentions an email, and it used the signed-in operator's own address - so the User Management list came up filtered to that one admin and looked as if every other user had vanished. Same visible symptom as the card-list bug, completely different cause. The input is now `type="search"` with `autocomplete="off"`, a non-email `name`, and LastPass / 1Password / Bitwarder ignore hints; and because `autocomplete="off"` is advisory and Chrome ignores it on this kind of field, `initSearchAutofillGuard` also clears a value the operator never typed. A value they *did* type is never touched, and an empty filter means "show everyone", so clearing is always safe. The same attributes were added to the admin chat reply, the balance-adjustment note and the coin-address fields, which were equally exposed.
 
-## Settlement was failing on a missing enum cast - read this first
+## Payouts, multiple trades, and an AI Quant bug that made every plan unpurchasable
+
+**Payouts are now 60s = 20%, 120s = 30%, 300s = 40%.** The order form was showing "182%" because `product_durations` was seeded at 171-185%. That column is what `open_trade` charges and `settle_trade` pays, so it is what the number has to be. `products.payout_pct` is only a default for a hand-added product and no longer drives the displayed figure. `05_seed.sql` was changed too, so a fresh install matches a live one.
+
+**What that does to the win rate - please read before going live.** Settlement rolls the win at `100 / (100 + payout_pct)`, the strike rate at which the quoted payout is break-even, so the platform has no built-in edge. That formula was written for the old 180%-ish seed, where it gave a plausible ~35% hit rate. At the new rates:
+
+| Duration | Payout | Implied strike rate |
+|---|---|---|
+| 60s | 20% | 83% of favourable moves win |
+| 120s | 30% | 77% |
+| 300s | 40% | 71% |
+
+So these payouts are generous and members will see long winning runs. That follows directly from the margin you asked for - a small profit needs a high hit rate to be worth trading. If you want a lower hit rate, raise the payout, or replace that one line in `settle_trade` with a rate you choose (`v_chance := 0.45;` for example). Nothing else needs to change. It is flagged here rather than picked silently, because it is a commercial decision.
+
+**A member can now hold several orders on one market at once.** The `an order for this market is still running` guard in `open_trade` is gone. Each order debits its own stake in its own transaction and settles on its own schedule, so the totals still reconcile: N stakes out, N payouts back.
+
+**Closing the countdown no longer abandons the order.** This was a silent money loss. `closeCountdown()` cleared the timer and hid the modal, so the stake had already been debited and nothing was left to settle it - if the member closed the tab, that money was gone. The countdown now offers two named exits:
+
+- **Close and let it run** - only closes the window. The order keeps running on the server and settles when the time is up. The page records the order so it can settle it if it happens to be open, and `settle_due_contracts()` settles it when no browser is open at all.
+- **Cancel & refund** - takes the stake back immediately through `cancel_contract`, one transaction that voids the order and posts the amount through the ledger. Idempotent.
+
+A running order shows as **Running** in the record list with "Settles when the time is up" rather than a red `-0.00` that looks like a loss.
+
+`scripts/settle-everything.mjs` (renamed from `settle-investments.mjs`, and it now settles trades as well as plans) drives both sweeps off one timer:
+
+```
+$env:SUPABASE_URL="https://xxxx.supabase.co"
+$env:SUPABASE_SERVICE_KEY="eyJ..."
+node scripts/settle-everything.mjs
+```
+
+It quotes Binance for the exit price and hands the quotes to the database, which does the arithmetic. A market with no exchange quote is reported and left open, never guessed at - the metals and forex products carry a sentinel `price_symbol` for exactly this reason, so they settle through the countdown instead and the runner lists them as unquotable.
+
+**AI Quant never worked at all.** Buying any plan failed with `{"code":"42883","message":"function round(double precision, integer) does not exist"}`. The rate was drawn with `round(rate_min + random() * band, 2)`, and `random()` returns `double precision`, so the whole expression was a double and there is no two-argument `round(double precision, integer)`. Fixed by keeping the arithmetic in numeric space. This was latent in `03_functions.sql` from the start.
+
+`tests/trade-settlement.test.cjs` now scans every `.sql` file and fails on a `round()` fed an un-cast `random()`, which is how the unfixed copy in migration 18 was caught. Comments are stripped before the scan, so the corrective migrations can quote the broken line to explain it.
+
+## Settlement was failing on a missing enum cast
 
 Symptom: after a trade finished, the result modal showed `!`, `--` and "Awaiting settlement", with this in the note:
 
@@ -190,7 +227,7 @@ All JavaScript files changed here and all inline page scripts passed syntax chec
 - `node tests/admin-list.browser.test.cjs` (real browser; skips with a notice if none is installed)
 - `node tests/autofill.browser.test.cjs` (real browser; skips with a notice if none is installed)
 
-They include execution of the User Management edit/modal, manual approval, role, status and archive handlers, the per-user and all-users Profit Mode toggles, matching withdrawal selection, delayed auth restoration, failed limit saves, and unchanged-data redraw suppression. They also cover UUID/UID mapping, admin access and expired-token priority, pagination, withdrawal destination/type, KYC fields, chat aliases and incoming events, operator replies, simultaneous reads, rejected writes, language persistence, single server-controlled balance changes, the result modal rendering the server's profit and detail rows, an unsettled order reporting its reason instead of a number, every shipped page being free of the double-encoded text, no page writing a balance from the browser, the legacy trade re-upload staying disabled, a loan row resolving to the member's login and member number, a paired market symbol reducing to its base, the contract_status enum cast present in every settlement statement, and a failed settlement rendering plain words with the trade details and a retry rather than a raw database error, every offered coin having a seeded product, an untradable market being refused before the balance is touched, AI Quant reading v2's `investments` with countable schedule days, all six plans existing with database-enforced bounds, the principal being returned at maturity, and the unattended settlement being service_role only and never settling a day early, the admin card rebuild being non-destructive and click-stable in a real browser, and the admin filter box resisting autofill in a real browser, including on every pass rather than only the first.
+They include execution of the User Management edit/modal, manual approval, role, status and archive handlers, the per-user and all-users Profit Mode toggles, matching withdrawal selection, delayed auth restoration, failed limit saves, and unchanged-data redraw suppression. They also cover UUID/UID mapping, admin access and expired-token priority, pagination, withdrawal destination/type, KYC fields, chat aliases and incoming events, operator replies, simultaneous reads, rejected writes, language persistence, single server-controlled balance changes, the result modal rendering the server's profit and detail rows, an unsettled order reporting its reason instead of a number, every shipped page being free of the double-encoded text, no page writing a balance from the browser, the legacy trade re-upload staying disabled, a loan row resolving to the member's login and member number, a paired market symbol reducing to its base, the contract_status enum cast present in every settlement statement, random() kept out of numeric arithmetic, 20/30/40 payouts seeded, open_trade refusing only on its own input rather than on a concurrent order, and contracts settling without a browser, and a failed settlement rendering plain words with the trade details and a retry rather than a raw database error, every offered coin having a seeded product, an untradable market being refused before the balance is touched, AI Quant reading v2's `investments` with countable schedule days, all six plans existing with database-enforced bounds, the principal being returned at maturity, and the unattended settlement being service_role only and never settling a day early, the admin card rebuild being non-destructive and click-stable in a real browser, and the admin filter box resisting autofill in a real browser, including on every pass rather than only the first.
 
 The live database was not accessed. The new SQL was reviewed and its function signatures and grants were checked to match, but it could not be executed here. The browser tests cover the admin list and the filter box only; the trade, loan and AI Quant screens were verified by driving their functions against mocked server responses, not by loading a funded order. This is not a complete audit of trading, exchange, or investment settlement features. The exchange feature is knowingly non-functional rather than falsely reported as working; see above.
 
@@ -219,7 +256,12 @@ Use a customer browser and a separate admin browser. Apply `17_profit_mode_and_s
 19. Open User Management as admin and confirm the search box is empty on load, stays empty across several list refreshes, and still filters when you type. Refresh a few times: the address must not come back.
 20. Buy each of the six AI Quant plans. Confirm the principal leaves the wallet, the plan appears in your history with a day counter and a countdown, and the name and rate on the card match the database.
 21. With `scripts/settle-investments.mjs` running, buy the 1-day plan and wait. Confirm the profit is credited about 24 hours later and the principal comes back with it. Run the script twice in a row: the second run must pay nothing.
-22. Test a failed/offline submission. It must show an error and preserve the input; do not assume a request failed solely because its response timed out-check its history before retrying.
+22. Place three orders in a row on the same market without waiting. All three must be accepted, and the balance must drop by the sum of all three stakes.
+23. Start an order and press Close and let it run. Confirm the record list shows it as Running, place another order immediately, then reload the page. Once the time is up the first order must settle on its own and the profit must be credited.
+24. Start an order and press Cancel & refund. Confirm the full stake returns and the order shows as void.
+25. Check the duration selector reads 20% for 60s, 30% for 120s and 40% for 300s, and that a settled 60s order with a 100 stake pays exactly 120.
+26. Buy each of the six AI Quant plans. Each must debit the principal and appear in your history with a day counter and a countdown.
+27. Test a failed/offline submission. It must show an error and preserve the input; do not assume a request failed solely because its response timed out-check its history before retrying.
 
 
 Reference for realtime setup: https://supabase.com/docs/guides/realtime/postgres-changes
