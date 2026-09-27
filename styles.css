@@ -600,9 +600,11 @@ textarea.form-input{height:auto;padding:12px 15px;resize:vertical}
 .result-amount.profit{color:#13b26f}
 .result-amount.loss{color:#cf202f}
 .result-info{width:100%;background:#f7f9fc;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;text-align:left;margin-bottom:16px}
-.result-info .row{display:flex;justify-content:space-between;font-size:14px}
-.result-info .row .label{color:#8b93a6}
-.result-info .row .value{color:#131f30;font-weight:600}
+.result-info .row{display:flex;justify-content:space-between;gap:16px;font-size:14px}
+/* The new settlement rows carry long values (order id, server note), so the
+   label stops growing and the value wraps instead of pushing the label off. */
+.result-info .row .label{color:#8b93a6;flex:0 0 auto;white-space:nowrap}
+.result-info .row .value{color:#131f30;font-weight:600;min-width:0;text-align:right;word-break:break-word}
 .result-btns{display:flex;gap:12px}
 .result-btn{flex:1;padding:15px;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer;transition:all .3s}
 .result-btn.primary{background:#1652f0;color:#fff;border:none}

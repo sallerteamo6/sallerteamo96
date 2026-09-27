@@ -10,11 +10,32 @@ function fn(source,name,indent='  '){const re=new RegExp('^'+indent+'(?:async )?
  // All supported management actions use the server and expose failures.
  let request;ctx.dbActive=()=>true;ctx.adminToken=()=> 'verified-token';ctx.dbUserToApp=u=>({...u,uid:u.id});
  ctx.DB.rpc=async(n,a)=>{request={n,a};return {user:{id:a.p_uid,account:'member@example.test'}}};ctx.DB.pullBlob=async()=>true;
- for(const name of ['manageUser','setUserAdmin','setUserStatus','removeUser','adminApproveKyc','setProfitMode'])vm.runInContext(fn(app,name),ctx);
+ for(const name of ['manageUser','setUserAdmin','setUserStatus','removeUser','adminApproveKyc'])vm.runInContext(fn(app,name),ctx);
  for(const [method,value,action] of [['setUserAdmin',true,'role'],['setUserStatus',false,'status'],['removeUser',undefined,'archive'],['adminApproveKyc',undefined,'manual_verify']]){
   const result=await ctx[method]('target',value);assert.equal(result.ok,true);assert.equal(request.a.p_action,action);assert.equal(request.a.tok,'verified-token');
  }
- ctx.DB.rpc=async()=>{throw Error('not authorized')};assert.equal((await ctx.setUserStatus('target',true)).ok,false);assert.equal(ctx.setProfitMode('target',true).ok,false);
+ ctx.DB.rpc=async()=>{throw Error('not authorized')};assert.equal((await ctx.setUserStatus('target',true)).ok,false);
+ // Profit Mode is a server-side admin switch: it goes through the audited RPC
+ // for one account and for every account, and a rejection is reported, not faked.
+ ctx.DB.rpc=async(n,a)=>{request={n,a};return {ok:true}};
+ ctx.DB.setUserProfitMode=async(uid,on)=>{request={n:'admin_set_profit_mode',a:{uid,on}};return {uid,on}};
+ vm.runInContext(fn(app,'setProfitMode'),ctx);
+ assert.equal((await ctx.setProfitMode('target',true)).ok,true);assert.equal(request.n,'admin_set_profit_mode');assert.deepEqual(request.a,{uid:'target',on:true});
+ assert.equal((await ctx.setProfitMode(null,true)).global,true);assert.deepEqual(request.a,{uid:null,on:true});
+ ctx.DB.setUserProfitMode=async()=>{throw Error('not authorized')};
+ assert.equal((await ctx.setProfitMode('target',true)).ok,false);
+ // Trade money moves through open_trade / settle_trade, never a browser write.
+ ctx.DB.openTrade=async(d)=>({id:'c-1',payout_pct:185,entry_price:100,balance:40});
+ ctx.DB.settleTrade=async(id,px)=>({id,status:'won',amount:100,payout:285,profit:185,balance:325,payout_pct:185,settle_price:px});
+ ctx.DB.pullBlob=async()=>true;
+ vm.runInContext(fn(app,'openTrade'),ctx);vm.runInContext(fn(app,'settleTrade'),ctx);
+ ctx.getUserId=()=>'user-1';ctx._notifyChange=()=>{};ctx._tradeIdMap={};
+ const opened=await ctx.openTrade({pair:'BTC/USDT',side:'up',amount:100,price:100,duration:60});
+ assert.equal(opened.id,'c-1');
+ const settled=await ctx.settleTrade('c-1',101);
+ assert.equal(settled.profit,185);assert.equal(settled.balance,325);
+ ctx.DB.settleTrade=async()=>{throw Error('insufficient balance')};
+ await assert.rejects(ctx.settleTrade('c-1',101),/insufficient/);
  // Fund limits report success only after confirmed server persistence.
  vm.runInContext(fn(app,'saveFundLimits'),ctx);ctx.reloadConfigFromDb=()=>{};
  ctx.DB.rpc=async(n,a)=>{request={n,a};return {}};
@@ -23,12 +44,24 @@ function fn(source,name,indent='  '){const re=new RegExp('^'+indent+'(?:async )?
  ctx.DB.rpc=async()=>{throw Error('save rejected')};assert.equal((await ctx.saveFundLimits(100,20)).msg,'save rejected');
  // Execute the actual User Management click handlers with controlled UI/backend.
  const nodes={editModal:{style:{}},editUserInfo:{},editModalBody:{}};let records=[],state={uid:'target',email:'member@gmail.com',account:'member@gmail.com',uid_code:'000042',createdAt:'2026-09-01',status:'active'};
- const ui={console,Promise,document:{getElementById:id=>nodes[id]},userActionBusy:{},editUid:null,
-  esc:String,fmtAmt:String,confirm:()=>true,renderUsers(){},toast:(...a)=>records.push(a),
-  TrustApp:{getUserId:()=> 'operator',getProfitMode:()=>false,isUserAdmin:()=>false,isUserActive:()=>state.status==='active',accountByUid:()=>state,getBalances:()=>({USDT:75}),getVerification:()=>null,
+ let ownProfit={target:false};
+ const ui={console,Promise,document:{getElementById:id=>nodes[id]||{textContent:'',className:'',style:{},disabled:false}},userActionBusy:{},editUid:null,globalProfitOn:false,
+  esc:String,fmtAmt:String,confirm:()=>true,renderUsers(){},renderStats(){},renderProfitPanel(){},toast:(...a)=>records.push(a),
+  TrustApp:{getUserId:()=> 'operator',getProfitMode:u=>ownProfit[u]||ui.globalProfitOn,getOwnProfitMode:u=>ownProfit[u]||false,
+   isGlobalProfitMode:()=>ui.globalProfitOn,setProfitMode:async(u,on)=>{if(u==null)ui.globalProfitOn=on;else ownProfit[u]=on;return {ok:true,uid:u,global:u==null,on}},
+   isUserAdmin:()=>false,isUserActive:()=>state.status==='active',accountByUid:()=>state,getBalances:()=>({USDT:75}),getVerification:()=>null,
    adminApproveKyc:async()=>({ok:true}),setUserAdmin:async()=>({ok:true,user:state}),setUserStatus:async()=>({ok:true,user:state}),removeUser:async()=>({ok:true,account:state.account})}};
- vm.createContext(ui);for(const name of ['row','profitCell','openEdit','closeEditModal','refreshEdit','verifyUser','toggleAdmin','toggleStatus','deleteUser'])vm.runInContext(fn(userPage,name,'    '),ui);
+ vm.createContext(ui);for(const name of ['row','ownProfitOn','isProfitOn','profitCell','toggleProfit','toggleProfitAll','openEdit','closeEditModal','refreshEdit','verifyUser','toggleAdmin','toggleStatus','deleteUser'])vm.runInContext(fn(userPage,name,'    '),ui);
  ui.openEdit('target');assert.equal(nodes.editModal.style.display,'flex');assert.match(nodes.editUserInfo.innerHTML,/000042/);assert.match(nodes.editModalBody.innerHTML,/Archive User/);assert.match(nodes.editModalBody.innerHTML,/admin-adjust.html\?u=target/);
+ // The Profit Mode row is a live toggle, and it says which scope is in force.
+ assert.match(nodes.editModalBody.innerHTML,/Profit Mode/);
+ assert.match(ui.profitCell(state),/profit-toggle off/);
+ await ui.toggleProfit('target');assert.equal(ownProfit.target,true);assert.match(records.at(-1)[1],/Profit Mode ON/);
+ assert.match(ui.profitCell(state),/profit-toggle on/);
+ await ui.toggleProfit('target');assert.equal(ownProfit.target,false);
+ await ui.toggleProfitAll();assert.equal(ui.globalProfitOn,true);assert.match(records.at(-1)[1],/every trade by every user/);
+ assert.match(ui.profitCell(state),/profit-toggle on/);   // covered by the global switch
+ await ui.toggleProfitAll();assert.equal(ui.globalProfitOn,false);assert.match(ui.profitCell(state),/profit-toggle off/);
  await ui.verifyUser('target');assert.match(records.at(-1)[1],/Manual approval/);
  await ui.toggleAdmin('target');assert.match(records.at(-1)[1],/Granted admin/);
  await ui.toggleStatus('target');assert.match(records.at(-1)[1],/Deactivated/);

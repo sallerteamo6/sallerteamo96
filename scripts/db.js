@@ -662,33 +662,63 @@ var TrustDB = (function () {
       if (!u) return null;
       var out = Object.assign({}, u);
       out.uid = u.id;
-      // v1 stored profit_mode / greeted as columns; v2 has greeted but not
-      // profit_mode, so carry it in app_settings under the user's key.
-      return out;
+    // v1 stored profit_mode / greeted as columns; v2 has greeted but not
+    // profit_mode, so carry it in app_settings under the user's key.
+    return out;
+  },
+
+    // products are cached with their durations and are readable while signed
+    // out, so the market name for a contract is a lookup rather than another
+    // embed in the contracts query.
+    _productById: function (id) {
+      var list = this._cache.products || [];
+      for (var i = 0; i < list.length; i++) {
+        if (String(list[i].id) === String(id)) return list[i];
+      }
+      return null;
     },
 
     _toV1Trade: function (c) {
       if (!c) return null;
+      var p = this._productById(c.product_id) || {};
+      var amount = parseFloat(c.amount) || 0;
+      var payout = c.payout == null ? null : parseFloat(c.payout);
+      // v2 is stake-and-payout: the stake leaves the wallet when the contract
+      // opens and the payout comes back at settlement. So the profit the user
+      // made is payout - amount on a win, and the whole -amount on a loss.
+      // Deriving it here means the history, the record list and the result
+      // modal all quote the same number instead of each doing its own maths.
+      var profit = 0;
+      if (c.status === 'won') profit = (payout == null ? 0 : payout) - amount;
+      else if (c.status === 'lost') profit = -amount;
+      else if (c.status === 'void') profit = 0;
+      var quote = p.quote_coin || 'USDT';
       return {
         id: c.id,
         uid: c.uid,
         product_id: c.product_id,
+        pair: p.symbol ? (p.symbol + '/' + quote) : '',
+        symbol: p.symbol || '',
         coin: c.coin,
         side: c.side,
-        amount: parseFloat(c.amount),
-        entry_price: parseFloat(c.entry_price),
-        sell_price: c.settle_price == null ? null : parseFloat(c.settle_price),
-        sellPrice: c.settle_price == null ? null : parseFloat(c.settle_price),
-        payout: c.payout == null ? null : parseFloat(c.payout),
+        amount: amount,
+        entry_price: parseFloat(c.entry_price) || 0,
+        price: parseFloat(c.entry_price) || 0,
+        payout_pct: parseFloat(c.payout_pct) || 0,
+        payout: payout,
         // v1 'open' / 'won' / 'lost' mapped directly.
         status: c.status,
         opened_at: c.opened_at,
         closed_at: c.settled_at,
         settled_at: c.settled_at,
         expires_at: c.expires_at,
-        duration_sec: c.duration_sec
+        duration_sec: c.duration_sec,
+        sell_price: c.settle_price == null ? null : parseFloat(c.settle_price),
+        sellPrice: c.settle_price == null ? null : parseFloat(c.settle_price),
+        profit: profit
       };
     },
+
 
     _toV1Transaction: function (t) {
       if (!t) return null;
@@ -1077,7 +1107,7 @@ var TrustDB = (function () {
     _pageTables: function () {
       var path = window.location.pathname;
       if (/chat|service/.test(path)) return ['users','chat_messages'];
-      if (/admin-users/.test(path)) return ['users','balances','verifications'];
+      if (/admin-users/.test(path)) return ['users','balances','verifications','app_settings'];
       if (/funds/.test(path)) return ['users','transactions','balances','verifications','loans'];
       if (/admin-adjust/.test(path)) return ['users','balances','transactions'];
       if (/loan/.test(path)) return ['users','loans','balances'];
@@ -1311,12 +1341,53 @@ var TrustDB = (function () {
 
     // v1 stored profit_mode on the user row; v2 has no such column, so it lives
     // in app_settings under a per-user key. Same call signature as v1.
+    //
+    // app_settings is insert-only for client roles, so the switch cannot be
+    // written from the browser: admin_set_profit_mode (migration 17) is the
+    // only writer, and it takes the admin credential. 'profit_mode:all' is the
+    // switch for every user; a per-user key overrides it.
     _profitKey: function (uid) { return 'profit_mode:' + (uid || this._uid()); },
-    setUserProfitMode: function (uid, on) {
-      return this.setSetting(this._profitKey(uid), !!on);
+    _profitAllKey: 'profit_mode:all',
+
+    _profitFlag: function (key) {
+      var v = this.getSetting(key);
+      if (v === null || v === undefined) return false;
+      if (v === true || v === 'true' || v === 1 || v === '1') return true;
+      if (typeof v === 'string') return v.toLowerCase() === 'true';
+      if (typeof v === 'object') return v.value === true || v.on === true;
+      return false;
     },
+
     getUserProfitMode: function (uid) {
-      return !!this.getSetting(this._profitKey(uid));
+      if (uid && String(uid) !== String(this._uid())) {
+        // Only an admin page may read another account's switch; the cache is
+        // filled from app_settings, which RLS exposes as public read.
+        return this._profitFlag(this._profitKey(uid));
+      }
+      return this._profitFlag(this._profitAllKey) || this._profitFlag(this._profitKey(null));
+    },
+
+    // The account's own key only, with no fallback to the global switch.
+    getOwnProfitMode: function (uid) {
+      return this._profitFlag(this._profitKey(uid || this._uid()));
+    },
+
+    isGlobalProfitMode: function () { return this._profitFlag(this._profitAllKey); },
+
+    setUserProfitMode: function (uid, on) {
+      var self_ = this;
+      var key = uid ? this._profitKey(uid) : this._profitAllKey;
+      var token = this._adminTokenForPage();
+      if (!token && !this.isAdmin) {
+        return Promise.reject(new Error('Administrator access is required to change Profit Mode'));
+      }
+      return this.rpc('admin_set_profit_mode', {
+        tok: token || null, p_uid: uid ? String(uid) : null, p_on: !!on
+      }).then(function (res) {
+        if (on) self_._cache.adminSettings[key] = true;
+        else delete self_._cache.adminSettings[key];
+        return res;
+      });
     },
 
     // v1 guests upgraded in place, keeping their uid and balances. v2 has no
@@ -1419,14 +1490,20 @@ var TrustDB = (function () {
 
     // ---- trades / contracts ----
 
+    // _toV1Trade needs `this` for the product lookup, so it is called as a
+    // method rather than handed to map() unbound.
+    _trade: function (c) { return this._toV1Trade(c); },
+
     getTrades: function () {
-      return this._cache.trades.map(this._toV1Trade)
+      var self_ = this;
+      return this._cache.trades.map(function (c) { return self_._toV1Trade(c); })
         .sort(function (a, b) { return new Date(b.opened_at || 0) - new Date(a.opened_at || 0); });
     },
     getTradesForUser: function (uid) {
+      var self_ = this;
       return this._cache.trades
         .filter(function (t) { return String(t.uid) === String(uid); })
-        .map(this._toV1Trade);
+        .map(function (c) { return self_._toV1Trade(c); });
     },
 
     addTrade: function (data) {
@@ -1450,12 +1527,78 @@ var TrustDB = (function () {
 
     // v1's updateTrade settled the trade and credited the balance from the
     // browser. That is exactly the operation a client must not be able to
-    // perform, so it is gone: scripts/settle.mjs does it with the service key.
+    // perform, so the money moved server-side. The browser still owns the
+    // countdown, so it calls settle_trade, which locks the contract, refuses
+    // to settle a contract it does not own, decides the outcome against the
+    // quoted odds, and posts the payout through post_ledger.
     updateTrade: function (id) {
       return Promise.reject(new Error(
-        'Trades are settled by the server, not the browser. Run scripts/settle.mjs ' +
-        '(or wait for the scheduled job) to settle ' + id + '.'
+        'Trades are settled with settleTrade(id, exitPrice). The browser must not ' +
+        'post a status or a balance itself.'
       ));
+    },
+
+    // Odds and the minimum stake, read from products/product_durations, so the
+    // modal can show what the order will actually pay before it is placed.
+    // The database stays the authority: open_trade re-reads the same rows.
+    getProductTerms: function (symbol, seconds) {
+      var list = this._cache.products || [];
+      var want = String(symbol || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      for (var i = 0; i < list.length; i++) {
+        var p = list[i];
+        if (String(p.symbol || '').toUpperCase() !== want) continue;
+        var ds = p.product_durations || [];
+        for (var j = 0; j < ds.length; j++) {
+          if (Number(ds[j].seconds) !== Number(seconds)) continue;
+          if (ds[j].is_active === false) continue;
+          return {
+            product_id: p.id,
+            symbol: p.symbol,
+            name: p.name,
+            coin: p.quote_coin || 'USDT',
+            min_amount: parseFloat(p.min_amount) || 0,
+            payout_pct: parseFloat(ds[j].payout_pct) || 0,
+            seconds: Number(ds[j].seconds)
+          };
+        }
+        return { product_id: p.id, symbol: p.symbol, name: p.name,
+                 coin: p.quote_coin || 'USDT',
+                 min_amount: parseFloat(p.min_amount) || 0, payout_pct: null, seconds: null };
+      }
+      return null;
+    },
+
+    // Opens the contract and debits the stake in one server transaction. The
+    // market is named by symbol, not by product_id, so the front end cannot
+    // pick a row that does not exist or quote itself a multiplier.
+    openTrade: function (data) {
+      var self_ = this;
+      this._needUid();
+      return this.rpc('open_trade', {
+        p_symbol: data.symbol || data.pair || (String(data.pair || '').split('/')[0]),
+        p_coin: data.coin || 'USDT',
+        p_side: data.side,
+        p_amount: Number(data.amount),
+        p_duration_sec: Number(data.duration_sec != null ? data.duration_sec : data.durationSec),
+        p_entry_price: Number(data.entry_price != null ? data.entry_price : data.entryPrice)
+      }).then(function (res) {
+        return Promise.all([self_._refreshTable('contracts'), self_._refreshTable('balances')])
+          .then(function () { return res; });
+      });
+    },
+
+    // Ends the contract. Idempotent on the server: a retry after a timeout
+    // returns the stored result instead of paying twice.
+    settleTrade: function (id, settlePrice) {
+      var self_ = this;
+      this._needUid();
+      return this.rpc('settle_trade', {
+        p_contract_id: String(id),
+        p_settle_price: Number(settlePrice)
+      }).then(function (res) {
+        return Promise.all([self_._refreshTable('contracts'), self_._refreshTable('balances')])
+          .then(function () { return res; });
+      });
     },
 
     // ---- AI Quant investments ----

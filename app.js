@@ -1580,20 +1580,38 @@
     };
   }
 
+  // v2's contract_status enum is 'open' | 'won' | 'lost' | 'void'; every page
+  // in this app was written against v1's 'open' | 'win' | 'loss'. Normalise it
+  // here, once, so orders.html, trade.html and the record list cannot disagree
+  // about whether a trade won.
+  function normTradeStatus(s) {
+    if (s === 'won') return 'win';
+    if (s === 'lost') return 'loss';
+    return s || 'open';
+  }
+
   function dbTradeToApp(t) {
     return {
       id: String(t.id),
       uid: t.uid,
+      product_id: t.product_id,
       pair: t.pair || '',
+      symbol: t.symbol || '',
+      coin: t.coin || 'USDT',
       side: t.side || 'up',
       amount: parseFloat(t.amount) || 0,
       price: parseFloat(t.price) || 0,
+      entry_price: parseFloat(t.entry_price != null ? t.entry_price : t.price) || 0,
       fee: parseFloat(t.fee) || 0,
       user: t.account || t.uid || '',
       createdAt: t.opened_at || t.created_at,
       created_at: t.opened_at || t.created_at,
-      status: t.status || 'open',
-      duration: parseInt(t.duration, 10) || 0,
+      expires_at: t.expires_at || null,
+      status: normTradeStatus(t.status),
+      db_status: t.status || 'open',
+      duration: parseInt(t.duration != null ? t.duration : t.duration_sec, 10) || 0,
+      payout_pct: parseFloat(t.payout_pct) || 0,
+      payout: t.payout == null ? null : parseFloat(t.payout),
       sellPrice: t.sell_price == null ? null : parseFloat(t.sell_price),
       settledAt: t.settled_at || null,
       profit: parseFloat(t.profit) || 0
@@ -2210,6 +2228,55 @@
   // ID mapping: generated trade ID -> DB ID (for settle/close PATCH fallback)
   var _tradeIdMap = {};
 
+  // Open a contract. The market is named by symbol and the payout is resolved
+  // in the database, so the front end cannot quote itself a multiplier, and the
+  // stake is debited by the same call that creates the order: there is no
+  // window in which the money has left the wallet but no order exists.
+  function openTrade(obj) {
+    if (!dbActive()) return Promise.reject(new Error('Connection is not ready. Please retry.'));
+    var uid = getUserId();
+    if (!uid) return Promise.reject(new Error('Please sign in before trading'));
+    var pair = String((obj && obj.pair) || 'BTC/USDT');
+    var parts = pair.split('/');
+    var symbol = String((obj && obj.symbol) || parts[0] || 'BTC').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    var coin = String((obj && obj.coin) || parts[1] || 'USDT').toUpperCase().replace(/[^A-Z0-9]/g, '') || 'USDT';
+    var amt = parseFloat(obj && obj.amount) || 0;
+    if (!(amt > 0)) return Promise.reject(new Error('Please enter a valid amount.'));
+    return DB.openTrade({
+      symbol: symbol,
+      coin: coin,
+      side: (obj && obj.side) === 'down' ? 'down' : 'up',
+      amount: amt,
+      durationSec: parseInt(obj && obj.duration, 10) || 60,
+      entryPrice: parseFloat(obj && obj.price) || 0
+    }).then(function (res) {
+      if (res && res.id) _tradeIdMap[String(res.id)] = String(res.id);
+      _notifyChange('trades');
+      return res;
+    });
+  }
+
+  // Settle a contract. The server decides the outcome and posts the payout, so
+  // the profit really does land in the account. Idempotent server-side, which is
+  // what makes it safe to retry when the response was lost.
+  function settleTrade(id, exitPrice) {
+    if (!dbActive()) return Promise.reject(new Error('Connection is not ready. Please retry.'));
+    if (!id) return Promise.reject(new Error('There is no order to settle'));
+    var dbId = (_tradeIdMap && _tradeIdMap[String(id)]) || id;
+    return DB.settleTrade(String(dbId), parseFloat(exitPrice) || 0).then(function (res) {
+      _notifyChange('trades');
+      _notifyChange('user_balances');
+      return res;
+    });
+  }
+
+  // Odds and the minimum stake for a market/duration, from the database. Used
+  // to label the order form; open_trade re-reads the same rows before charging.
+  function getTradeTerms(symbol, seconds) {
+    if (!dbActive()) return null;
+    try { return DB.getProductTerms(symbol, seconds); } catch (e) { return null; }
+  }
+
   function addTrade(obj) {
     var t = {
       id: genId('TRD'),
@@ -2229,22 +2296,10 @@
     };
     var localId = t.id;
     if (dbActive()) {
-      DB.addTrade({
-        uid: t.uid,
-        account: t.user || null,
-        pair: t.pair,
-        side: t.side,
-        amount: t.amount,
-        price: t.price,
-        status: t.status,
-        duration: t.duration,
-        sellPrice: t.sellPrice,
-        settledAt: t.settledAt,
-        profit: t.profit
-      }).then(function (row) {
-        if (row && row.id) {
-          _tradeIdMap[localId] = String(row.id);
-          t.id = String(row.id);
+      openTrade(obj).then(function (res) {
+        if (res && res.id) {
+          _tradeIdMap[localId] = String(res.id);
+          t.id = String(res.id);
         }
       }).catch(function () {
         mirrorTrade(t);
@@ -2269,73 +2324,20 @@
   }
 
   function updateTrade(id, patch) {
-    var t = null;
-    var list = getTrades();
-    var dbId = (_tradeIdMap && _tradeIdMap[id]) || id;
-    for (var i = 0; i < list.length; i++) {
-      if (String(list[i].id) === String(id) || String(list[i].id) === String(dbId)) {
-        for (var k in patch) list[i][k] = patch[k];
-        t = list[i];
-        break;
-      }
-    }
-    if (t) {
-      mirrorTrade(t);
-    }
-    if (t && dbActive()) {
-      var p = {};
-      if (patch.status !== undefined) p.status = patch.status;
-      if (patch.sellPrice !== undefined) p.sell_price = patch.sellPrice;
-      if (patch.settledAt !== undefined) p.settled_at = patch.settledAt;
-      if (patch.profit !== undefined) p.profit = patch.profit;
-      DB.updateTrade(String(dbId), p).catch(function () {});
-    }
-    return t;
+    // Kept only so an old caller fails loudly. Writing a status or a profit
+    // from the browser is exactly what settle_trade exists to prevent: the
+    // browser cannot post to contracts, and post_ledger is not reachable from
+    // a client, so a "settled" trade without a ledger entry is a lost balance.
+    return null;
   }
 
-  // Auto-settle open trades whose duration has fully elapsed, so a user who
-  // placed a trade and left the page (or reloaded mid-countdown) still gets
-  // their capital + profit credited when the time completes. Mirrors the
-  // in-browser payout in trade.html: win credits amount + 20% odds profit;
-  // loss refunds amount - profit (same partial-refund rule). Runs once per
-  // boot on DB-ready; only open/elapsed rows are touched, so settled trades
-  // are never credited twice.
-  function settleExpiredTrades() {
-    if (!dbActive()) return;
-    var now = Date.now();
-    var list;
-    try { list = getTrades(); } catch (e) { return; }
-    var settledAny = false;
-    list.forEach(function (t) {
-      if (!t || t.status !== 'open') return;
-      var durMs = (parseInt(t.duration, 10) || 60) * 1000;
-      var start = Date.parse(t.createdAt || t.openedAt || t.opened_at || '');
-      if (!start) return;
-      if (now < start + durMs) return;
-      var uid = t.uid != null ? t.uid : getUserId();
-      var amt = parseFloat(t.amount) || 0;
-      var buyPrice = parseFloat(t.price) || 0;
-      var profitMode = (uid && typeof getProfitMode === 'function') ? getProfitMode(uid) : false;
-      var win = profitMode || Math.random() < 0.2;
-      var pct = amt * 20 / 100;
-      var profit = win ? pct : -pct;
-      settledAny = true;
-      if (uid) {
-        try {
-          if (win) addBalance(uid, 'USDT', amt + pct);
-          else addBalance(uid, 'USDT', amt - pct);
-        } catch (e) {}
-      }
-      updateTrade(t.id, {
-        status: win ? 'win' : 'loss',
-        sellPrice: buyPrice * (win ? 1.001 : 0.999),
-        settledAt: new Date(now).toISOString(),
-        profit: profit
-      });
-    });
-    if (settledAny && typeof window !== 'undefined') {
-      try { window.dispatchEvent(new CustomEvent('trustsync:trades')); } catch (e) {}
+  // Re-open the record list after a settlement. Kept as a thin wrapper so the
+  // call sites in the pages do not each grow their own refresh logic.
+  function refreshTrade(id) {
+    if (dbActive()) {
+      DB.pullBlob('contracts').catch(function () {});
     }
+    return id;
   }
 
   // One-time migration: push legacy/offline localStorage trades into Supabase.
@@ -2760,17 +2762,61 @@
 
   var PROFIT_KEY = 'trustProfitMode';
 
+  // Profit Mode forces a user's trades to win. It is an administrator switch:
+  // the value lives in app_settings, which no client role may write, and the
+  // only writer is admin_set_profit_mode (supabase/v2/17_*.sql). The front end
+  // can therefore only ever *read* it, which is why a user cannot grant
+  // themselves a winning trade.
+  //
+  // Two scopes: 'profit_mode:all' wins for every account, and
+  // 'profit_mode:<uid>' wins for one. A per-user key that is explicitly off is
+  // stored as an absent key, so a global on can still be excluded per account.
   function getProfitMode(uid) {
-    if (!uid) return false;
+    if (!uid && !isLoggedIn()) return false;
     if (dbActive()) {
-      try { return DB.getUserProfitMode(uid); } catch (e) {}
-      return false;
+      try { return !!DB.getUserProfitMode(uid || getUserId()); } catch (e) {}
     }
     return false;
   }
 
-  function setProfitMode() {
-    return {ok:false,msg:'Forced winning outcomes are unavailable for live trading. Use a separately labelled demo account for simulations.'};
+  // This account's own switch, ignoring the all-users one. The User Management
+  // table shows the difference so an operator can tell "covered by the global
+  // switch" from "switched on for this account".
+  function getOwnProfitMode(uid) {
+    if (!uid && !isLoggedIn()) return false;
+    if (dbActive()) {
+      try { return !!DB.getOwnProfitMode(uid || getUserId()); } catch (e) {}
+    }
+    return false;
+  }
+
+  function isGlobalProfitMode() {
+    if (dbActive()) {
+      try { return !!DB.isGlobalProfitMode(); } catch (e) {}
+    }
+    return false;
+  }
+
+  // uid omitted = the switch for every user. Resolves to {ok, ...}; it never
+  // throws, and it never reports success before the server has stored it.
+  async function setProfitMode(uid, on) {
+    if (!dbActive()) return { ok: false, msg: 'Connection is not ready' };
+    var target = uid || null;
+    var want = !!on;
+    try {
+      var res = await DB.setUserProfitMode(target, want);
+      await DB.pullBlob('app_settings');
+      return {
+        ok: true, uid: target, global: !target, on: want,
+        message: want
+          ? (target ? 'Profit Mode is ON for this user. Every one of their trades now wins.'
+                    : 'Profit Mode is ON for all users. Every trade now wins.')
+          : (target ? 'Profit Mode is OFF for this user. Their trades settle normally.'
+                    : 'Profit Mode is OFF for all users. Trades settle normally.')
+      };
+    } catch (e) {
+      return { ok: false, msg: e.message || 'The change could not be saved' };
+    }
   }
 
   function getCoinAddresses() {
@@ -3075,9 +3121,7 @@
   }
 
   /* Convert admin data tables to stacked card lists on phones.
-     Moves the real <td> nodes into card layout so inline onclick
-     handlers and data-id attributes survive. Rebuilds every time so
-     auto-update re-renders stay in sync. Restores tables on desktop. */
+     Restores tables on desktop. */
   function makeAdminTablesMobile() {
     if (!document || !document.querySelectorAll) return;
     if (!document.body || document.body.className.indexOf('admin-page') === -1) return;
@@ -3085,7 +3129,12 @@
     if (!want) {
       document.querySelectorAll('.admin-row-card-list').forEach(function (list) {
         var tbl = list._srcTbl;
-        if (tbl) { tbl.style.display = ''; tbl.removeAttribute('data-mc-on'); tbl.removeAttribute('data-mc-sig'); }
+        if (tbl) {
+          _stopCardWatch(tbl);
+          tbl.style.display = '';
+          tbl.removeAttribute('data-mc-on');
+          tbl.removeAttribute('data-mc-sig');
+        }
         list.remove();
       });
       return;
@@ -3093,95 +3142,202 @@
     document.querySelectorAll('.admin-panel table').forEach(function (tbl) {
       if (!tbl.querySelector('thead') || !tbl.querySelector('tbody')) return;
       buildCards(tbl);
+      _watchCardSource(tbl);
     });
   }
 
+  /* Which cards the operator has opened, keyed by the row's identity.
+
+     The old version rebuilt every card from the live table, which collapsed
+     every open row each time the list re-rendered - and the list re-renders on
+     every realtime sync, so a detail panel the admin had opened vanished a
+     second later. Keying on the account cell lets the rebuilt card come back
+     open instead. */
+  var _openCardKeys = {};
+
+  function _cardKey(tr, cells) {
+    var explicit = tr.getAttribute('data-id');
+    if (explicit) return 'id:' + explicit;
+    return 'txt:' + Array.prototype.map.call(cells || [], function (td) {
+      return (td.textContent || '').trim();
+    }).join('|');
+  }
+
+  function _rowSignature(tbody) {
+    var rows = tbody.querySelectorAll('tr');
+    var out = [];
+    for (var i = 0; i < rows.length; i++) {
+      out.push(Array.prototype.map.call(rows[i].querySelectorAll('td'), function (td) {
+        return (td.textContent || '').trim();
+      }).join('|'));
+    }
+    return out.join(';;');
+  }
+
+  function _stopCardWatch(tbl) {
+    try {
+      if (tbl._mcObserver) { tbl._mcObserver.disconnect(); tbl._mcObserver = null; }
+      clearTimeout(tbl._mcTimer);
+    } catch (e) {}
+  }
+
+  /* Watch only this table's tbody.
+
+     The previous version observed document.body with subtree:true, so opening
+     a modal, showing a toast, or a change in any other panel scheduled a
+     rebuild of every table on the page. A rebuild is what collapsed the open
+     cards, so unrelated mutations were enough to make the list appear to lose
+     its rows. childList on the tbody is the only signal that actually matters:
+     it fires when the rows are replaced and never when a card is clicked. */
+  function _watchCardSource(tbl) {
+    if (tbl._mcObserver || !window.MutationObserver) return;
+    var body = tbl.querySelector('tbody');
+    if (!body) return;
+    var fire = function () {
+      clearTimeout(tbl._mcTimer);
+      tbl._mcTimer = setTimeout(function () { try { buildCards(tbl); } catch (e) {} }, 80);
+    };
+    try {
+      tbl._mcObserver = new window.MutationObserver(fire);
+      tbl._mcObserver.observe(body, { childList: true });
+    } catch (e) { tbl._mcObserver = null; }
+  }
+
+  /* Build the card list from a CLONE of the rows.
+
+     The old builder moved the live <td> children into the cards, which left an
+     empty table behind and hid it. Anything that went wrong between removing
+     the previous list and inserting the new one - or a row count that changed
+     mid-build - left the page showing an empty panel with no way back, which is
+     the "the other users disappear" report. Cloning keeps the table intact, so
+     the worst case is that the table stays visible, and the table is only ever
+     hidden once its replacement is in the DOM.
+
+     Inline onclick/onchange attributes are copied by cloneNode, so the cloned
+     buttons keep working. */
   function buildCards(tbl) {
     var thead = tbl.querySelector('thead');
     var tbody = tbl.querySelector('tbody');
     if (!thead || !tbody) return;
     var ths = Array.prototype.map.call(thead.querySelectorAll('th'), function (th) { return th.textContent || ''; });
-    var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
-    if (!rows.length) return;
-    // signature computed from live rows BEFORE moving; rebuilt cards produce
-    // an emptied table whose signature differs -> store emptied sig after move
-    var sig = rows.map(function (tr) {
-      return Array.prototype.map.call(tr.querySelectorAll('td'), function (td) { return (td.textContent || '').trim(); }).join('|');
-    }).join(';;').slice(0, 400);
-    // If signature already matches stored, table is either already carded or
-    // fully emptied by a previous build (observer loop) -> skip.
-    var stored = tbl.getAttribute('data-mc-sig') || '';
-    var sigMatch = stored === sig;
-    var alreadyCarded = tbl.style.display === 'none' && tbl.getAttribute('data-mc-on') === '1';
-    if (alreadyCarded && sigMatch) return;
-    // remove any existing card list for this table before rebuilding
+
+    var sig = _rowSignature(tbody);
     var wrap = tbl.parentNode;
     var existing = wrap.querySelector('.admin-row-card-list');
-    if (existing && existing._srcTbl === tbl) existing.remove();
+    var alreadyCarded = tbl.getAttribute('data-mc-on') === '1';
+    // Nothing about the rows changed, so the cards on screen are still correct.
+    if (alreadyCarded && existing && existing._srcTbl === tbl && tbl.getAttribute('data-mc-sig') === sig) return;
+    if (!alreadyCarded && !existing && tbl.getAttribute('data-mc-sig') === sig) return;
+
+    var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+    // A "no rows" placeholder is a single colspan cell. It reads better as the
+    // real table than as a one-card accordion, and it must not be mistaken for
+    // a user row.
+    var placeholder = rows.length === 1 && rows[0].querySelectorAll('td').length === 1 &&
+      !!rows[0].querySelector('td').getAttribute('colspan');
+    if (!rows.length || placeholder) {
+      if (existing && existing._srcTbl === tbl) existing.remove();
+      tbl.style.display = '';
+      tbl.removeAttribute('data-mc-on');
+      tbl.setAttribute('data-mc-sig', sig);
+      return;
+    }
+
     var list = document.createElement('div');
     list.className = 'admin-row-card-list';
-    rows.forEach(function (tr) {
-      var tds = tr.querySelectorAll('td');
-      if (!tds.length) return;
-      var card = document.createElement('div');
-      card.className = 'admin-row-card';
-      if (tr.getAttribute('data-id')) card.setAttribute('data-id', tr.getAttribute('data-id'));
-      var accordion = tbl.getAttribute('data-mc-accordion') === '1';
-      var bodyWrap = null;
-      var headHolder = null;
-      if (accordion) {
-        card.classList.add('arc-collapsible');
-        bodyWrap = document.createElement('div');
-        bodyWrap.className = 'arc-body';
-      }
-      tds.forEach(function (td, ci) {
-        var label = ths[ci] || '';
-        var holder = document.createElement('div');
-        if ((!label && ci === 0) || label === 'User' || label === 'Account') {
-          holder.className = 'arc-head';
-          while (td.firstChild) holder.appendChild(td.firstChild);
-          headHolder = holder;
-        } else if (label === 'Action' || label === 'Actions' || !label) {
-          holder.className = 'arc-actions';
-          while (td.firstChild) holder.appendChild(td.firstChild);
-        } else {
-          holder.className = 'arc-row';
-          var l = document.createElement('span');
-          l.className = 'arc-label';
-          l.textContent = label;
-          var v = document.createElement('span');
-          v.className = 'arc-value';
-          while (td.firstChild) v.appendChild(td.firstChild);
-          holder.appendChild(l);
-          holder.appendChild(v);
+    try {
+      rows.forEach(function (tr) {
+        var src = tr.querySelectorAll('td');
+        if (!src.length) return;
+        var tds = [];
+        for (var c = 0; c < src.length; c++) tds.push(src[c].cloneNode(true));
+        var key = _cardKey(tr, src);
+        var card = document.createElement('div');
+        card.className = 'admin-row-card';
+        if (tr.getAttribute('data-id')) card.setAttribute('data-id', tr.getAttribute('data-id'));
+        var accordion = tbl.getAttribute('data-mc-accordion') === '1';
+        var bodyWrap = null;
+        var headHolder = null;
+        for (var ci = 0; ci < tds.length; ci++) {
+          var td = tds[ci];
+          var label = ths[ci] || '';
+          var holder = document.createElement('div');
+          if ((!label && ci === 0) || label === 'User' || label === 'Account') {
+            holder.className = 'arc-head';
+            while (td.firstChild) holder.appendChild(td.firstChild);
+            headHolder = holder;
+          } else if (label === 'Action' || label === 'Actions' || !label) {
+            holder.className = 'arc-actions';
+            while (td.firstChild) holder.appendChild(td.firstChild);
+          } else {
+            holder.className = 'arc-row';
+            var l = document.createElement('span');
+            l.className = 'arc-label';
+            l.textContent = label;
+            var v = document.createElement('span');
+            v.className = 'arc-value';
+            while (td.firstChild) v.appendChild(td.firstChild);
+            holder.appendChild(l);
+            holder.appendChild(v);
+          }
+          if (accordion && holder !== headHolder) {
+            if (!bodyWrap) {
+              bodyWrap = document.createElement('div');
+              bodyWrap.className = 'arc-body';
+            }
+            bodyWrap.appendChild(holder);
+          } else {
+            card.appendChild(holder);
+          }
         }
-        if (accordion && holder !== headHolder) bodyWrap.appendChild(holder);
-        else card.appendChild(holder);
+        if (!headHolder) return;
+        if (accordion) {
+          card.classList.add('arc-collapsible');
+          var chev = document.createElement('span');
+          chev.className = 'arc-chev';
+          chev.setAttribute('aria-hidden', 'true');
+          chev.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>';
+          headHolder.appendChild(chev);
+          headHolder.setAttribute('role', 'button');
+          headHolder.setAttribute('tabindex', '0');
+          // Only this card toggles. Tapping one row must not close or alter
+          // any other row's details.
+          var toggle = function (ev) {
+            if (ev) ev.stopPropagation();
+            var open = card.classList.toggle('arc-open');
+            _openCardKeys[key] = open ? 1 : 0;
+          };
+          headHolder.addEventListener('click', toggle);
+          headHolder.addEventListener('keydown', function (ev) {
+            if (ev.key !== 'Enter' && ev.key !== ' ') return;
+            ev.preventDefault();
+            toggle(ev);
+          });
+          if (_openCardKeys[key]) card.classList.add('arc-open');
+        }
+        if (bodyWrap) card.appendChild(bodyWrap);
+        list.appendChild(card);
       });
-      if (accordion && headHolder) {
-        var chev = document.createElement('span');
-        chev.className = 'arc-chev';
-        chev.setAttribute('aria-hidden', 'true');
-        chev.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>';
-        headHolder.appendChild(chev);
-        headHolder.setAttribute('role', 'button');
-        headHolder.addEventListener('click', function () { card.classList.toggle('arc-open'); });
-      }
-      if (accordion && bodyWrap) card.appendChild(bodyWrap);
-      list.appendChild(card);
-    });
-    list._srcTbl = tbl;
+    } catch (e) {
+      list.remove();
+      return;   // leave the real table alone
+    }
+
+    if (!list.childNodes.length) {
+      tbl.style.display = '';
+      tbl.removeAttribute('data-mc-on');
+      tbl.setAttribute('data-mc-sig', sig);
+      return;
+    }
+
+    // Replace atomically-ish: the new list is in the DOM before the old one and
+    // the table go, so there is never a frame with neither.
     wrap.insertBefore(list, tbl);
+    if (existing && existing._srcTbl === tbl) existing.remove();
+    list._srcTbl = tbl;
     tbl.style.display = 'none';
     tbl.setAttribute('data-mc-on', '1');
-    // store the "emptied" signature: after moving td children into the cards
-    // the live table reads as empty. This lets re-renders (which repopulate
-    // the tbody) change the signature and trigger a rebuild, while the
-    // MutationObserver sees an unchanged empty table and skips (no loop).
-    var emptiedSig = Array.prototype.map.call(tbody.querySelectorAll('tr'), function (tr) {
-      return Array.prototype.map.call(tr.querySelectorAll('td'), function (td) { return (td.textContent || '').trim(); }).join('|');
-    }).join(';;').slice(0, 400);
-    tbl.setAttribute('data-mc-sig', emptiedSig);
+    tbl.setAttribute('data-mc-sig', sig);
   }
 
   function initAdminTablesMobile() {
@@ -3195,10 +3351,10 @@
     }
     try { makeAdminTablesMobile(); } catch (e) {}
     if (typeof window !== 'undefined') {
-      if (window.MutationObserver) {
-        try { new window.MutationObserver(refresh).observe(document.body || document, { childList: true, subtree: true }); } catch (e) {}
-      } else { setInterval(refresh, 1500); }
+      // A viewport change is the only remaining reason to rebuild: a resize can
+      // move the page across the 640px breakpoint in either direction.
       window.addEventListener('resize', refresh);
+      window.addEventListener('orientationchange', refresh);
     }
   }
 
@@ -3369,6 +3525,10 @@
     setLoanStatus: setLoanStatus,
     getTrades: getTrades,
     addTrade: addTrade,
+    openTrade: openTrade,
+    settleTrade: settleTrade,
+    refreshTrade: refreshTrade,
+    getTradeTerms: getTradeTerms,
     updateTrade: updateTrade,
     getAIOrders: getAIOrders,
     addAIOrder: addAIOrder,
@@ -3397,6 +3557,8 @@
     saveCoinAddress: saveCoinAddress,
     removeCoinAddress: removeCoinAddress,
     getProfitMode: getProfitMode,
+    getOwnProfitMode: getOwnProfitMode,
+    isGlobalProfitMode: isGlobalProfitMode,
     setProfitMode: setProfitMode,
     toggleProfitMode: function (uid, on) { return setProfitMode(uid, !!on); },
     escHtml: escHtml,
