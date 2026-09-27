@@ -2,9 +2,10 @@
 
 1. Keep a backup of your current website and database.
 2. If you have not already applied `supabase/v2/14_admin_data_fix.sql`, run it in Supabase SQL Editor first. It requires the existing v2 schema and admin-password setup.
-3. Run `supabase/v2/15_live_delivery.sql` if not already installed, then `supabase/v2/16_admin_session_fixes.sql`, then `supabase/v2/17_profit_mode_and_settlement.sql`, then `supabase/v2/18_all_markets_and_auto_settle.sql`, then `supabase/v2/19_settlement_enum_fix.sql`, then `supabase/v2/20_payouts_multi_trade_numeric_fix.sql`, then `supabase/v2/21_quote_currency_usdt.sql`, then `supabase/v2/22_ai_settlement_cron.sql`, then the NEW `supabase/v2/23_admin_password_rotation.sql` - in that order, each in full. These upgrades preserve records, balances, UIDs, and the admin password. Do not rerun schema/seed/reset scripts on a live project.
-4. Replace the website files with this folder's contents. Preserve your production `scripts/config.js` if its settings differ.
-5. Press Ctrl+Shift+R and sign in again on both customer and admin pages.
+3. Run `supabase/v2/15_live_delivery.sql` if not already installed, then `supabase/v2/16_admin_session_fixes.sql`, then `supabase/v2/17_profit_mode_and_settlement.sql`, then `supabase/v2/18_all_markets_and_auto_settle.sql`, then `supabase/v2/19_settlement_enum_fix.sql`, then `supabase/v2/20_payouts_multi_trade_numeric_fix.sql`, then `supabase/v2/21_quote_currency_usdt.sql`, then `supabase/v2/22_ai_settlement_cron.sql`, then `supabase/v2/23_admin_password_rotation.sql`, then the NEW `supabase/v2/24_wallet_login_challenges.sql` - in that order, each in full. These upgrades preserve records, balances, UIDs, and the admin password. Do not rerun schema/seed/reset scripts on a live project.
+4. Deploy the wallet sign-in function (only if you want Connect Wallet to work): run `supabase functions deploy wallet-login`, then `supabase secrets set --env-file .env.wallet`. That file needs `SUPABASE_SERVICE_KEY` (the service_role key from Project Settings -> API) and `SITE_URL` (your site address with the scheme). Without it, Connect Wallet says it is not set up and points people at email sign-in.
+5. Replace the website files with this folder's contents. Preserve your production `scripts/config.js` if its settings differ.
+6. Press Ctrl+Shift+R and sign in again on both customer and admin pages.
 
 `17_profit_mode_and_settlement.sql` is required for trading to settle at all. Until it is applied, `open_trade`, `settle_trade` and `admin_set_profit_mode` do not exist and every order will fail with a "function not found" error.
 
@@ -117,6 +118,39 @@ The error in the screenshot named the real cause: the page sent **`ETHUSDT`** as
 With that fixed, `products` was still seeded with only 12 of the coins the front end offers, so the other 17 were correctly refused. **Migration 18 seeds all 29** - the 19 crypto pairs, 4 metals and 6 forex entries - each with the same 60s / 120s / 300s durations, written as one statement over the whole table so a product added by hand also gets its durations.
 
 The metals and forex pairs carry a `price_symbol` sentinel (`METAL_XAU`, `FX_EURUSD`, ...) that will never resolve on Binance. That is intentional and matches the rule already documented in `scripts/settle.mjs`: an unquotable product **blocks rather than guesses**, because settling on a wrong price pays real money to the wrong side. They still settle through the countdown path, which uses the price the page is displaying.
+
+## Connect Wallet connected, then refused to log in
+
+**Migration 24 plus one Edge Function.**
+
+The button worked. It connected MetaMask or WalletConnect, showed the address, and then sign-in always failed with *"Wallet sign-in is not available on this build"*, so from the member's side the button was simply broken.
+
+That refusal was correct, and the reason is the point. Signing in with a wallet means recovering the signer from an Ethereum signature and checking it against the address being claimed. If the page did that itself, a visitor could type any address with any signature and be let in, because they would be checking their own lie. The previous author refused rather than ship that. This is the missing half, not a reversal of the decision.
+
+**Where each part lives:**
+
+| Job | Where | Why there |
+|---|---|---|
+| Issue a single-use challenge | `wallet_issue_nonce` (migration 24) | A nonce anyone can re-read is a login token anyone can copy |
+| Build the text that gets signed | the same function | If the page built it, a tampered message would still verify |
+| Recover the signer | `wallet-login` Edge Function | Postgres cannot do secp256k1 recovery |
+| Burn the challenge once | `wallet_consume_nonce`, `service_role` only | anon must not be able to invalidate someone else's sign-in |
+| Create or find the account | Edge Function + `wallet_link_profile` | One address, one account, permanently |
+| Turn the result into a session | `verifyOtp` in the browser | No password is ever handed to the page |
+
+**The properties that matter, and where they are enforced:**
+
+- **The challenge is single-use and lasts ten minutes.** It is burnt inside the same transaction that hands it out, and burnt *even when the signature is then wrong* - so a captured signature cannot be retried against a second address, and one challenge is worth one guess.
+- **The address in the request is never trusted.** It only ever looks up a challenge that was issued for that same address, and the signature has to recover to it. A caller who controls the request body controls nothing that matters.
+- **A wallet cannot be attached to a second account.** `wallet_link_profile` refuses when the address is already on another profile, so an address cannot be picked up twice and take a balance with it. `0xAbC` and `0xabc` are one account, via `users_account_ci_idx`.
+- **No credential reaches the browser.** A new account gets a random password that is never transmitted, and the session comes from a one-time token via `generate_link` + `verifyOtp`. The `service_role` key lives only in the function's environment; a test asserts it appears in no shipped file.
+- **A wallet account is a real account.** It goes through `_activateSession` like a password sign-in, so the rest of the app gets the same session, the same tables and the same RLS and cannot accidentally skip a step.
+
+**One known limit, stated rather than hidden:** a smart-contract wallet (Safe, Argent and similar) signs through EIP-1271, which can only be checked by calling the chain. That is reported as "use email and password" instead of being guessed at.
+
+Until the function is deployed the button now says *"Wallet sign-in is not set up on this server yet. Please sign in with your email and password."* instead of connecting and then refusing.
+
+`tests/wallet-login.test.cjs` drives the whole flow, including a signature the server rejects, and asserts that no signature recovery exists in the page or in `scripts/db.js` - that absence is the security property.
 
 ## The admin password can be changed from the panel, and admins are not asked for it
 

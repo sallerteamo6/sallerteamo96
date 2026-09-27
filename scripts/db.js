@@ -537,6 +537,71 @@ var TrustDB = (function () {
       });
     },
 
+    // ---- Wallet sign-in ---------------------------------------------------
+    // The signature is checked by the wallet-login Edge Function, not here. The
+    // page cannot be trusted with that job: it would be verifying its own lie.
+    // This only moves the challenge and the signature to and from that function,
+    // and turns the one-time token it returns into a real session.
+    walletAuthUrl: function () {
+      var configured = '';
+      try { configured = String((typeof SITE_CONFIG !== 'undefined' && SITE_CONFIG.WALLET_AUTH_URL) || '').trim(); } catch (e) {}
+      if (configured) return configured.replace(/\/+$/, '');
+      // Where `supabase functions deploy wallet-login` puts it.
+      return String(this.url || '').replace(/\/+$/, '') + '/functions/v1/wallet-login';
+    },
+
+    // action: 'nonce'  -> { message, nonce, expires_at }
+    // action: 'verify' -> { token_hash, email, address }
+    walletAuth: function (action, payload) {
+      var self_ = this;
+      if (!this.ENABLED) return Promise.reject(new Error('Database not configured'));
+      var body = Object.assign({ action: action }, payload || {});
+      return fetch(this.walletAuthUrl(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: this.anon },
+        body: JSON.stringify(body)
+      }).then(function (res) {
+        return res.text().then(function (text) {
+          var json = null;
+          try { json = text ? JSON.parse(text) : null; } catch (e) { json = null; }
+          if (!res.ok || !json || json.ok !== true) {
+            // A missing function answers 404 with an HTML or JSON error page.
+            // Say what that means, because "wallet sign-in is not available on
+            // this build" sent people looking for a setting that was not there.
+            if (res.status === 404 || res.status === 401 || res.status === 403) {
+              throw new Error('Wallet sign-in has not been set up on the server yet. Use email and password, or ask the operator to deploy the wallet-login function.');
+            }
+            var msg = (json && (json.error || json.msg || json.message)) || ('Wallet sign-in failed (' + res.status + ')');
+            var e = new Error(msg);
+            e.status = res.status;
+            throw e;
+          }
+          return json;
+        });
+      });
+    },
+
+    // The Edge Function hands back a one-time token rather than a password, so
+    // no long-lived credential is ever in the browser's hands. verifyOtp turns
+    // it into a session, and from there this is the same session any other
+    // sign-in produces.
+    adoptWalletSession: function (email, tokenHash) {
+      var self_ = this;
+      if (!email || !tokenHash) return Promise.reject(new Error('Wallet sign-in did not return a session'));
+      return this._waitForClient().then(function (lib) {
+        return lib.auth.verifyOtp({ token_hash: String(tokenHash), type: 'email' });
+      }).then(function (res) {
+        if (res.error) throw new Error(res.error.message || 'Wallet sign-in could not be completed');
+        self_._authUser = res.data.user;
+        self_._session = res.data.session;
+        self_._bootstrap();
+        return self_._loadTable('users', 'id').then(function () {
+          var row = self_._cache.users.find(function (u) { return u.id === self_._authUser.id; });
+          return { ok: true, user: self_._toV1User(row || self_._synthUser(self_._authUser)) };
+        });
+      });
+    },
+
     // v1 signature: login(account, password) -> { ok, user }
     login: function (account, password) {
       var self_ = this;

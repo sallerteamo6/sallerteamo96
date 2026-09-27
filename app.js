@@ -654,11 +654,15 @@
       try { toast('error', msg); } catch (e) {}
       finish();
     }
-    function done(addr, name, source) {
+    function done(addr, name, source, provider) {
       if (settled) return;
       settled = true;
       if (!addr) { fail('Wallet connection failed'); return; }
-      _wallet = { address: addr, provider: name, source: source, connectedAt: Date.now() };
+      // signer: the live provider. Kept here because a wallet address cannot
+      // produce a signature on its own and login needs to ask the wallet to sign
+      // a challenge. This object is in-memory only, so it is never serialised
+      // and never leaves the tab.
+      _wallet = { address: addr, provider: name, signer: provider, source: source, connectedAt: Date.now() };
       if (source !== 'WalletConnect v2') closeWalletConnect();
       var wlEnabled = true;
       try { wlEnabled = !!(window.AppConfig && window.AppConfig.walletLoginEnabled !== false); } catch (e) {}
@@ -700,7 +704,7 @@
     var injectPromise = waitForInjectedProvider(3000).then(function (found) {
       if (found && found.provider) {
         return found.provider.request({ method: 'eth_requestAccounts' }).then(function (accounts) {
-          if (accounts && accounts[0]) { done(accounts[0], providerDisplayName(found.provider, found.info), found.source); return true; }
+          if (accounts && accounts[0]) { done(accounts[0], providerDisplayName(found.provider, found.info), found.source, found.provider); return true; }
           return false;
         }).catch(function (e) {
           if (e && (e.code === 4001 || (e.message && e.message.indexOf('rejected') !== -1))) userRejected = true;
@@ -715,7 +719,7 @@
     connectViaWalletConnect(null, function (uri, link) {
       try { toast('info', 'Scan the QR code with your wallet app'); } catch (e) {}
     }).then(function (res) {
-      if (res.accounts && res.accounts[0]) { done(res.accounts[0], 'WalletConnect v2', 'WalletConnect v2'); return true; }
+      if (res.accounts && res.accounts[0]) { done(res.accounts[0], 'WalletConnect v2', 'WalletConnect v2', res.provider); return true; }
       return false;
     }).catch(function (e) {
       injectPromise.then(function (injectedOk) {
@@ -1920,12 +1924,85 @@
   }
 
   function walletLogin(address) {
-    if (!address) return { ok: false, msg: 'Invalid wallet address' };
-    // Backend v2 removed client-side account creation. GoTrue issues identities
-    // itself, and it will not mint a session for a bare wallet address: that
-    // needs a signature check (SIWE) that has no trusted path in the browser.
-    // Faking a row here would let anyone claim any address, so refuse instead.
-    return Promise.resolve({ ok: false, msg: 'Wallet sign-in is not available on this build. Use email and password.' });
+    address = String(address || '').trim();
+    if (!address) return Promise.resolve({ ok: false, msg: 'Connect a wallet first' });
+    if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
+      return Promise.resolve({ ok: false, msg: 'That is not a valid wallet address' });
+    }
+    if (typeof DB === 'undefined' || !DB || !DB.walletAuth) {
+      return Promise.resolve({ ok: false, msg: 'Wallet sign-in is not available on this build' });
+    }
+    // The provider is what actually signs. It lives on the in-memory wallet
+    // object, because a provider cannot be serialised and the address alone
+    // cannot produce a signature.
+    var w = getWallet();
+    var signer = w && w.signer;
+    if (!signer || typeof signer.request !== 'function') {
+      return Promise.resolve({ ok: false, msg: 'Reconnect the wallet, then sign in' });
+    }
+
+    return DB.walletAuth('nonce', { address: address }).catch(function (e) {
+      // Before the wallet-login function existed this whole path refused, after
+      // connecting, with "Wallet sign-in is not available on this build" - which
+      // sent people looking through settings for a switch that was not there.
+      // Say what is actually missing and what to do instead.
+      if (e && e.status === 404) {
+        throw new Error('Wallet sign-in is not set up on this server yet. Please sign in with your email and password.');
+      }
+      throw e;
+    }).then(function (ch) {
+      // The message is built and stored by the server, not assembled here. If the
+      // page built the text it was about to verify, a tampered message would still
+      // check out, because the checker and the signer would be reading the same
+      // tampered string.
+      if (!ch || !ch.message || !ch.nonce) throw new Error('The server did not return a sign-in request');
+      return signer.request({
+        method: 'personal_sign',
+        params: [ch.message, address]
+      }).then(function (signature) {
+        return DB.walletAuth('verify', { address: address, nonce: ch.nonce, signature: signature })
+          .then(function (out) {
+            return DB.adoptWalletSession(out.email, out.token_hash);
+          });
+      });
+    }).then(function (res) {
+      // A wallet account is a real account: same session, same tables, same RLS.
+      // Treat it exactly like a password sign-in so the rest of the app cannot
+      // tell the difference and accidentally skip a step.
+      if (res && res.ok && res.user) {
+        return _activateSession(res.user.uid, false, !!res.user.is_admin, getLang())
+          .then(function () { return { ok: true, user: res.user }; });
+      }
+      return res;
+    }).catch(function (e) {
+      return { ok: false, msg: walletLoginErrorText(e) };
+    });
+  }
+
+  // PostgREST and the Edge Function both report failures as JSON envelopes, and
+  // dumping one at a member is not an explanation.
+  function walletLoginErrorText(e) {
+    var raw = String((e && e.message) || e || '');
+    if (/"(?:error|message)"\s*:\s*"([^"]+)"/.test(raw)) raw = RegExp.$1;
+    if (/rejected|denied|cancell?ed/i.test(raw)) return 'Sign-in was cancelled in the wallet';
+    if (/User rejected/i.test(raw)) return 'Sign-in was cancelled in the wallet';
+    if (/\b4001\b/.test(raw)) return 'Sign-in was cancelled in the wallet';
+    if (routableError(raw)) return raw;
+    if (/Failed to fetch|NetworkError|load failed/i.test(raw)) {
+      return 'Could not reach the server. Check your connection and try again.';
+    }
+    return raw || 'Wallet sign-in failed. Try again.';
+  }
+
+  // True when the text is worth showing as-is: an explanation, not a stack trace
+  // and not a raw envelope.
+  function routableError(raw) {
+    if (!raw) return false;
+    if (raw.length > 220) return false;
+    if (/\{\s*"/.test(raw)) return false;          // still an envelope
+    if (/^\s*(Error|TypeError|Promise)\b/.test(raw)) return false;
+    if (/at\s+\w+\s*\(/.test(raw)) return false;     // a stack frame
+    return true;
   }
 
   // The admin lock is answered ONCE per browser tab, not once per page.

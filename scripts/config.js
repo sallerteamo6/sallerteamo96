@@ -38,14 +38,22 @@
     return !v || v.indexOf('YOUR-PROJECT') !== -1;
   };
 
-  global.SITE_CONFIG = {
-    DB_URL: DB_URL,
-    DB_ANON_KEY: DB_ANON_KEY,
-    READONLY: READONLY,
-    // Auth is Supabase Auth (GoTrue). The client signs in with
-    // supabase.auth.signInWithPassword() and every RLS policy keys off
-    // auth.uid(); the app never mints or parses its own tokens.
-    USE_SUPABASE_AUTH: true,
-    ENABLED: !isPlaceholder(DB_URL) && !isPlaceholder(DB_ANON_KEY)
-  };
+    global.SITE_CONFIG = {
+      DB_URL: DB_URL,
+      DB_ANON_KEY: DB_ANON_KEY,
+      READONLY: READONLY,
+      // Auth is Supabase Auth (GoTrue). The client signs in with
+      // supabase.auth.signInWithPassword() and every RLS policy keys off
+      // auth.uid(); the app never mints or parses its own tokens.
+      USE_SUPABASE_AUTH: true,
+      // Wallet sign-in. The signature has to be checked somewhere the person
+      // signing cannot reach, so it is checked by the wallet-login Edge Function
+      // and not here. Left empty it defaults to <DB_URL>/functions/v1/wallet-login,
+      // which is where `supabase functions deploy wallet-login` puts it.
+      //
+      // Until that function is deployed, walletLogin() says so plainly instead of
+      // connecting and then refusing, which is what it used to do.
+      WALLET_AUTH_URL: '',
+      ENABLED: !isPlaceholder(DB_URL) && !isPlaceholder(DB_ANON_KEY)
+    };
 })(window);
