@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927g"></script>
-  <script src="app.js?v=20260927g"></script>
+    <script src="scripts/db.js?v=20260927h"></script>
+  <script src="app.js?v=20260927h"></script>
 </head>
 <body>
   <div id="app">
@@ -268,6 +268,14 @@
         var won = t.status === 'win';
         var lost = t.status === 'loss';
         var p = parseFloat(t.profit) || 0;
+        // Only 'open' is still running. A cancelled order is 'void' in the
+        // database, and it used to fall through to "Running" with a live
+        // countdown, so a member who had already been refunded their full stake
+        // still saw the order as running. Deciding it the other way round also
+        // means a status added to the enum later shows as finished rather than
+        // claiming money is still committed.
+        var voided = t.status === 'void';
+        var open = t.status === 'open';
         // An open order has to say how long is left, and the record list dropped
         // the two fields that say so. expires_at is written by the database when
         // the order is created, so this is the server's own clock, not a countdown
@@ -277,15 +285,16 @@
           until = new Date(new Date(t.createdAt).getTime() + Number(t.duration) * 1000).toISOString();
         }
         out.push({
+          id: t.id,
           coin: base.indexOf('/') >= 0 ? base : base + '/' + unit,
           alias: unit,
           unit: unit,
           dir: t.side === 'down' ? 'down' : 'up',
           amount: (parseFloat(t.amount) || 0).toFixed(2),
-          status: won ? 'win' : lost ? 'loss' : 'open',
+          status: won ? 'win' : lost ? 'loss' : voided ? 'void' : 'open',
           time: fmtTime(t.createdAt),
-          expiresAt: won || lost ? null : until,
-          profit: won || lost ? (p >= 0 ? '+' : '') + p.toFixed(2) : '--'
+          expiresAt: open ? until : null,
+          profit: won || lost ? (p >= 0 ? '+' : '') + p.toFixed(2) : '0.00'
         });
       }
       out.sort(function (a, b) { return b.time.localeCompare(a.time); });
@@ -618,12 +627,21 @@
     function settleRemembered() {
       if (!backgroundOrders.length) return;
       if (!TrustApp.getTrades) return;
-      var open = {};
+      var open = {}, finished = {};
       try {
-        (TrustApp.getTrades() || []).forEach(function (t) { if (t.status === 'open') open[String(t.id)] = 1; });
+        (TrustApp.getTrades() || []).forEach(function (t) {
+          var k = String(t.id);
+          if (t.status === 'open') open[k] = 1; else finished[k] = 1;
+        });
       } catch (e) { return; }
       backgroundOrders.slice().forEach(function (o) {
-        if (!open[o.id]) { forgetOrder(o.id); return; }   // already settled elsewhere
+        // Forget the order only when it is positively known to be finished.
+        // Reading "not in the list" as "already settled elsewhere" threw the order
+        // away whenever the contract list had not loaded yet - on a fresh page, or
+        // a slow one - and with it the only note that anything was still due. The
+        // order then sat open for good with the stake committed.
+        if (finished[o.id]) { forgetOrder(o.id); return; }
+        if (!open[o.id]) return;   // not known yet: keep it and look again
         var d = o.durationSec || durationSec;
         if (Date.now() < o.placedAt + (d - 5) * 1000) return;   // not due yet
         TrustApp.settleTrade(o.id, price).then(function () {
@@ -841,17 +859,24 @@
       var html = '';
       for (var i = 0; i < Math.min(records.length, 3); i++) {
         var r = records[i];
-        var st = r.status === 'win' ? 'status-win' : r.status === 'loss' ? 'status-loss' : 'status-open';
+        var st = r.status === 'win' ? 'status-win' : r.status === 'loss' ? 'status-loss'
+               : r.status === 'void' ? 'status-void' : 'status-open';
         // "Open" is a poor word for a trade that is running with the stake
-        // already committed, so it says so.
-        var stText = r.status === 'win' ? 'Profit' : r.status === 'loss' ? 'Loss' : 'Running';
+        // already committed, so it says so. A cancelled order says it was
+        // refunded, because the stake is already back in the wallet.
+        var stText = r.status === 'win' ? 'Profit' : r.status === 'loss' ? 'Loss'
+                   : r.status === 'void' ? 'Refunded' : 'Running';
         var dirCls = r.dir === 'up' ? 'up-text' : 'down-text';
         var recLabel = r.coin.indexOf('/') >= 0 ? r.coin : r.coin + '/' + (r.alias || 'USDT');
         var recUnit = r.unit || r.alias || 'USDT';
-        // A running order has no result yet, so it does not get a red "0.00"
-        // pretending the trade lost money.
+        // A running order has no result yet, so it gets a live countdown instead
+        // of a profit figure. A cancelled order has no profit either - the stake
+        // came back in full - so it says that rather than printing 0.00 as
+        // though a trade had been placed and lost nothing.
         var plRow = r.status === 'open'
-          ? '<div class="row"><span class="label">Time left</span><span class="value rec-timer" data-until="' + (r.expiresAt || '') + '">--:--</span></div>'
+          ? '<div class="row"><span class="label">Time left</span><span class="value rec-timer" data-id="' + escHtml(r.id || '') + '" data-until="' + escHtml(r.expiresAt || '') + '">--:--</span></div>'
+          : r.status === 'void'
+          ? '<div class="row"><span class="label">Stake</span><span class="value" style="color:#8a94a6;">Refunded in full, no profit or loss</span></div>'
           : '<div class="row"><span class="label">Profit/Loss</span><span class="value ' + (r.profit.indexOf('-') === 0 ? 'down-text' : 'up-text') + '">' + r.profit + '</span></div>';
         html += '<div class="trade-record-item">'
           + '<div class="trade-record-cell"><span class="record-label">' + recLabel + ' &middot; ' + r.time + '</span>'
@@ -882,27 +907,71 @@
     }
 
     var recTimerReloading = false;
+    // Orders with a settlement call already in flight, so the 1s tick cannot
+    // stack a duplicate call on the same order every second until it lands.
+    var settling = {};
+    // Orders whose failure has already been reported, so a persistently failing
+    // settlement says so once instead of every second.
+    var settleSaid = {};
+
+    // Settles an order whose time is up. This is the call the page was missing:
+    // the countdown used to reach zero, print "Settling" and then only re-read the
+    // list. Nothing ever asked the server to settle, so the order stayed open for
+    // good - the member's stake stayed committed and the row said Settling for
+    // ever. Settlement is the server's decision and it is idempotent, so calling
+    // it whenever the database's own expires_at has passed is safe, and the price
+    // is the one this page is displaying, which is the rule the metals and forex
+    // markets already rely on.
+    function settleDueRecords(ids) {
+      var called = false;
+      ids.forEach(function (id) {
+        if (!id || settling[id]) return;
+        settling[id] = true;
+        called = true;
+        TrustApp.settleTrade(id, price).then(function () {
+          delete settling[id];
+          delete settleSaid[id];
+          forgetOrder(id);
+          reloadRecords();
+        }).catch(function (e) {
+          delete settling[id];
+          // A failure swallowed here is what left a finished order looking
+          // unfinished with no clue why, so it is reported once per order.
+          if (!settleSaid[id]) {
+            settleSaid[id] = true;
+            toast('error', 'An order would not settle: ' + ((e && e.message) || 'unknown error') +
+              '. It keeps trying. Quote the order id to support if it does not clear.');
+          }
+          reloadRecords();
+        });
+      });
+      // No usable id on the row, so there is nothing to settle, but the list is
+      // still worth re-reading in case it is stale.
+      if (!called) reloadRecords();
+    }
+
     function tickRecTimers() {
       var nodes = document.querySelectorAll('.rec-timer');
       if (!nodes.length) return;
       var now = Date.now();
-      var anyDue = false;
+      var due = [];
       for (var i = 0; i < nodes.length; i++) {
         var until = Date.parse(nodes[i].getAttribute('data-until') || '');
         // No expiry on the row means there is nothing to count down; say so
         // rather than showing a made-up time.
         if (!isFinite(until)) { nodes[i].textContent = '--'; continue; }
         var left = until - now;
-        if (left <= 0) { nodes[i].textContent = 'Settling'; anyDue = true; continue; }
+        if (left <= 0) {
+          if (nodes[i].textContent !== 'Settling') nodes[i].textContent = 'Settling';
+          due.push(nodes[i].getAttribute('data-id') || '');
+          continue;
+        }
         nodes[i].textContent = fmtRemain(left);
       }
-      // The order has run out. Pull the settled result in, once, so the row stops
-      // claiming to be running. The reload guard stops three countdowns reaching
-      // zero together from queueing three fetches.
-      if (anyDue && !recTimerReloading) {
+      if (due.length && !recTimerReloading) {
         recTimerReloading = true;
-        reloadRecords();
-        setTimeout(function () { recTimerReloading = false; }, 5000);
+        settleDueRecords(due);
+        setTimeout(function () { recTimerReloading = false; }, 3000);
       }
     }
 

@@ -38,6 +38,28 @@ const m = /<div class="admin-search">([\s\S]*?)<\/div>/.exec(src);
 if (!m) { console.error('FAIL: no .admin-search block found in admin-users.html'); process.exit(1); }
 const searchInput = m[1];
 
+// The same autofill reached two more fields. Chrome filled them with the
+// operator's own address, and on these two it mattered: the chat reply box
+// pre-filled with an address would put the operator's email into a reply to
+// another member if they did not notice, and the adjustment note is written to
+// the member's ledger as the recorded reason for a balance change. Both had
+// autocomplete="off" already, which is exactly what makes this worth testing -
+// the attribute was there and the field was filled anyway.
+function grab(file, id) {
+  const s = fs.readFileSync(path.join(root, file), 'utf8');
+  const r = new RegExp('<input[^>]*\\bid="' + id + '"[^>]*>').exec(s);
+  if (!r) { console.error('FAIL: no input #' + id + ' found in ' + file); process.exit(1); }
+  return r[0];
+}
+const chatInput = grab('admin-chat.html', 'chatReply');
+const noteInput = grab('admin-adjust.html', 'adjNote');
+
+const CASES = [
+  { id: 'userSearch',  label: 'the admin filter box',   markup: searchInput },
+  { id: 'chatReply',   label: 'the support reply box',  markup: chatInput },
+  { id: 'adjNote',     label: 'the adjustment note',    markup: noteInput }
+];
+
 const HARNESS = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>admin-users</title>
 <style>.admin-row-card-list{display:flex;flex-direction:column;gap:10px;padding:12px}
@@ -54,6 +76,7 @@ const HARNESS = `<!DOCTYPE html>
   </table>
 </div></div>
 <div class="admin-search">${searchInput}</div>
+<div id="extra">${chatInput}${noteInput}</div>
 <pre id="out">PENDING</pre>
 <script>window.__guardRedir=function(){};window.SITE_CONFIG={DB_URL:'',DB_ANON_KEY:''};</` + `script>
 <script src="app.js"></` + `script>
@@ -82,8 +105,21 @@ const HARNESS = `<!DOCTYPE html>
   assert(/readonly/.test(box.outerHTML), 'the box ships readonly, which is what browsers skip when autofilling');
   assert(/data-lpignore/.test(box.outerHTML), 'password managers are told to ignore it');
 
+  // The two fields that were actually reported. What fixes this is not the
+  // autocomplete attribute - Chrome ignores it here, and both fields already had
+  // it - it is that the field ships readonly, which browsers skip when they fill.
+  ['chatReply', 'adjNote'].forEach(function (id) {
+    var f = document.getElementById(id);
+    assert(!!f, id + ' is present');
+    assert(/readonly/.test(f.outerHTML),
+      id + ' ships readonly; without it Chrome fills it despite autocomplete=off');
+    assert(f.getAttribute('autocomplete') === 'off', id + ' keeps autocomplete=off as well');
+    assert(f.getAttribute('name') === 'q', id + ' has a non-email name, so it is not an identity field');
+  });
+
   // Simulate the browser having filled it with the operator's own address.
   TrustApp.initSearchAutofillGuard('userSearch');
+  ['chatReply', 'adjNote'].forEach(function (id) { TrustApp.initSearchAutofillGuard(id); });
   box.value = 'sallerteam06@gmail.com';
   window.dispatchEvent(new Event('load'));
   setTimeout(function () {
@@ -122,10 +158,41 @@ const HARNESS = `<!DOCTYPE html>
 
       box.value = '';
       setTimeout(function () {
-        assert(document.querySelectorAll('.user-name').length === ALL.length,
-          'the table still holds every user', document.querySelectorAll('.user-name').length);
-        document.getElementById('out').textContent = out.join('\\n') + '\\nDONE\\n' +
-          (out.some(function (l) { return l.indexOf('FAIL') === 0; }) ? 'RESULT:FAIL' : 'RESULT:OK');
+        // The two reported fields, driven the same way. A fill has to be removed,
+        // a click has to release the readonly lock without counting as typing, a
+        // fill that lands after the click still has to be removed, and a value the
+        // operator really did type has to survive.
+        var fails = [];
+        ['chatReply', 'adjNote'].forEach(function (id) {
+          var f = document.getElementById(id);
+          f.value = 'sallerteamo6@gmail.com';
+          window.dispatchEvent(new Event('load'));
+          setTimeout(function () {
+            if (f.value !== '') { fails.push(id + ': a fill survived'); return; }
+            f.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+            if (f.hasAttribute('readonly')) { fails.push(id + ': the click did not release readonly'); return; }
+            // A fill the browser applies on focus, after the click, is still a fill.
+            f.value = 'sallerteamo6@gmail.com';
+            f.__searchGuard.enforce();
+            if (f.value !== '') { fails.push(id + ': a fill after the click survived'); return; }
+            // Now real typing: the keydown is what marks the value as the
+            // operator's, which is the only thing that stops the guard removing it.
+            f.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', bubbles: true }));
+            f.value = 'Promotion credit';
+            f.__searchGuard.enforce();
+            if (f.value !== 'Promotion credit') { fails.push(id + ': a typed note was removed'); return; }
+            f.value = '';
+          }, 150);
+        });
+        setTimeout(function () {
+          assert(fails.length === 0,
+            'the reply box and the adjustment note drop a browser fill, accept a click, and keep what was typed',
+            fails.join('; '));
+          assert(document.querySelectorAll('.user-name').length === ALL.length,
+            'the table still holds every user', document.querySelectorAll('.user-name').length);
+          document.getElementById('out').textContent = out.join('\\n') + '\\nDONE\\n' +
+            (out.some(function (l) { return l.indexOf('FAIL') === 0; }) ? 'RESULT:FAIL' : 'RESULT:OK');
+        }, 400);
       }, 200);
     }, 200);
   }, 200);
@@ -150,7 +217,7 @@ try {
   const report = r[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
   process.stdout.write(report.replace(/^/gm, '  ') + '\n');
   if (!/RESULT:OK/.test(report)) { console.error('FAIL: the admin filter box still holds a value nobody typed.'); process.exit(1); }
-  console.log('PASS: the admin filter box cannot be autofilled with the operator\'s own address (real browser)');
+  console.log('PASS: the admin filter box, the support reply box and the adjustment note cannot be autofilled with the operator\'s own address (real browser)');
 } finally {
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
 }

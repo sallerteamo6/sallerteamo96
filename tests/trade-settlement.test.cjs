@@ -350,7 +350,8 @@ function fn(source, name, indent = '  ') {
   assert.match(loadFn, /t\.expires_at/, 'the countdown must read the contract expiry');
   assert.match(loadFn, /t\.duration/, 'a contract without expires_at must fall back to createdAt + duration');
   assert.match(trade, /class="label">Time left<\/span>/, 'a running order must label the time left');
-  assert.match(trade, /data-until="' \+ \(r\.expiresAt/, 'the time left must carry the deadline into the DOM');
+  assert.match(trade, /data-until="' \+ escHtml\(r\.expiresAt/, 'the time left must carry the deadline into the DOM');
+  assert.match(trade, /data-id="' \+ escHtml\(r\.id/, 'the countdown must carry the order id, so it can settle that order');
   assert.match(trade, /function tickRecTimers\(\)/);
   const tickTimer = fn(trade, 'tickRecTimers', '    ');
   assert.match(tickTimer, /Date\.parse\(/, 'the countdown must parse the deadline it was given');
@@ -361,11 +362,61 @@ function fn(source, name, indent = '  ') {
   // A second, not the 2s price tick or the 4s record reload, or the seconds jump.
   assert.match(trade, /setInterval\(tickRecTimers, 1000\)/,
     'the time left must tick once a second, so the seconds do not jump');
-  // Zero means the order is due: fetch the settled result rather than sit on a
-  // row that still claims to be running.
+  // Reaching zero must actually settle the order, not just repaint the row. The
+  // page used to print "Settling" and re-read the list, so nothing ever asked the
+  // server to settle: the order stayed open for good with the stake committed.
   assert.match(tickTimer, /Settling/);
-  assert.match(tickTimer, /reloadRecords\(\)/, 'reaching zero must pull the settled result in');
-  assert.match(tickTimer, /recTimerReloading/, 'several orders reaching zero together must not queue several fetches');
+  assert.match(tickTimer, /settleDueRecords\(due\)/, 'reaching zero must settle the order');
+  assert.match(tickTimer, /getAttribute\('data-id'\)/, 'the row must name the order it is settling');
+  const settleDue = fn(trade, 'settleDueRecords', '    ');
+  assert.match(settleDue, /TrustApp\.settleTrade\(id, price\)/,
+    'the due order must be settled through the server, which decides the result');
+  assert.match(settleDue, /forgetOrder\(id\)/, 'a settled order must stop being treated as a background order');
+  assert.match(settleDue, /reloadRecords\(\)/, 'the row must repaint from the settled result');
+  // The tick runs every second, so without a guard it would stack a call per second.
+  assert.match(settleDue, /if \(!id \|\| settling\[id\]\) return;/, 'a settlement already in flight must not be started again');
+  assert.match(settleDue, /settling\[id\] = true/);
+  // A settlement that keeps failing must say so. Swallowing it is what left an
+  // order looking unfinished with no clue why.
+  assert.match(settleDue, /toast\('error'/, 'a settlement that will not go through must be reported');
+  assert.match(settleDue, /settleSaid\[id\]/, 'a persistent failure must be reported once, not every second');
+  // A remembered order must only be dropped when it is positively known to be
+  // finished. Reading "not in the list" as finished threw the order away while
+  // the contract list was still loading, and nothing was left to settle it.
+  const settleRem = fn(trade, 'settleRemembered', '    ');
+  assert.match(settleRem, /if \(finished\[o\.id\]\) \{ forgetOrder\(o\.id\); return; \}/,
+    'an order is forgotten only when the server says it is finished');
+  assert.match(settleRem, /if \(!open\[o\.id\]\) return;/,
+    'an order the page has not loaded yet must be kept, not dropped');
+  assert.ok(!/if \(!open\[o\.id\]\) \{ forgetOrder\(o\.id\); return; \}/.test(settleRem),
+    'an absent order must never be treated as a settled one');
+
+  // ---- 8c. A cancelled order must not still read as running ------
+  // cancel_contract sets status = 'void' and posts the stake back. The record
+  // list treated anything that was not win or loss as open, so a refunded order
+  // kept its blue "Running" badge and a live countdown, and the member saw their
+  // stake as committed after the money was already back in the wallet.
+  const recLoad = fn(trade, 'loadRecords', '    ');
+  assert.match(recLoad, /var open = t\.status === 'open';/,
+    'only an open contract may be shown as running');
+  assert.match(recLoad, /var voided = t\.status === 'void';/, 'a voided contract must be recognised');
+  assert.match(recLoad, /voided \? 'void' : 'open'/, 'a voided contract must not be reported as open');
+  assert.match(recLoad, /expiresAt: open \? until : null/,
+    'only a running order gets a countdown; a refunded one must not tick');
+  const render = fn(trade, 'renderRecords', '    ');
+  assert.match(render, /r\.status === 'void' \? 'Refunded' : 'Running'/,
+    'a cancelled order must read as refunded, not running');
+  assert.match(render, /'status-void'/, 'a cancelled order needs its own badge');
+  assert.match(render, /Refunded in full, no profit or loss/,
+    'a cancelled order must not print a profit figure');
+  assert.match(css, /\.trade-record-status\.status-void\{/);
+  // The cancel path drops the local note and repaints, so the row can change.
+  const cancelFn = fn(trade, 'cancelCountdown', '    ');
+  assert.match(cancelFn, /forgetOrder\(id\)/);
+  assert.match(cancelFn, /reloadRecords\(\)/, 'cancelling must repaint the record straight away');
+  // The server is the backstop: settling an already-void order pays nothing.
+  assert.match(sql19, /if v\.status <> 'open' then[\s\S]{0,700}'already_settled', true/,
+    'settle_trade must pay nothing for an order that is no longer open');
   // Only the text is rewritten, so the list does not re-render under the cursor.
   assert.match(tickTimer, /querySelectorAll\('\.rec-timer'\)/,
     'the tick must update the existing nodes, not rebuild the list');
@@ -530,5 +581,6 @@ function fn(source, name, indent = '  ') {
     'ledger-backed open/settle, admin profit-mode switch on both scopes, a non-destructive admin list rebuild, ' +
     'the contract_status enum cast, random() kept out of numeric arithmetic, 20/30/40 payouts, concurrent orders, ' +
     'background settlement, a settlement failure that explains itself, time left on every running order counted ' +
-    'from the contract expiry, and metals and forex settling in the currency the wallet holds');
+    'from the contract expiry, a due order actually settled instead of sitting on "Settling", a cancelled order ' +
+    'reading as refunded rather than running, and metals and forex settling in the currency the wallet holds');
 })().catch(e => { console.error(e); process.exitCode = 1; });

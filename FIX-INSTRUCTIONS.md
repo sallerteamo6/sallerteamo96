@@ -148,6 +148,30 @@ It is counted from the contract's own `expires_at` as written by the database, n
 
 The post-order countdown modal counts against the same deadline, so the two cannot disagree. `fmtRemain` is covered by a test that runs it: the first version printed `01::00` for an hour, which no amount of reading the source would have caught.
 
+## An order that reached zero said "Settling" and never settled
+
+The countdown reached zero, printed `Settling`, and then only re-read the list. **Nothing ever asked the server to settle.** The order stayed `open` in the database for good, the member's stake stayed committed, and the row said `Settling` for ever with no error anywhere. Three orders in the report were all stuck that way.
+
+Reaching zero now calls `settle_trade` for that order, using the price the page is displaying - the same rule the metals and forex markets already rely on. Settlement stays the server's decision and is idempotent, so calling it whenever the database's own `expires_at` has passed is safe. A 1-second tick would otherwise stack a call every second until one landed, so an in-flight guard keeps one call per order.
+
+**A settlement that will not go through now says so**, once per order, with the reason and the order id. The previous version swallowed the error in an empty `.catch()` and retried silently for ever, which is exactly how a failed settlement became indistinguishable from one that had not come due yet.
+
+There was a second way to lose an order. `settleRemembered` treated "this order is not in the list I have loaded" as "already settled elsewhere" and dropped it. On a fresh or slow page that threw the order away while the contract list was still arriving, and with it the only note that anything was still due. It now only forgets an order the server has positively reported as finished, and keeps anything it has not seen yet.
+
+## A cancelled order still read as "Running"
+
+`cancel_contract` marks the order `void` and posts the stake straight back through the ledger. The record list treated anything that was not a win or a loss as open, so a cancelled order kept its blue **Running** badge and a live countdown - a member who had already been refunded in full was shown an order as still committed.
+
+Only `open` is now shown as running, and a `void` order reads **Refunded**, with the stake described as returned in full rather than a `0.00` printed like a trade that happened to break even. Deciding it this way round also means a status added to the enum later shows as finished rather than claiming money is still committed. Racing a cancel against a settlement cannot pay twice: `settle_trade` returns `already_settled` and pays nothing for an order that is no longer open.
+
+## Two admin boxes filled themselves with the operator's own address
+
+The support reply box and the wallet-adjustment note both arrived holding `sallerteamo6@gmail.com`. Both already had `autocomplete="off"`, which is why it survived the earlier fix - that attribute is advisory and Chrome ignores it on a text box under an email-shaped page. What actually stops the fill is shipping the field `readonly`, which browsers skip, and releasing that on the first click.
+
+That matters more on these two than on the search box it was built for. A reply pre-filled with an address would put the operator's own email into a message to another member on an unnoticed click of Send, and the adjustment note is written to the member's ledger as the recorded reason for a balance change. Both now run through the same guard as the filter box: a value the operator never typed is removed, a value they did type is kept.
+
+`tests/autofill.browser.test.cjs` now drives all three fields in a real browser from their shipped markup, and fails if `readonly` is dropped from any of them.
+
 ## The search box was still autofilling, and the first fix was quietly broken
 
 Two separate faults, and the first attempt fixed neither.

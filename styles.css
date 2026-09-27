@@ -546,6 +546,9 @@ textarea.form-input{height:auto;padding:12px 15px;resize:vertical}
 .trade-record-status.status-win{color:#26a69a;background:rgba(38,166,154,.12)}
 .trade-record-status.status-loss{color:#ef5350;background:rgba(239,83,80,.12)}
 .trade-record-status.status-closed{color:#8b93a6;background:rgba(139,147,166,.14)}
+/* A cancelled order. The stake is already back in the wallet, so this is neither
+   the blue of a running order nor the red of a loss. */
+.trade-record-status.status-void{color:#6b7280;background:rgba(107,114,128,.14)}
 /* Time left on a running order. font-variant-numeric keeps every digit the same
    width, so the label does not shuffle sideways once a second as the seconds
    change from 9 to 10. */
