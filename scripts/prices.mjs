@@ -65,11 +65,28 @@ if (!URL_ || !KEY) {
 }
 
 /*
- * Every coin a member can actually hold. Kept as a list rather than derived from
- * coin_addresses on purpose: that table is what the site shows as a deposit
- * address, and a row appearing there must not silently start being priced.
+ * Every coin a member can actually hold that has a real market. Kept as a list
+ * rather than derived from coin_addresses on purpose: that table is what the site
+ * shows as a deposit address, and a row appearing there must not silently start
+ * being priced.
+ *
+ * All nineteen pairs below were checked against Binance's ticker and exist, which
+ * is not a formality: /ticker/price rejects the whole request if one symbol in
+ * the array is unknown, so a single wrong pair takes all nineteen down.
+ *
+ * Two coins on the account page are missing and both are missing on purpose.
+ * USDT is pinned to 1 below rather than fetched, since it is the unit everything
+ * is quoted in. BSV is not quoted on Binance spot at all, so pricing it would mean
+ * inventing a number; the account page keeps showing its seeded figure and says so.
+ *
+ * This script is now a convenience and a manual override. Migration 28 runs the
+ * same fetch inside Supabase on a cron, which is what actually keeps prices
+ * moving - a feed that depends on this machine being switched on is not a feed.
  */
-const SYMBOLS = ['BTC', 'ETH', 'SOL', 'TRX', 'BNB'];
+const SYMBOLS = [
+  'BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOGE', 'TRX', 'LTC', 'LINK',
+  'AVAX', 'DOT', 'UNI', 'BCH', 'TON', 'IOTA', 'ETC', 'USDC', 'TUSD',
+];
 
 /* Coin -> Binance pair. Every one of these is quoted in USDT. */
 const pair = (s) => s + 'USDT';

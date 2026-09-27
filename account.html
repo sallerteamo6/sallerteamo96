@@ -9,11 +9,11 @@
   <title>Trust</title>
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="img/logo.png">
-  <link rel="stylesheet" href="styles.css?v=20260927-wallet9">
-  <script src="scripts/config.js?v=20260927-wallet8"></script>
+  <link rel="stylesheet" href="styles.css?v=20260927-wallet10">
+  <script src="scripts/config.js?v=20260927-wallet10"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927-wallet8"></script>
-  <script src="app.js?v=20260927-wallet8"></script>
+    <script src="scripts/db.js?v=20260927-wallet10"></script>
+  <script src="app.js?v=20260927-wallet10"></script>
 </head>
 <body class="account-page">
 
@@ -137,7 +137,7 @@
     //  A coin the feed does carry can never fall back: the cache is consulted
     //  first, so the snapshot is reached only for a coin the feed has no price
     //  for. That fallback is marked fromFeed:false, which is what lets the
-    //  total report how much of itself is not at a live price.
+    //  total say which of its two problems it has.
     // ---------------------------------------------------------------------
     function getCachedPrice(sym) {
       var live = _priceCache[sym];
@@ -191,7 +191,8 @@
       var coins = walletCoins(b);
       var total = 0;
       var held = 0;          // value of coins the member actually holds
-      var staticHeld = 0;    // of which is valued at a non-live price
+      var staticHeld = 0;    // of which has no price from the feed at all
+      var staleHeld = 0;     // of which has a feed price the feed has stopped refreshing
       var html = coins.map(function (c) {
         var bal = parseFloat(b[c]) || 0;
         var p = getCachedPrice(c);
@@ -199,7 +200,13 @@
         total += usd;
         if (bal > 0 && c !== 'USDT') {
           held += usd;
-          if (!p.fromFeed || !p.tradable) staticHeld += usd;
+          // Two different failures, and the member is told which one it is. A
+          // price the feed wrote nine hours ago is a real Binance price that has
+          // stopped moving; a coin the feed never carried is a seeded number. The
+          // first is a broken feed, the second is a coin with no market. One
+          // phrase for both sent the investigation after the wrong one.
+          if (!p.fromFeed) staticHeld += usd;
+          else if (!p.tradable) staleHeld += usd;
         }
         var dec = (c === 'BTC' || c === 'ETH') ? 4 : 2;
         return '<div class="wallet-item' + (c === 'USDT' ? ' main-wallet' : '') + '" onclick="location.href=\'funds.html?t=recharge\'">'
@@ -226,10 +233,11 @@
         }
         var bits = [];
         if (anyFeed) bits.push(newest ? 'live prices updated ' + fmtAge(newest) : 'live prices loaded');
-        else bits.push('no live prices - start scripts/prices.mjs');
-        if (staticHeld > 0) bits.push('includes $' + fmt(staticHeld, 2) + ' not at a live price');
+        else bits.push('price feed offline - see supabase/v2/28_server_price_feed.sql');
+        if (staleHeld > 0) bits.push('includes $' + fmt(staleHeld, 2) + ' at a stale price');
+        if (staticHeld > 0) bits.push('includes $' + fmt(staticHeld, 2) + ' with no market price');
         age.textContent = bits.join(' · ');
-        age.className = 'total-note' + (staticHeld > 0 ? ' total-note-warn' : '');
+        age.className = 'total-note' + (staleHeld > 0 || staticHeld > 0 ? ' total-note-warn' : '');
       }
       var vb = document.getElementById('vipBadge');
       if (vb && TrustApp.guessVip && uid) {
