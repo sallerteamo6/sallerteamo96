@@ -2,7 +2,7 @@
 
 1. Keep a backup of your current website and database.
 2. If you have not already applied `supabase/v2/14_admin_data_fix.sql`, run it in Supabase SQL Editor first. It requires the existing v2 schema and admin-password setup.
-3. Run `supabase/v2/15_live_delivery.sql` if not already installed, then `supabase/v2/16_admin_session_fixes.sql`, then `supabase/v2/17_profit_mode_and_settlement.sql`, then the NEW `supabase/v2/18_all_markets_and_auto_settle.sql` - in that order, each in full. These upgrades preserve records, balances, UIDs, and the admin password. Do not rerun schema/seed/reset scripts on a live project.
+3. Run `supabase/v2/15_live_delivery.sql` if not already installed, then `supabase/v2/16_admin_session_fixes.sql`, then `supabase/v2/17_profit_mode_and_settlement.sql`, then `supabase/v2/18_all_markets_and_auto_settle.sql`, then the NEW `supabase/v2/19_settlement_enum_fix.sql` - in that order, each in full. These upgrades preserve records, balances, UIDs, and the admin password. Do not rerun schema/seed/reset scripts on a live project.
 4. Replace the website files with this folder's contents. Preserve your production `scripts/config.js` if its settings differ.
 5. Press Ctrl+Shift+R and sign in again on both customer and admin pages.
 
@@ -40,6 +40,35 @@ There was also no server path to pay an AI day at all: `update_investment_progre
 Approving an order is now a no-op report, because `open_investment` already created it as `active` with its rate and schedule drawn. The previous Approve wrote a status, `startAt`, `endAt` and schedule the server rejected outright, then showed a success toast. Reject is now **Cancel & Refund** and goes through `cancel_investment`.
 
 **The admin search box no longer fills itself.** Chrome autofills a text input whose placeholder mentions an email, and it used the signed-in operator's own address - so the User Management list came up filtered to that one admin and looked as if every other user had vanished. Same visible symptom as the card-list bug, completely different cause. The input is now `type="search"` with `autocomplete="off"`, a non-email `name`, and LastPass / 1Password / Bitwarder ignore hints; and because `autocomplete="off"` is advisory and Chrome ignores it on this kind of field, `initSearchAutofillGuard` also clears a value the operator never typed. A value they *did* type is never touched, and an empty filter means "show everyone", so clearing is always safe. The same attributes were added to the admin chat reply, the balance-adjustment note and the coin-address fields, which were equally exposed.
+
+## Settlement was failing on a missing enum cast - read this first
+
+Symptom: after a trade finished, the result modal showed `!`, `--` and "Awaiting settlement", with this in the note:
+
+```
+{"code":"42804","details":null,"hint":"You will need to rewrite or cast the expression.",
+ "message":"column \"status\" is of type contract_status but expression is of type text"}
+```
+
+`contracts.status` is the `contract_status` **enum**, and
+
+```sql
+set status = case when v_won then 'won' else 'lost' end
+```
+
+resolves to `text`, because a CASE over two bare literals does. PostgreSQL has no implicit cast from `text` to an enum, so the UPDATE raised 42804. The stake was already debited and the contract stayed open: the member saw no outcome, no refund, and a raw database error.
+
+This was latent from the day `03_functions.sql` was written. It only surfaced now because `settle_trade` is the first path that actually executes that statement in a browser - every earlier attempt was rejected before it reached the database.
+
+`19_settlement_enum_fix.sql` corrects `settle_trade` and `settle_contract` with an explicit `::public.contract_status`. `03_functions.sql` and `17_*.sql` carry the cast too, so a fresh install never hits it; migration 19 exists because a project that already applied 17 has the old body stored in the database, and re-running 17 is not something to rely on an operator remembering.
+
+**Any order stuck open from before this fix settles on its own** once 19 is applied - the countdown calls `settle_trade` again, and it is idempotent, so it pays once and only once. Nothing needs repairing by hand.
+
+`tests/trade-settlement.test.cjs` now walks every `.sql` file and fails if any statement assigns a bare-literal CASE to an enum column, so this cannot come back in a later migration.
+
+## A settlement failure no longer dumps a database error at a member
+
+The result modal showed the whole PostgREST envelope. It now shows plain words, keeps the full set of trade details so the member can see what they placed, and offers **Try settling again** bound to that specific order - safe because settling is idempotent. Recognised causes are each given their own sentence: order not finished, unknown order, not your order, insufficient balance, market unavailable, connection dropped. Anything unrecognised still comes through rather than being swallowed.
 
 ## Every coin is tradable, and the "unknown market ETHUSDT" that caused it
 
@@ -161,7 +190,7 @@ All JavaScript files changed here and all inline page scripts passed syntax chec
 - `node tests/admin-list.browser.test.cjs` (real browser; skips with a notice if none is installed)
 - `node tests/autofill.browser.test.cjs` (real browser; skips with a notice if none is installed)
 
-They include execution of the User Management edit/modal, manual approval, role, status and archive handlers, the per-user and all-users Profit Mode toggles, matching withdrawal selection, delayed auth restoration, failed limit saves, and unchanged-data redraw suppression. They also cover UUID/UID mapping, admin access and expired-token priority, pagination, withdrawal destination/type, KYC fields, chat aliases and incoming events, operator replies, simultaneous reads, rejected writes, language persistence, single server-controlled balance changes, the result modal rendering the server's profit and detail rows, an unsettled order reporting its reason instead of a number, every shipped page being free of the double-encoded text, no page writing a balance from the browser, the legacy trade re-upload staying disabled, a loan row resolving to the member's login and member number, a paired market symbol reducing to its base, every offered coin having a seeded product, an untradable market being refused before the balance is touched, AI Quant reading v2's `investments` with countable schedule days, all six plans existing with database-enforced bounds, the principal being returned at maturity, and the unattended settlement being service_role only and never settling a day early, the admin card rebuild being non-destructive and click-stable in a real browser, and the admin filter box resisting autofill in a real browser, including on every pass rather than only the first.
+They include execution of the User Management edit/modal, manual approval, role, status and archive handlers, the per-user and all-users Profit Mode toggles, matching withdrawal selection, delayed auth restoration, failed limit saves, and unchanged-data redraw suppression. They also cover UUID/UID mapping, admin access and expired-token priority, pagination, withdrawal destination/type, KYC fields, chat aliases and incoming events, operator replies, simultaneous reads, rejected writes, language persistence, single server-controlled balance changes, the result modal rendering the server's profit and detail rows, an unsettled order reporting its reason instead of a number, every shipped page being free of the double-encoded text, no page writing a balance from the browser, the legacy trade re-upload staying disabled, a loan row resolving to the member's login and member number, a paired market symbol reducing to its base, the contract_status enum cast present in every settlement statement, and a failed settlement rendering plain words with the trade details and a retry rather than a raw database error, every offered coin having a seeded product, an untradable market being refused before the balance is touched, AI Quant reading v2's `investments` with countable schedule days, all six plans existing with database-enforced bounds, the principal being returned at maturity, and the unattended settlement being service_role only and never settling a day early, the admin card rebuild being non-destructive and click-stable in a real browser, and the admin filter box resisting autofill in a real browser, including on every pass rather than only the first.
 
 The live database was not accessed. The new SQL was reviewed and its function signatures and grants were checked to match, but it could not be executed here. The browser tests cover the admin list and the filter box only; the trade, loan and AI Quant screens were verified by driving their functions against mocked server responses, not by loading a funded order. This is not a complete audit of trading, exchange, or investment settlement features. The exchange feature is knowingly non-functional rather than falsely reported as working; see above.
 

@@ -611,6 +611,10 @@ textarea.form-input{height:auto;padding:12px 15px;resize:vertical}
 .result-btn.primary:hover{background:#0f3fcc}
 .result-btn.secondary{background:#fff;color:#1652f0;border:2px solid #1652f0}
 .result-btn.secondary:hover{background:#f0f4ff}
+/* "Try settling again" spans the row so a third button does not squeeze the
+   two primary actions into unreadable slivers. */
+.result-btns{flex-wrap:wrap}
+.result-btn#resultRetry{flex:1 0 100%}
 
 /* ============ GENERIC CARDS / GRID / TABLES (admin & misc) ============ */
 .grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}

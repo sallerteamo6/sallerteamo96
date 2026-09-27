@@ -247,7 +247,13 @@ begin
   end if;
 
   update public.contracts
-     set status      = case when v_won then 'won' else 'lost' end,
+     -- The cast is required, not decoration: contracts.status is the
+   -- contract_status enum and a CASE over two bare literals resolves to text,
+   -- which Postgres will not assign to an enum. Without it this raises 42804
+   -- "column status is of type contract_status but expression is of type text"
+   -- and the order never settles.
+   set status      = case when v_won then 'won'::public.contract_status
+                       else 'lost'::public.contract_status end,
          settle_price = p_settle_price,
          payout       = v_payout,
          settled_at   = now(),
@@ -323,7 +329,13 @@ begin
   end if;
 
   update public.contracts
-     set status      = case when v_won then 'won' else 'lost' end,
+     -- The cast is required, not decoration: contracts.status is the
+   -- contract_status enum and a CASE over two bare literals resolves to text,
+   -- which Postgres will not assign to an enum. Without it this raises 42804
+   -- "column status is of type contract_status but expression is of type text"
+   -- and the order never settles.
+   set status      = case when v_won then 'won'::public.contract_status
+                       else 'lost'::public.contract_status end,
          settle_price = p_settle_price,
          payout       = v_payout,
          settled_at   = now(),

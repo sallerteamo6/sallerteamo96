@@ -179,8 +179,14 @@ begin
     v_payout := round(v.amount * (1 + v.payout_pct / 100), 8);
   end if;
 
+  -- The cast is required, not decoration: contracts.status is the
+  -- contract_status enum, and a CASE over two bare literals resolves to text,
+  -- which Postgres will not assign to an enum. Without the ::public.contract_status
+  -- this raises 42804 "column status is of type contract_status but expression is
+  -- of type text" and the settlement never completes.
   update public.contracts
-     set status      = case when v_won then 'won' else 'lost' end,
+     set status      = case when v_won then 'won'::public.contract_status
+                            else 'lost'::public.contract_status end,
          settle_price = p_settle_price,
          payout       = v_payout,
          settled_at   = now(),

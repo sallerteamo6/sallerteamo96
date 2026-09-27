@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927d"></script>
-  <script src="app.js?v=20260927d"></script>
+    <script src="scripts/db.js?v=20260927e"></script>
+  <script src="app.js?v=20260927e"></script>
 </head>
 <body>
   <div id="app">
@@ -172,6 +172,7 @@
       <div class="result-btns">
         <button class="result-btn primary" onclick="document.getElementById('resultOverlay').style.display='none'">Continue Trading</button>
         <button class="result-btn secondary" onclick="location.href='orders.html'">View Orders</button>
+        <button class="result-btn secondary" id="resultRetry" style="display:none;width:100%;">Try settling again</button>
       </div>
     </div>
   </div>
@@ -528,33 +529,107 @@
     }
     function num2(n) { return (Math.round((parseFloat(n) || 0) * 100) / 100).toString(); }
 
+    // PostgREST reports a failed function as a JSON envelope:
+    //   {"code":"42804","details":null,"hint":"...","message":"..."}
+    // and db.js passes that whole string through as the error message. Dumping
+    // it at a member is not an explanation, so the real message is pulled out
+    // and the known ones are put in words a member can act on. The raw text is
+    // still returned for anything unrecognised, so nothing is silently lost.
+    function settleErrorText(e) {
+      var raw = String((e && e.message) || e || '');
+      var code = '';
+      var msg = '';
+      try {
+        var j = JSON.parse(raw);
+        if (j && typeof j === 'object') { code = String(j.code || ''); msg = String(j.message || ''); }
+      } catch (x) { msg = raw; }
+      if (!msg) msg = raw;
+      if (/order has not finished yet/i.test(msg)) return 'This order has not finished counting down yet. Try again in a moment.';
+      if (/unknown order/i.test(msg)) return 'The server could not find this order. It may already have been settled - check your order history.';
+      if (/not your order/i.test(msg)) return 'This order belongs to a different account.';
+      if (/insufficient/i.test(msg)) return 'There is not enough balance to cover this order. Nothing was paid.';
+      if (/contract_status|42804|rewrite or cast/i.test(raw + msg)) {
+        return 'The server could not record the result. Your order is still open and the amount is still reserved - it will settle on its own, or contact support with the order id below.';
+      }
+      // Checked before the market branch: the server's wording here is
+      // "an order for this market is still running", which contains "market" and
+      // would otherwise be reported as the market being unavailable.
+      if (/already open|still running|already has an order|an order for/i.test(msg)) return 'You already have an order running on this market. Wait for it to finish first.';
+      if (/market|unknown symbol|function .* does not exist/i.test(msg)) {
+        return 'This market is not available for trading right now. Nothing was taken from your balance.';
+      }
+      if (/Failed to fetch|NetworkError|load failed/i.test(msg)) {
+        return 'The connection dropped before the result came back. Your order is still open and will settle on its own.';
+      }
+      return msg;
+    }
+
     // Settlement. The outcome, the payout and the balance all come back from
     // the server, so what is shown here is what is in the account. The profit is
     // the server's `profit` field, never a figure recomputed in the page.
-    function showResult(amt) {
+    //
+    // A failure is NOT shown as a blank "--". The member keeps the full set of
+    // trade details and is told the order is still open, because their stake is
+    // still reserved and the order will settle. Retrying is safe: settle_trade is
+    // idempotent server-side, so a second call either pays once or reports the
+    // stored result.
+    function showResult(amt, retryId) {
       var settleBox = document.getElementById('settlingBox');
-      var id = currentOrderId;
+      var id = retryId || currentOrderId;
       currentOrderId = null;
       if (!id) { renderResult(null, amt); return; }
+      setSettling(true);
 
       TrustApp.settleTrade(id, price).then(function (res) {
+        setSettling(false);
         renderResult(res, amt);
       }).catch(function (e) {
-        if (settleBox) settleBox.style.display = 'none';
-        var icon = document.getElementById('resultIcon');
-        var amtEl = document.getElementById('resultAmount');
-        icon.className = 'result-icon lose';
-        icon.textContent = '!';
-        amtEl.className = 'result-amount loss';
-        amtEl.textContent = '--';
-        document.getElementById('resultInfo').innerHTML =
-          '<div class="row"><span class="label">Purchase Amount</span><span class="value">' + num2(amt) + ' ' + escHtml(quoteUnit) + '</span></div>'
-          + '<div class="row"><span class="label">Direction</span><span class="value">' + (direction === 'up' ? 'Up' : 'Down') + '</span></div>'
-          + '<div class="row"><span class="label">Status</span><span class="value down-text">Awaiting settlement</span></div>'
-          + '<div class="row"><span class="label">Note</span><span class="value">' + escHtml((e && e.message) || 'The result could not be confirmed. It will appear in your order history once the server settles it.') + '</span></div>';
-        document.getElementById('resultOverlay').style.display = 'flex';
-        if (TrustApp.refreshTrade) TrustApp.refreshTrade(id);
+        setSettling(false);
+        renderUnsettled(id, amt, settleErrorText(e));
       });
+    }
+
+    function setSettling(on) {
+      var box = document.getElementById('settlingBox');
+      if (box) box.style.display = on ? 'flex' : 'none';
+      var retry = document.getElementById('resultRetry');
+      if (retry) retry.style.display = on ? 'none' : '';
+    }
+
+    // The order exists and the stake is reserved; only the outcome is missing.
+    function renderUnsettled(id, amt, reason) {
+      var icon = document.getElementById('resultIcon');
+      var amtEl = document.getElementById('resultAmount');
+      var title = document.getElementById('resultTitle');
+      icon.className = 'result-icon lose';
+      icon.textContent = '!';
+      amtEl.className = 'result-amount';
+      amtEl.textContent = '--';
+      if (title) title.textContent = 'Settlement Pending';
+      // The same detail rows as a settled trade, so the member can see exactly
+      // what they placed, plus what is known and what is not.
+      document.getElementById('resultInfo').innerHTML =
+        '<div class="row"><span class="label">Result</span><span class="value down-text">Pending</span></div>'
+        + '<div class="row"><span class="label">Market</span><span class="value">' + escHtml(symbol + '/' + quoteUnit) + '</span></div>'
+        + '<div class="row"><span class="label">Direction</span><span class="value ' + (direction === 'up' ? 'up-text' : 'down-text') + '">' + (direction === 'up' ? 'Up' : 'Down') + '</span></div>'
+        + '<div class="row"><span class="label">Duration</span><span class="value">' + durationSec + 's</span></div>'
+        + '<div class="row"><span class="label">Payout Rate</span><span class="value">' + num2(odds) + '%</span></div>'
+        + '<div class="row"><span class="label">Purchase Amount</span><span class="value">' + num2(amt) + ' ' + escHtml(quoteUnit) + '</span></div>'
+        + '<div class="row"><span class="label">Purchase Price</span><span class="value">' + fmt(buyPrice, dec) + '</span></div>'
+        + '<div class="row"><span class="label">Order ID</span><span class="value" style="word-break:break-all;">' + escHtml(String(id).slice(0, 18)) + '</span></div>'
+        + '<div class="row"><span class="label">Status</span><span class="value down-text">Awaiting settlement</span></div>'
+        + '<div class="row"><span class="label">Note</span><span class="value">' + escHtml(reason) + '</span></div>';
+      document.getElementById('resultOverlay').style.display = 'flex';
+      // Wire the retry to this specific order rather than relying on a global.
+      var btn = document.getElementById('resultRetry');
+      if (btn) {
+        btn.style.display = '';
+        btn.onclick = function () {
+          document.getElementById('resultOverlay').style.display = 'none';
+          showResult(amt, id);
+        };
+      }
+      if (TrustApp.refreshTrade) TrustApp.refreshTrade(id);
     }
 
     function renderResult(res, amt) {
@@ -600,6 +675,9 @@
       document.getElementById('resultInfo').innerHTML = rows;
       document.getElementById('resultOverlay').style.display = 'flex';
       if (res && res.balance != null) refreshBalance(res.balance);
+      // A settled order needs no retry; hide the button a previous failure showed.
+      var retry = document.getElementById('resultRetry');
+      if (retry) { retry.style.display = 'none'; retry.onclick = null; }
 
       records.unshift({
         coin: symbol + '/' + coin, alias: coin, unit: coin, dir: side,

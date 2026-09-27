@@ -63,7 +63,7 @@ function fn(source, name, indent = '  ') {
     }
   };
   vm.createContext(ctx);
-  for (const name of ['escHtml', 'num2', 'syncOdds', 'refreshBalance', 'renderResult', 'showResult']) {
+  for (const name of ['escHtml', 'num2', 'syncOdds', 'refreshBalance', 'setSettling', 'settleErrorText', 'renderResult', 'renderUnsettled', 'showResult']) {
     vm.runInContext(fn(trade, name, '    '), ctx);
   }
 
@@ -103,15 +103,19 @@ function fn(source, name, indent = '  ') {
       balance: 485, forced: true, settled_at: '2026-09-27T10:02:00Z' }, 100);
   assert.match(el('resultInfo').innerHTML, /Applied by administrator/);
 
-  // Settlement goes through the server, and a failure is reported rather than
-  // credited locally.
+  // Settlement goes through the server, and a failure is reported in plain words
+  // rather than credited locally or dumped raw.
   ctx.currentOrderId = 'c-9';
   ctx.settleTrade = () => Promise.reject(new Error('insufficient USDT balance'));
   ctx.showResult(100);
   await new Promise(r => setImmediate(r));
   assert.equal(el('resultIcon').textContent, '!');
+  assert.equal(el('resultTitle').textContent, 'Settlement Pending');
   assert.match(el('resultInfo').innerHTML, /Awaiting settlement/);
-  assert.match(el('resultInfo').innerHTML, /insufficient USDT balance/);
+  assert.match(el('resultInfo').innerHTML, /not enough balance/i);
+  assert.equal(el('resultRetry').style.display, '', 'a retry is offered on a failure');
+  // The order id is on screen, so a member can quote it to support.
+  assert.match(el('resultInfo').innerHTML, />c-9</);
   assert.equal(ctx.refreshed, 'c-9');
   ctx.settleTrade = (id, px) => Promise.resolve({ id, status: 'won', amount: 100, payout: 285, profit: 185, balance: 325, payout_pct: 185, entry_price: 100, settle_price: px, coin: 'USDT', side: 'up', duration_sec: 60, forced: false });
   ctx.currentOrderId = 'c-10';
@@ -212,6 +216,104 @@ function fn(source, name, indent = '  ') {
   assert.ok(!/querySelectorAll\('\.arc-open'\)\.forEach[\s\S]{0,80}classList\.remove/.test(build),
     'tapping one row must not close the others');
 
+  // ---- 8. contracts.status is an enum, so it must be cast ----------------
+  // The reported failure was:
+  //   {"code":"42804","message":"column \"status\" is of type contract_status
+  //    but expression is of type text"}
+  // and the result modal showed "Awaiting settlement" instead of the outcome,
+  // with the stake debited and the contract left open.
+  //
+  // `case when c then 'won' else 'lost' end` over two bare literals resolves to
+  // text, and PostgreSQL has no implicit cast from text to an enum, so the UPDATE
+  // raises and settlement never completes. Every assignment to that column needs
+  // an explicit ::public.contract_status. This walks all the SQL so the same
+  // mistake cannot be reintroduced in a later file.
+  const schema = fs.readFileSync(path.join(root, 'supabase', 'v2', '01_schema.sql'), 'utf8');
+  assert.match(schema, /create type contract_status as enum \('open', 'won', 'lost', 'void'\)/);
+  assert.match(schema, /status\s+contract_status\s+not null default 'open'/);
+  const sqlDir = path.join(root, 'supabase', 'v2');
+  let contractUpdates = 0;
+  for (const f of fs.readdirSync(sqlDir).filter(x => x.endsWith('.sql'))) {
+    const s = fs.readFileSync(path.join(sqlDir, f), 'utf8');
+    const re = /update\s+public\.contracts[\s\S]{0,700}?set\s[\s\S]{0,140}?status\s*=\s*case when[\s\S]{0,160}?end/g;
+    let m;
+    while ((m = re.exec(s)) !== null) {
+      contractUpdates++;
+      assert.ok(/::public\.contract_status/.test(m[0]),
+        f + ' assigns a bare-literal CASE to the contract_status enum column: ' +
+        m[0].replace(/\s+/g, ' ').slice(0, 130));
+    }
+  }
+  assert.ok(contractUpdates >= 3, 'expected the settlement statements to be found, saw ' + contractUpdates);
+  // The corrective migration exists for a project that already applied 17, since
+  // re-running 17 is not something to rely on an operator remembering.
+  const sql19 = fs.readFileSync(path.join(sqlDir, '19_settlement_enum_fix.sql'), 'utf8');
+  assert.match(sql19, /create or replace function public\.settle_trade\(/);
+  assert.match(sql19, /create or replace function public\.settle_contract\(/);
+  assert.match(sql19, /'won'::public\.contract_status/);
+  assert.match(sql19, /'lost'::public\.contract_status/);
+  assert.match(sql19, /grant execute on function public\.settle_trade\(uuid, numeric\) to authenticated;/);
+  assert.match(sql19, /grant execute on function public\.settle_contract\(uuid, numeric\) to service_role;/);
+  // investments.status is plain text, so its CASE needs no cast. Assert the
+  // schema agrees, so nobody "fixes" that one by hand and drifts from it.
+  assert.match(schema, /status\s+text\s+not null default 'active'/);
+
+  // ---- 9. A failed settlement explains itself and keeps the details ------
+  const errNodes = {};
+  const el2 = id => errNodes[id] || (errNodes[id] = { id, className: '', textContent: '', innerHTML: '', style: {} });
+  const errCtx = {
+    console, Promise, Math, Date, JSON, parseFloat, parseInt, String, Object, Array, RegExp, Number, isFinite,
+    symbol: 'BTC', quoteUnit: 'USDT', dec: 2, direction: 'up', durationSec: 60, odds: 185,
+    price: 101.5, buyPrice: 100, currentOrderId: null, records: [],
+    tradeCfg: { showCountdownCurrentStatus: false },
+    fmt: (n, d) => (parseFloat(n) || 0).toFixed(d == null ? 2 : d),
+    num2: n => String(Math.round((parseFloat(n) || 0) * 100) / 100),
+    escHtml: s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
+    renderRecords() {}, refreshTrade() {},
+    document: { getElementById: el2, querySelector: () => null, querySelectorAll: () => [] },
+    TrustApp: { settleTrade: () => Promise.reject(new Error('x')), refreshTrade() {} }
+  };
+  vm.createContext(errCtx);
+  for (const n of ['escHtml', 'num2', 'setSettling', 'settleErrorText', 'renderUnsettled']) {
+    vm.runInContext(fn(trade, n, '    '), errCtx);
+  }
+  // The raw PostgREST envelope must never reach a member.
+  const raw = '{"code":"42804","details":null,"hint":"You will need to rewrite or cast the expression.",' +
+    '"message":"column \\"status\\" is of type contract_status but expression is of type text"}';
+  const said = errCtx.settleErrorText(new Error(raw));
+  assert.ok(!said.includes('42804'), 'the PostgREST error code is not shown to the member: ' + said);
+  assert.ok(!said.includes('{'), 'the raw JSON envelope is not shown to the member: ' + said);
+  assert.ok(!said.includes('contract_status'), 'the SQL type name is not shown to the member: ' + said);
+  assert.match(said, /still open/i);
+  assert.match(said, /settle/i);
+  assert.match(errCtx.settleErrorText(new Error('Failed to fetch')), /connection dropped/i);
+  assert.match(errCtx.settleErrorText(new Error('order has not finished yet')), /not finished counting down/i);
+  assert.match(errCtx.settleErrorText(new Error('unknown order')), /order history/i);
+  assert.match(errCtx.settleErrorText(new Error('insufficient USDT balance')), /not enough balance/i);
+  // The wording open_trade actually raises, not an invented one: it contains
+  // "market", so a mapper that checked the market branch first would tell a member
+  // with a running order that the market is unavailable.
+  assert.match(errCtx.settleErrorText(new Error('an order for ETH is still running')), /already have an order running/i);
+  assert.match(errCtx.settleErrorText(new Error('unknown market ETHUSDT, available: BTC, ETH')), /not available for trading/i);
+  assert.match(errCtx.settleErrorText(new Error('unknown duration 900 for market ETH, available: 60, 120, 300')), /not available for trading/i);
+  assert.match(errCtx.settleErrorText(new Error('function public.settle_trade does not exist')), /not available for trading/i);
+  // An unrecognised message still comes through rather than being swallowed.
+  assert.match(errCtx.settleErrorText(new Error('something nobody has seen')), /something nobody has seen/);
+  // And the full trade details survive the failure, so the member can see what
+  // they placed and quote the order id to support.
+  errCtx.renderUnsettled('abcdef01-2345-6789-abcd-ef0123456789', 100, said);
+  for (const label of ['Result', 'Market', 'Direction', 'Duration', 'Payout Rate',
+                       'Purchase Amount', 'Purchase Price', 'Order ID', 'Status', 'Note']) {
+    assert.ok(el2('resultInfo').innerHTML.includes('>' + label + '<'), 'a pending result must still show ' + label);
+  }
+  assert.equal(el2('resultTitle').textContent, 'Settlement Pending');
+  assert.equal(el2('resultAmount').textContent, '--');
+  assert.equal(el2('resultRetry').style.display, '', 'a retry is offered, since settling is idempotent');
+  assert.match(el2('resultInfo').innerHTML, /abcdef01-2345-6789/, 'the order id is shown so support can find it');
+  errCtx.setSettling(false);
+  assert.equal(el2('settlingBox').style.display, 'none');
+
   console.log('PASS: clean encoding, server-settled profit and details in the result modal, priced from the database, ' +
-    'ledger-backed open/settle, admin profit-mode switch on both scopes, and a non-destructive admin list rebuild');
+    'ledger-backed open/settle, admin profit-mode switch on both scopes, a non-destructive admin list rebuild, ' +
+    'the contract_status enum cast, and a settlement failure that explains itself');
 })().catch(e => { console.error(e); process.exitCode = 1; });
