@@ -698,8 +698,11 @@
       if (window.AppConfig && window.AppConfig.walletLoginEnabled === false) {
         return { ok: false, connected: true, msg: 'Wallet sign-in is disabled. Use email and password.' };
       }
-      status('Confirm sign-in in your wallet...');
-      return walletLogin(addr);
+      // No status() call here on purpose. This used to say "Confirm sign-in in
+      // your wallet..." a second or two before the wallet was asked for anything,
+      // because the challenge still had to come back from the server. walletLogin
+      // labels its own phases now, and each one is true when it is shown.
+      return walletLogin(addr, options);
     }).then(function (result) {
       // A page that renders the outcome itself passes ownFeedback, and then must
       // not also get a toast. login.html draws a persistent line under the button
@@ -1919,7 +1922,11 @@
     }).catch(function (e) { return { ok: false, msg: e.message }; });
   }
 
-  function walletLogin(address) {
+  function walletLogin(address, options) {
+    // options is connectWallet's options, passed through so the status labels
+    // below can name the phase the member is actually in. It is optional because
+    // a caller may hold no page state to report to.
+    options = options || {};
     if (_walletLoginPromise) return _walletLoginPromise;
     address = String(address || '').trim();
     if (!address) return Promise.resolve({ ok: false, msg: 'Connect a wallet first' });
@@ -1938,6 +1945,14 @@
       return Promise.resolve({ ok: false, msg: 'Reconnect the wallet, then sign in' });
     }
 
+    // Report what is actually happening. The label used to say "Confirm sign-in
+    // in your wallet" from the moment this started, which is a second or two
+    // before the wallet is asked for anything: the challenge has to come back
+    // from the server first, and the message the member reads does not exist
+    // until it does. Saying "sign in" during a silent wait is what made this feel
+    // stuck. The two phases are now named separately.
+    if (typeof options.onStatus === 'function') options.onStatus('Opening your wallet...');
+
     _walletLoginPromise = DB.walletAuth('nonce', { address: address }).catch(function (e) {
       // Before the wallet-login function existed this whole path refused, after
       // connecting, with "Wallet sign-in is not available on this build" - which
@@ -1953,6 +1968,8 @@
       // check out, because the checker and the signer would be reading the same
       // tampered string.
       if (!ch || !ch.message || !ch.nonce) throw new Error('The server did not return a sign-in request');
+      // Only now is the wallet actually going to be asked to do something.
+      if (typeof options.onStatus === 'function') options.onStatus('Sign the message in your wallet...');
       return signer.request({
         method: 'personal_sign',
         // EIP-1193 wallets expect UTF-8 bytes encoded as 0x hex.
@@ -1960,6 +1977,7 @@
           return b.toString(16).padStart(2, '0');
         }).join(''), address]
       }).then(function (signature) {
+        if (typeof options.onStatus === 'function') options.onStatus('Finishing sign-in...');
         return DB.walletAuth('verify', { address: address, nonce: ch.nonce, signature: signature })
           .then(function (out) {
             if (String(out.address || '').toLowerCase() !== address.toLowerCase()) {

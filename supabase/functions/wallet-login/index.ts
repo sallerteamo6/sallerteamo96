@@ -212,13 +212,25 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "Unknown action" }, 400);
     }
 
-    // ---- 2. Consume the challenge ----------------------------------------
+    // ---- 2. Consume the challenge, and look the account up, together ------
     // Single use, and burnt whatever happens next, so a captured signature
     // cannot be replayed against a second address.
-    const claim = await rpc("wallet_consume_nonce", {
-      p_address: addr,
-      p_nonce: String(body?.nonce || ""),
-    });
+    //
+    // These two used to run one after the other and cost two round trips. The
+    // lookup is a read and the consume is a write to a different row, so they
+    // cannot conflict, and a failed consume still rejects everything below: the
+    // result is only used after claim.ok is confirmed. Measured on this project,
+    // verify took 2.5-3.1s as a chain of four or five sequential calls; running
+    // the independent ones together is most of the difference between that and
+    // something that feels immediate.
+    const [claim, linked] = await Promise.all([
+      rpc<{ ok: boolean; address: string; message: string; reason?: string }>("wallet_consume_nonce", {
+        p_address: addr,
+        p_nonce: String(body?.nonce || ""),
+      }),
+      rpc<{ uid: string; email: string } | null>("wallet_user_email", { p_address: addr }).catch(() => null),
+    ]);
+
     if (!claim?.ok) {
       const why: Record<string, string> = {
         no_challenge: "Sign-in expired before it was signed. Try again.",
@@ -264,7 +276,7 @@ Deno.serve(async (req) => {
     // address is already on another profile, so an address cannot be attached
     // twice and take a balance with it.
     const email = derivedEmail(addr);
-    let link0 = await rpc<{ uid: string; email: string } | null>("wallet_user_email", { p_address: addr });
+    let link0: { uid: string; email: string } | null = linked;
 
     if (!link0?.uid) {
       // First time this wallet has been seen. The password is random and is
@@ -293,36 +305,33 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "The account could not be prepared. Try again." }, 500);
     }
 
-    // The insert trigger in 06_auth.sql sets account from the email, so a wallet
-    // profile is created with the derived placeholder and rewritten here to the
-    // real 0x address. This also fails if the address is already on another
-    // profile, which is the point.
-    try {
-      await rpc("wallet_link_profile", {
-        p_uid: link0.uid,
-        p_address: addr,
-        p_email: link0.email,
-      });
-    } catch (e) {
-      const message = String((e as Error)?.message || e);
-      if (/already linked/i.test(message)) {
-        return json(
-          { ok: false, error: "That wallet is already linked to another account. Sign in with email and password." },
-          409,
-        );
-      }
-      throw e;
-    }
-
-    // ---- 5. Hand back a session ------------------------------------------
+    // ---- 5. Link the profile and mint the session, together ---------------
+    // Both need only the uid and the email, which are both settled by now, and
+    // neither reads what the other writes: the link writes public.users, the
+    // mint talks to GoTrue. So they run at the same time instead of one after
+    // the other, which is one round trip instead of two.
+    //
     // generate_link does not send an email, it mints a one-time token. The
     // client exchanges it for a session with verifyOtp, so no long-lived
     // credential is ever passed to the browser and the password generated above
     // is never transmitted anywhere.
-    const link = await authAdmin("/admin/generate_link", "POST", {
-      type: "magiclink",
-      email: link0.email,
-    });
+    //
+    // The insert trigger in 06_auth.sql sets account from the email, so a wallet
+    // profile is created with the derived placeholder and rewritten here to the
+    // real 0x address. This also fails if the address is already on another
+    // profile, which is the point.
+    const [, link] = await Promise.all([
+      rpc("wallet_link_profile", {
+        p_uid: link0.uid,
+        p_address: addr,
+        p_email: link0.email,
+      }),
+      authAdmin("/admin/generate_link", "POST", {
+        type: "magiclink",
+        email: link0.email,
+      }),
+    ]);
+
     // Raw GoTrue REST returns these fields at the top level. Only auth-js
     // wraps them in `properties`; reading that wrapper here lost every token.
     const tokenHash = link?.hashed_token || link?.properties?.hashed_token;
@@ -344,7 +353,14 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "This account is suspended or banned. Please contact support." }, 403);
     }
     if (/already linked/i.test(message)) {
-      return json({ ok: false, error: "This wallet has conflicting account records. Please contact support." }, 409);
+      // wallet_link_profile is what refuses an address that is already on a
+      // different profile. That is a member-facing answer, not an operator one,
+      // so it keeps its own wording instead of falling through to the generic
+      // conflicting-records message below.
+      return json(
+        { ok: false, error: "That wallet is already linked to another account. Sign in with email and password." },
+        409,
+      );
     }
     return json({ ok: false, error: "Wallet sign-in is not set up on the server yet." }, 500);
   }
