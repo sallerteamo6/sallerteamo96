@@ -400,17 +400,48 @@ var TrustDB = (function () {
     },
 
     // Call a database function. Errors from a plpgsql `raise exception` arrive
-    // as { message, code, details }; keep the message, drop the noise.
+    // as a PostgREST envelope:
+    //   {"code":"22023","details":null,"hint":null,"message":"no live price for BTC: ..."}
+    // and an unknown parameter comes back as
+    //   {"code":"PGRST202","message":"Could not find the function public.f(a,b) ..."}
+    //
+    // q() puts that body into the Error text, which is right for a console and
+    // wrong for a form: an operator was shown a whole JSON envelope where a
+    // sentence belongs. So the envelope is parsed and `message` is preferred,
+    // with `hint` appended when it adds something. Anything unparseable falls
+    // back to the raw text rather than being swallowed.
     rpc: function (name, args) {
       var self_ = this;
       return this.q('rpc/' + name, { method: 'POST', body: args || {} })
         .catch(function (e) {
-          if (e && /HTTP 400/.test(e.message)) {
-            var m = e.message.match(/: (.*)$/);
-            throw new Error(m ? m[1] : e.message);
-          }
-          throw e;
+          throw new Error(self_._rpcErrorText(e, name));
         });
+    },
+
+    _rpcErrorText: function (e, name) {
+      var raw = e && e.message ? String(e.message) : String(e);
+      // Strip the "HTTP <status> <path>: " prefix q() adds, keeping the body.
+      var body = raw.replace(/^HTTP\s+\d+\s+\S*\s*/, '');
+      var json = null;
+      try { json = JSON.parse(body); } catch (e2) { json = null; }
+
+      if (!json || typeof json !== 'object') {
+        // Not an envelope. Leave it alone rather than inventing a message.
+        return raw;
+      }
+      var msg = json.message || json.msg || json.error_description || json.error;
+      if (!msg || typeof msg !== 'string') return raw;
+
+      // A function that does not exist, or was called with a parameter it does
+      // not have, is an operator problem and says which.
+      if (json.code === 'PGRST202' || /Could not find the function/i.test(msg)) {
+        return 'The database function ' + name + ' is not available on this server. ' +
+          'It may not have been deployed, or it was called with the wrong parameters.';
+      }
+      if (json.hint && json.hint !== msg && !/^no live price/i.test(msg)) {
+        return msg + ' (' + json.hint + ')';
+      }
+      return msg;
     },
 
     // =====================================================================
@@ -436,7 +467,14 @@ var TrustDB = (function () {
               price: parseFloat(r.price_usdt) || 0,
               fetchedAt: r.fetched_at,
               ageSec: r.age_sec,
-              tradable: r.tradable === true
+              // The server's own verdict on this price, with the same freshness
+              // limit exchange_coins applies. `fromFeed` is explicit rather than
+              // left for each page to infer from the key existing: a page that
+              // reads the wrong field falls back to the seeded snapshot and shows
+              // a confident stale number, which is exactly the bug this shape
+              // exists to prevent.
+              tradable: r.tradable === true,
+              fromFeed: true
             };
           });
           return out;

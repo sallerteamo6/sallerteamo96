@@ -222,6 +222,129 @@ test('the feed never reads its credentials from the shipped config', () => {
   assert.match(feed, /Never hard-code them here/);
 });
 
+test('the feed re-asserts USDT every run, so it never goes stale', () => {
+  // Found live: the migration seeds USDT at 1 and nothing ever refreshed it, so
+  // its fetched_at aged past the limit and every USDT -> BTC swap was refused -
+  // the common direction, failing on the one coin that can never be stale. The
+  // feed now writes USDT with a fresh timestamp and price 1 on every run.
+  assert.match(feed, /symbol:\s*'USDT',\s*price_usdt:\s*1,\s*source:\s*'fixed',\s*fetched_at:\s*stamped/);
+  assert.doesNotMatch(feed, /SYMBOLS = \[[^\]]*'USDT'/);
+  // And the feed reports the consequence rather than leaving it to be found later.
+  assert.match(feed, /verifyTradable/);
+  assert.match(feed, /not tradable yet/);
+});
+
+test('every coin the exchange offers is tradable after a feed run', () => {
+  // The invariant, in the form that actually caught the bug: whatever the feed
+  // writes must satisfy the same freshness rule the exchange applies. USDT is the
+  // one that failed, and only because nothing wrote it a second time.
+  const written = ['BTC', 'ETH', 'SOL', 'TRX', 'BNB'];
+  assert.match(feed, new RegExp('SYMBOLS = \\[' + written.map((c) => `'${c}'`).join(', ') + '\\]'));
+  // USDT is written but never fetched, so its price is a constant.
+  assert.match(feed, /price_usdt: 1/);
+  assert.doesNotMatch(feed, /pair\('USDT'\)|'USDTUSDT'/);
+});
+
+test('an RPC error reaches the page as a sentence, not a JSON envelope', () => {
+  // An operator was shown {"code":"22023",...,"message":"no live price for BTC"}
+  // in a toast. rpc() only unwrapped on HTTP 400 and even then returned the body.
+  const m = db.match(/_rpcErrorText:[\s\S]*?\n    \},/);
+  assert.ok(m, '_rpcErrorText not found in db.js');
+  assert.match(m[0], /JSON\.parse/);
+  assert.match(m[0], /json\.message \|\| json\.msg/);
+  // A missing function is an operator problem and must say which function.
+  assert.match(m[0], /PGRST202/);
+  assert.match(m[0], /is not available on this server/);
+  // Unparseable input falls back rather than being swallowed.
+  assert.match(m[0], /return raw/);
+});
+
+test('the balance adjuster shows a live price before an adjustment is applied', () => {
+  const adj = fs.readFileSync(path.join(root, 'admin-adjust.html'), 'utf8');
+  assert.match(adj, /id="adjPrice"/);
+  assert.match(adj, /DB\.getExchangePrices\(\)/);
+  // The coin's own rate and the value of the typed amount, both from the server.
+  assert.match(adj, /1 ' \+ coin \+ ' = ' \+ money\(p\.price/);
+  assert.match(adj, /' = ' \+ money\(amt \* p\.price, 2\) \+ ' USDT'/);
+  // A coin with no price says so rather than implying a rate of zero.
+  assert.match(adj, /No live price for/);
+  // And a stale price is labelled, not silently applied.
+  assert.match(adj, /adj-price-stale/);
+  // Updated when the coin or amount changes, and on a timer.
+  assert.match(adj, /cSel\.onchange = function \(\) \{ refreshBal\(\); renderAdjPrice\(\); \}/);
+  assert.match(adj, /getElementById\('adjAmount'\)\.addEventListener\('input', renderAdjPrice\)/);
+  assert.match(adj, /setInterval\(refreshAdjPrices, 20000\)/);
+  // It reads the server's price. No price feed in the admin page itself.
+  assert.doesNotMatch(adj, /api\.binance\.com|ticker\/price/);
+});
+
+test('the account page reads prices from the server, not the seeded snapshot', () => {
+  // Found live: every coin showed a static figure. getCachedPrice() read
+  // TrustApp.findCoin().price - the number fixed in the products table when the
+  // markets were seeded - and cached it for the life of the page. BTC was valued
+  // at 77,000 while the feed said 85,000.
+  const acct = fs.readFileSync(path.join(root, 'account.html'), 'utf8');
+  assert.match(acct, /DB\.getExchangePrices\(\)/);
+  assert.match(acct, /_priceCache = map \|\| \{\}/);
+  // The fallback snapshot is still allowed, but only for a coin the feed does not
+  // carry, and it is labelled. It is never used for a coin that has a live price.
+  assert.match(acct, /static price &#183; not in the live feed/);
+  assert.match(acct, /balance-price-live/);
+  assert.match(acct, /balance-price-stale/);
+  // Three states, because they mean different things to someone holding the money.
+  assert.match(acct, /p\.fromFeed && p\.tradable/);
+  assert.match(acct, /} else if \(p\.fromFeed\) \{/);
+});
+
+test('the price shape is explicit, so a page cannot read the wrong field', () => {
+  // Found live: the account page asked for p.live, which getExchangePrices does
+  // not return, so every coin silently fell through to the static snapshot while
+  // the exchange - reading p.tradable - worked fine on the same data.
+  const m = db.match(/getExchangePrices:[\s\S]*?\n    \},/);
+  assert.ok(m, 'getExchangePrices not found in db.js');
+  assert.match(m[0], /tradable: r\.tradable === true/);
+  assert.match(m[0], /fromFeed: true/);
+  // And the account page must use the field that exists.
+  const acct = fs.readFileSync(path.join(root, 'account.html'), 'utf8');
+  assert.doesNotMatch(acct, /p\.live\b/);
+});
+
+test('loading prices does not wait for the session to restore', () => {
+  // Found live: the refreshPrices() call landed inside the `if (uid)` block that
+  // only runs once the async session restore resolves, so on a normal first paint
+  // the prices were never fetched at all and the page showed seeded prices until
+  // something else forced a repaint. Prices are public and must load regardless.
+  const acct = fs.readFileSync(path.join(root, 'account.html'), 'utf8');
+  const gate = acct.indexOf('if (TrustApp.getBalances) {');
+  assert.notEqual(gate, -1);
+  // The gate closes before the refresh starts, i.e. refreshPrices() is outside it.
+  const after = acct.slice(gate);
+  const close = after.indexOf('renderBalances();\n        }\n      }\n    }');
+  assert.notEqual(close, -1, 'could not find the end of the uid gate');
+  const tail = after.slice(close);
+  assert.match(tail, /refreshPrices\(\);/, 'refreshPrices must run outside the session gate');
+  assert.match(tail, /setInterval\(refreshPrices, 30000\)/);
+  // And the price feed is not started by the page; it is a separate process.
+  assert.doesNotMatch(acct, /api\.binance\.com|ticker\/price/);
+});
+
+test('the total says how much of it is not a live price', () => {
+  // A total a member cannot date is not one they can act on.
+  const acct = fs.readFileSync(path.join(root, 'account.html'), 'utf8');
+  assert.match(acct, /id="balPriceAge"/);
+  assert.match(acct, /live prices updated/);
+  assert.match(acct, /not at a live price/);
+  assert.match(acct, /total-note-warn/);
+});
+
+test('the deposits page no longer promises the coin is credited as sent', () => {
+  // It now credits USDT at the live price, so the label has to say that.
+  const funds = fs.readFileSync(path.join(root, 'admin-funds.html'), 'utf8');
+  assert.doesNotMatch(funds, /credited in the deposited asset/);
+  assert.match(funds, /credited as USDT at the live price/);
+});
+
+
 // ---------------------------------------------------------------------------
 //  The arithmetic, against the same rounding the SQL uses.
 // ---------------------------------------------------------------------------

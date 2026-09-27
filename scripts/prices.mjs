@@ -68,9 +68,6 @@ if (!URL_ || !KEY) {
  * Every coin a member can actually hold. Kept as a list rather than derived from
  * coin_addresses on purpose: that table is what the site shows as a deposit
  * address, and a row appearing there must not silently start being priced.
- * USDT is seeded by the migration at exactly 1 and is not fetched, because
- * USDT/USDT on Binance is a real market that moves a few cents and using it
- * would make a USDT balance drift for no reason.
  */
 const SYMBOLS = ['BTC', 'ETH', 'SOL', 'TRX', 'BNB'];
 
@@ -101,17 +98,25 @@ async function fetchPrices() {
 }
 
 async function save(rows) {
-  if (!rows.length) return 0;
+  // USDT goes in with every run, at exactly 1, with a fresh timestamp.
+  //
+  // It is not fetched: USDT/USDT is a real market on Binance that moves a few
+  // cents, and using it would make a USDT balance drift for no reason. But it
+  // still has to be written every run, because price_of_usdt and
+  // list_live_prices judge freshness from fetched_at. Leaving USDT's row to the
+  // migration's insert meant its age grew forever, and after five minutes every
+  // USDT -> BTC swap was refused - the common direction, failing on the coin
+  // that can never be stale. Re-asserting 1 on each run means fetched_at records
+  // when the feed last confirmed it, which is the thing being checked.
+  const stamped = new Date().toISOString();
+  const values = [
+    ...rows.map((r) => ({ symbol: r.symbol, price_usdt: r.price, source: 'binance', fetched_at: stamped })),
+    { symbol: 'USDT', price_usdt: 1, source: 'fixed', fetched_at: stamped }
+  ];
+
   // Upsert through PostgREST with the service key, which bypasses RLS. The table
   // grants no insert or update to anon or authenticated, so this is the only
   // path that can write it.
-  const values = rows.map((r) => ({
-    symbol: r.symbol,
-    price_usdt: r.price,
-    source: 'binance',
-    fetched_at: new Date().toISOString()
-  }));
-
   const res = await fetch(`${URL_.replace(/\/+$/, '')}/rest/v1/prices?on_conflict=symbol`, {
     method: 'POST',
     headers: {
@@ -126,12 +131,43 @@ async function save(rows) {
   return values.length;
 }
 
+/*
+ * Did every coin the exchange offers end up tradable? A price that was written
+ * but is already past the limit, or a coin missing entirely, is invisible from
+ * the feed's own output and shows up much later as a refused swap. Cheap to check
+ * here, so it is checked here.
+ */
+async function verifyTradable() {
+  const res = await fetch(`${URL_.replace(/\/+$/, '')}/rest/v1/rpc/list_live_prices`, {
+    method: 'POST',
+    headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_max_age_sec: 300 })
+  });
+  if (!res.ok) return null;
+  const rows = await res.json();
+  const stale = (rows || []).filter((r) => !r.tradable).map((r) => r.symbol);
+  return { total: (rows || []).length, stale };
+}
+
 async function once() {
   const prices = await fetchPrices();
   const n = await save(prices);
   const stamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
-  console.log(`${stamp}  updated ${n}/${SYMBOLS.length} prices`);
+  console.log(`${stamp}  wrote ${n} prices (${prices.length} from binance + USDT at 1)`);
   for (const p of prices) console.log(`  ${p.symbol.padEnd(5)} ${p.price}`);
+  console.log(`  ${'USDT'.padEnd(5)} 1  (fixed)`);
+
+  const check = await verifyTradable().catch(() => null);
+  if (check) {
+    if (check.stale.length) {
+      // Not fatal: the next run fixes it, and nothing has been quoted at a bad
+      // price in the meantime. But it is the difference between a working
+      // exchange and a refused one, so it is said out loud.
+      console.warn(`  ! not tradable yet: ${check.stale.join(', ')}`);
+    } else {
+      console.log(`  all ${check.total} coins tradable`);
+    }
+  }
   return n;
 }
 

@@ -9,11 +9,11 @@
   <title>Trust</title>
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="img/logo.png">
-  <link rel="stylesheet" href="styles.css">
-  <script src="scripts/config.js?v=20260927-wallet6"></script>
+  <link rel="stylesheet" href="styles.css?v=20260927-wallet8">
+  <script src="scripts/config.js?v=20260927-wallet8"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927-wallet3"></script>
-  <script src="app.js?v=20260927-wallet3"></script>
+    <script src="scripts/db.js?v=20260927-wallet8"></script>
+  <script src="app.js?v=20260927-wallet8"></script>
 </head>
 <body class="account-page">
 
@@ -69,7 +69,8 @@
 
     <div class="total-balance">
       <div class="total-label" data-i18n="acc.estimatedTotal">Estimated Total Value</div>
-      <div class="total-value" id="balTotal">$ 0.00</div>
+          <div class="total-value" id="balTotal">$ 0.00</div>
+          <div class="total-note" id="balPriceAge"></div>
     </div>
 
     <div class="wallet-list" id="walletList"></div>
@@ -101,7 +102,10 @@
 
     // Cache for instant rendering
     var _balanceCache = null;
+    // symbol -> { price, live, ageSec, fetchedAt }. Replaced wholesale by
+    // loadLivePrices() so a coin the feed stopped reporting loses its live badge.
     var _priceCache = {};
+    var _priceLoadedAt = 0;
     var _renderScheduled = false;
 
     function walletCoins(b) {
@@ -117,12 +121,57 @@
       return '<div class="wallet-icon"><img src="' + src + '" alt="' + c + '" onerror="this.style.display=\'none\';this.parentNode.style.background=\'' + color + '\';this.parentNode.style.color=\'#fff\';this.parentNode.style.fontWeight=\'800\';this.parentNode.textContent=\'' + c.charAt(0) + '\';"></div>';
     }
 
+    // ---------------------------------------------------------------------
+    //  Prices are read from the server, not from the seeded market snapshot.
+    //
+    //  This used to take the price from TrustApp.findCoin(), which is the
+    //  snapshot in the products table - a number fixed when the markets were
+    //  seeded and never moved. It was also cached in _priceCache for the life of
+    //  the page, so even a corrected snapshot would not have shown. Every coin
+    //  looked static because every coin was static.
+    //
+    //  It now reads public.prices, the same table the exchange and the balance
+    //  adjuster read, so one number is shown everywhere and it is the number a
+    //  swap would actually use. A coin with no live price is labelled rather
+    //  than quietly valued at a stale figure, because a member reading a total
+    //  has no way to tell which rows are real.
+    // ---------------------------------------------------------------------
     function getCachedPrice(sym) {
-      if (_priceCache[sym] !== undefined) return _priceCache[sym];
+      var live = _priceCache[sym];
+      if (live !== undefined) return live;
       var d = TrustApp.findCoin ? TrustApp.findCoin(sym) : null;
-      var price = d ? (parseFloat(d.price) || 0) : 0;
-      _priceCache[sym] = price;
-      return price;
+      var p = { price: d ? (parseFloat(d.price) || 0) : 0, fromFeed: false, tradable: false, ageSec: null };
+      _priceCache[sym] = p;
+      return p;
+    }
+
+    function loadLivePrices() {
+      if (!window.DB || !DB.getExchangePrices) return Promise.resolve(false);
+      return DB.getExchangePrices().then(function (map) {
+        // Replace, not merge: a coin the feed has stopped reporting must lose its
+        // live badge rather than keep showing the last good price as current.
+        //
+        // `tradable` is the server's own verdict, computed with the same
+        // freshness limit exchange_coins applies. Reading a `live` flag here
+        // instead is what made every coin fall back to the static snapshot: the
+        // key did not exist, so every price looked like it had come from
+        // somewhere else, and BTC was valued at the seeded 77,000 rather than
+        // the live rate.
+        _priceCache = map || {};
+        _priceLoadedAt = Date.now();
+        return true;
+      }).catch(function () { return false; });
+    }
+
+    function refreshPrices() {
+      return loadLivePrices().then(function (ok) { scheduleRender(); return ok; });
+    }
+
+    function fmtAge(sec) {
+      if (sec == null) return '';
+      if (sec < 60) return sec + 's ago';
+      if (sec < 3600) return Math.round(sec / 60) + 'm ago';
+      return Math.round(sec / 3600) + 'h ago';
     }
 
     function renderBalances() {
@@ -133,28 +182,70 @@
       _balanceCache = b;
       function usdOf(sym, bal) {
         if (sym === 'USDT') return parseFloat(bal) || 0;
-        var price = getCachedPrice(sym);
-        return (parseFloat(bal) || 0) * price;
+        var p = getCachedPrice(sym);
+        return (parseFloat(bal) || 0) * p.price;
       }
       var coins = walletCoins(b);
       var total = 0;
+      var held = 0;          // value of coins the member actually holds
+      var staticHeld = 0;    // of which is valued at a non-live price
       var html = coins.map(function (c) {
         var bal = parseFloat(b[c]) || 0;
+        var p = getCachedPrice(c);
         var usd = usdOf(c, bal);
         total += usd;
+        if (bal > 0 && c !== 'USDT') {
+          held += usd;
+          if (!p.fromFeed || !p.tradable) staticHeld += usd;
+        }
         var dec = (c === 'BTC' || c === 'ETH') ? 4 : 2;
+        // Three states, because they mean different things to a member holding
+        // the money: a fresh server price, a server price the feed has stopped
+        // refreshing, and no server price at all so the seeded snapshot is being
+        // used. A confident dollar figure with no stated age is not something
+        // anyone can act on.
+        var tag = '';
+        if (c !== 'USDT') {
+          if (p.fromFeed && p.tradable) {
+            tag = '<p class="balance-price-live">live &#183; ' + fmtAge(p.ageSec) + '</p>';
+          } else if (p.fromFeed) {
+            tag = '<p class="balance-price-stale">live price, ' + fmtAge(p.ageSec) + ' &#183; feed is behind</p>';
+          } else if (p.price > 0) {
+            tag = '<p class="balance-price-static">static price &#183; not in the live feed</p>';
+          } else {
+            tag = '<p class="balance-price-static">no price for this coin</p>';
+          }
+        }
         return '<div class="wallet-item' + (c === 'USDT' ? ' main-wallet' : '') + '" onclick="location.href=\'funds.html?t=recharge\'">'
           + '<div class="wallet-info">' + coinIcon(c)
           + '<div class="wallet-details"><h4 class="coin-name">' + c + '</h4>'
           + '<p class="coin-subtitle">' + (COIN_NAMES[c] || (c + ' Coin')) + '</p></div></div>'
           + '<div class="wallet-balance">'
-          + '<p class="balance-usd">$ ' + fmt(usd, 2) + '</p>'
+          + '<p class="balance-usd">' + (usd > 0 || c === 'USDT' ? '$ ' + fmt(usd, 2) : '--') + '</p>'
           + '<p class="balance-coin">' + fmt(bal, dec) + ' ' + c + '</p>'
+          + tag
           + '</div></div>';
       }).join('');
       var listEl = document.getElementById('walletList');
       if (listEl) listEl.innerHTML = html;
       setTxt('balTotal', '$ ' + fmt(total, 2));
+
+      // Say how fresh the figures are, and how much of the total is not live.
+      // A member cannot act on a total they do not know the age of.
+      var age = document.getElementById('balPriceAge');
+      if (age) {
+        var newest = 0, anyFeed = false;
+        for (var k in _priceCache) {
+          var q = _priceCache[k];
+          if (q && q.fromFeed) { anyFeed = true; if (q.ageSec > newest) newest = q.ageSec; }
+        }
+        var bits = [];
+        if (anyFeed) bits.push(newest ? 'live prices updated ' + fmtAge(newest) : 'live prices loaded');
+        else bits.push('no live prices - start scripts/prices.mjs');
+        if (staticHeld > 0) bits.push('includes $' + fmt(staticHeld, 2) + ' not at a live price');
+        age.textContent = bits.join(' · ');
+        age.className = 'total-note' + (staticHeld > 0 ? ' total-note-warn' : '');
+      }
       var vb = document.getElementById('vipBadge');
       if (vb && TrustApp.guessVip && uid) {
         var v = TrustApp.guessVip(uid);
@@ -209,6 +300,23 @@
         }
       }
     }
+
+    // Live prices, and re-read on a timer. Deliberately at top level, not inside
+    // the block above: TrustApp.getUserId() is null until the async session
+    // restore resolves, so anything placed in there does not run on a normal
+    // first paint - which is exactly where the prices were being fetched from,
+    // and why every coin showed a static figure until something else forced a
+    // repaint. Prices do not depend on being signed in, so they are not gated on
+    // the session.
+    //
+    // Thirty seconds: the exchange holds a price to five minutes, so this keeps
+    // the figure well inside the same window and visibly moving, and the age is
+    // displayed either way.
+    refreshPrices();
+    setInterval(refreshPrices, 30000);
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) refreshPrices();
+    });
 
     renderBalances();
 
