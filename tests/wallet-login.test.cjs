@@ -103,7 +103,16 @@ function client(s, options = {}) {
   c.window = {location: {href: 'https://site.example/login.html', origin: 'https://site.example', search: ''}, AppConfig: {walletLoginEnabled: true}};
   c.document = {getElementById: id => buttons[id] || null};
   c.fetch = async (url, init) => {
+    if (init.method === 'GET') {
+      c.diagnostics = (c.diagnostics || 0) + 1;
+      assert.equal(init.body, undefined);
+      assert.equal(init.headers, undefined);
+      assert.equal(init.credentials, 'omit');
+      if (options.offline) throw new Error('Failed to fetch');
+      return json({}, options.preflightStatus || 405);
+    }
     c.sent.push(JSON.parse(init.body));
+    if (options.preflightStatus) throw new TypeError('Failed to fetch');
     if (options.offline) throw new Error('Failed to fetch');
     if (options.httpStatus) return json({message: 'Server unavailable'}, options.httpStatus);
     return s.handler(new Request(url, init));
@@ -335,4 +344,17 @@ test('bundled Supabase SDK exchanges the token and restores the wallet session a
   assert.equal(data.session.user.email, s.users[0].email);
   assert.equal(s.users.length, 1);
   sdk.auth.stopAutoRefresh(); reloaded.auth.stopAutoRefresh();
+});
+
+for (const status of [404, 401, 403, 405]) test('failed browser preflight reveals real server status ' + status, async () => {
+  const s = server(), c = client(s, {preflightStatus: status});
+  const result = await c.connectWallet({redirect: false});
+  assert.equal(result.ok, false);
+  assert.equal(c.diagnostics, 1);
+  assert.equal(c.sent.length, 1, 'diagnosis never retries a sign-in POST');
+  assert.equal(c.signed.length, 0);
+  assert.equal(c.activated.length, 0);
+  assert.equal(s.users.length, 0);
+  assert.doesNotMatch(result.msg, /check your connection/i);
+  assert.match(result.msg, status === 404 ? /not set up|not been enabled/ : (status === 405 ? /reachable.*blocked/ : /access is not configured/));
 });

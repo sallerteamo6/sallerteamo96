@@ -1,6 +1,6 @@
 # Wallet login repair — 27 September 2026
 
-For this update, follow **WALLET-LOGIN-FIX.md** first. Apply migration 26 and redeploy the wallet-login function as well as uploading the website files. The instructions below describe earlier project updates.
+For this update, follow **WALLET-LOGIN-FIX.md** first. Run WALLET-SETUP.sql and deploy the wallet-login function as well as uploading the website files. The live check confirmed the function is missing (404). The instructions below describe earlier project updates.
 
 # Install this update
 

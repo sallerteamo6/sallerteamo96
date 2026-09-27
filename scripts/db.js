@@ -53,7 +53,7 @@ var TrustDB = (function () {
     // Bumped whenever the auth/bootstrap path changes, so a page can prove
     // which build the browser actually loaded. A stale cached db.js was
     // indistinguishable from a bug that had not been fixed yet.
-    VERSION: 'v2.6.1-wallet-login-repair',
+    VERSION: 'v2.6.2-wallet-deployment-diagnostics',
     _diag: [],
     _diagLog: function (msg) {
       try {
@@ -553,6 +553,7 @@ var TrustDB = (function () {
     // action: 'nonce'  -> { message, nonce, expires_at }
     // action: 'verify' -> { token_hash, email, address }
     walletAuth: function (action, payload) {
+      var self_ = this;
       if (!this.ENABLED) return Promise.reject(new Error('Database not configured'));
       var body = Object.assign({ action: action }, payload || {});
       var controller = new AbortController();
@@ -587,8 +588,41 @@ var TrustDB = (function () {
         });
       }).catch(function (e) {
         if (e && e.name === 'AbortError') throw new Error('The sign-in server took too long to respond. Try again.');
-        throw e;
+        if (e && e.status) throw e;
+        // A missing Edge Function returns a failing OPTIONS response. Browsers
+        // hide that response and reject POST as "Failed to fetch", even when
+        // the network is fine. A simple GET needs no preflight and can reveal
+        // the gateway's real status. It sends no signature, address or API key.
+        return self_.walletAuthReachability().then(function (diagnosis) {
+          if (diagnosis.status === 404) {
+            var missing = new Error('Wallet sign-in has not been enabled on this server. Please use email login or contact support.');
+            missing.status = 404;
+            throw missing;
+          }
+          if (diagnosis.status === 401 || diagnosis.status === 403) {
+            var blocked = new Error('Wallet sign-in server access is not configured. Please use email login or contact support.');
+            blocked.status = diagnosis.status;
+            throw blocked;
+          }
+          if (diagnosis.reachable) {
+            throw new Error('The server is reachable, but wallet sign-in is blocked. Please contact support.');
+          }
+          throw e;
+        });
       }).finally(function () { clearTimeout(timer); });
+    },
+
+    // Diagnostics only: a 405 from an older deployed function also proves that
+    // it exists. No no-cors requests, proxy services, or automatic POST retries.
+    walletAuthReachability: function () {
+      var controller = new AbortController();
+      var timer = setTimeout(function () { controller.abort(); }, 6000);
+      return fetch(this.walletAuthUrl(), {
+        method: 'GET', credentials: 'omit', cache: 'no-store', signal: controller.signal
+      }).then(function (res) {
+        return { reachable: true, status: res.status };
+      }).catch(function () { return { reachable: false, status: 0 }; })
+        .finally(function () { clearTimeout(timer); });
     },
 
     // The Edge Function hands back a one-time token rather than a password, so

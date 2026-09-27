@@ -1,24 +1,49 @@
 # Wallet login repair — 27 September 2026
 
-## Install this update
+## Fix the error in your screenshot
 
-Website upload alone does not install the server fix. Complete all three parts:
+The live Supabase project configured in this archive was checked on 27 September
+2026. `/auth/v1/settings` returned **200**, but both GET and OPTIONS requests to
+`/functions/v1/wallet-login` returned **404** with:
 
-1. **Upload the updated website files** from this project folder to your existing host. The page script versions were updated so browsers request the repaired JavaScript.
-2. **Apply the database repair** in your existing Supabase project's SQL Editor. If migration 24 has not already been installed, run `supabase/v2/24_wallet_login_challenges.sql` first. Then run the complete `supabase/v2/26_wallet_login_repair.sql`. Keep your existing migrations and records; do not recreate or reset the database. Migration 26 is safe to run again.
-3. **Redeploy the wallet-login Edge Function** with the updated `supabase/functions/wallet-login/index.ts`. Disable its **Verify JWT** setting: the endpoint runs before login and verifies the wallet signature itself. For CLI deployment, the setting is now correctly located in `supabase/config.toml`.
+```json
+{"code":"NOT_FOUND","message":"Requested function was not found"}
+```
 
-In **Edge Functions → Secrets**, set `SITE_URL` to the real website origin, for example `https://your-website.com` (replace the example with your domain). This is the website named in the sign-in message. The function uses Supabase's injected `SUPABASE_SERVICE_ROLE_KEY` or the default key in `SUPABASE_SECRET_KEYS`. Do not add a service key to `scripts/config.js` or any browser file. The old instruction to create a `SUPABASE_SERVICE_KEY` secret is no longer needed; Supabase reserves the `SUPABASE_` prefix.
+This confirms that the configured project has no deployed `wallet-login`
+function. A failed browser preflight hid the 404 and produced "Could not reach
+the server". The new frontend diagnoses this condition and shows a server-setup
+error. The function still needs deployment before wallet login can work.
 
-If you deploy using the CLI, run these commands from the extracted project folder. The project reference below is the one already configured in this archive:
+## Install through the Supabase dashboard
+
+1. Extract this ZIP. In your existing project's [SQL Editor](https://supabase.com/dashboard/project/mpiqktgpgmbsljqgypzk/sql/new), paste and run the complete **WALLET-SETUP.sql** file at the top of the extracted project. It combines the required wallet migrations 24 and 26 in one transaction and can be rerun. It preserves existing users, balances, orders, roles, and member numbers. Do not reset the database.
+2. Open [Edge Functions](https://supabase.com/dashboard/project/mpiqktgpgmbsljqgypzk/functions). Choose **Deploy a new function → Via Editor**. Name the function exactly **wallet-login**. Replace the editor's `index.ts` with the entire contents of **supabase/functions/wallet-login/index.ts** from this ZIP, then deploy. If the function already exists, edit its code and deploy the update.
+3. Open the function's configuration and turn **Verify JWT** off. This endpoint runs before login; its code verifies the wallet signature before issuing a session. Do not disable database RLS.
+4. In **Edge Functions → Secrets**, set **SITE_URL** to **https://sallerteamo6.github.io**, the website origin shown in the screenshot. If your website domain differs, use that actual origin. Supabase supplies the server credential through `SUPABASE_SERVICE_ROLE_KEY` or the default key in `SUPABASE_SECRET_KEYS`; do not put a service key in the website files. Keep Email authentication enabled because wallet accounts use internal Auth email identities.
+5. Upload this ZIP's updated website files to your current host, reopen the site in Trust Wallet, and connect again. Approve both the connection and the sign-in message.
+
+A normal account will appear in User Management after successful verified sign-in.
+No private key, seed phrase, transaction, or token approval is needed for login.
+
+### If you prefer the CLI
+
+Run `WALLET-SETUP.sql` in SQL Editor first, then run these commands from the
+extracted project folder:
 
 ```sh
 supabase login
-supabase secrets set SITE_URL=https://YOUR-WEBSITE-DOMAIN --project-ref mpiqktgpgmbsljqgypzk
+supabase secrets set SITE_URL=https://sallerteamo6.github.io --project-ref mpiqktgpgmbsljqgypzk
 supabase functions deploy wallet-login --project-ref mpiqktgpgmbsljqgypzk --no-verify-jwt
 ```
 
-Use the Supabase dashboard instead if you do not use the CLI: update the function code, deploy it, disable Verify JWT, and set SITE_URL. Keep Email authentication enabled because this implementation uses an internal Auth email identity to issue a session. Wallet users do not receive or need an email confirmation.
+The function configuration is in `supabase/config.toml`. The project reference
+above is the one in `scripts/config.js`. Uploading files only to GitHub Pages
+cannot deploy a Supabase Edge Function.
+
+I did not deploy or modify the live Supabase account: deployment credentials were
+not available in this workspace. The prepared code, SQL and instructions are
+ready to apply with the project owner's Supabase access.
 
 ## What was fixed
 
@@ -43,7 +68,7 @@ Run the wallet suite with Node 22.13+ or Node 24:
 node --test tests/wallet-login.test.cjs
 ```
 
-All **22 wallet tests passed**. They execute the actual client and Edge Function code with controlled wallet, Auth REST, and database responses. They cover a single handshake, double clicks, cancelled connection/signature and retry, repeated login with the same UID, profile creation recovery, token parsing, rejection of wrong/invalid signatures and expired/reused challenges, missing sessions/profiles, network/server errors, QR fallback, new key formats, suspended accounts, admin row rendering, and safe return URLs. One test uses the project's actual bundled Supabase client to exchange a token and restore the session from storage in a fresh client instance.
+All **26 wallet tests passed**. They execute the actual client and Edge Function code with controlled wallet, Auth REST, and database responses. They cover a single handshake, double clicks, cancelled connection/signature and retry, repeated login with the same UID, profile creation recovery, token parsing, rejection of wrong/invalid signatures and expired/reused challenges, missing sessions/profiles, network/server errors, QR fallback, new key formats, suspended accounts, admin row rendering, and safe return URLs. Four additional tests reproduce a failed browser preflight and check diagnosis of missing functions, gateway blocks, and a reachable server without retrying sign-in or sending wallet data in the diagnostic request. One test uses the project's actual bundled Supabase client to exchange a token and restore the session from storage in a fresh client instance.
 
 The tests mock signature recovery and the database. They do not validate ethers' cryptography, execute the migration against a live database, or exercise a real wallet extension. The production endpoint still verifies signatures with ethers on the server.
 
