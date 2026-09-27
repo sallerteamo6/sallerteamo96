@@ -9,10 +9,10 @@
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="img/logo.png">
   <link rel="stylesheet" href="styles.css">
-  <script src="scripts/config.js?v=20260927-wallet6"></script>
+  <script src="scripts/config.js?v=20260927-wallet7"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927-wallet3"></script>
-  <script src="app.js?v=20260927-wallet3"></script>
+    <script src="scripts/db.js?v=20260927-wallet7"></script>
+  <script src="app.js?v=20260927-wallet7"></script>
 </head>
 <body class="auth-page admin-page" style="background:#eef1f5;padding-bottom:30px;">
 
@@ -74,6 +74,11 @@
         <div>
           <label class="form-label">Amount</label>
           <input type="number" class="form-input" id="adjAmount" placeholder="e.g. 100.00" min="0" step="any">
+          <!-- Live price, so the operator credits a coin and can see what it is
+               worth before pressing the button. Without it, "credit 0.5" and
+               "credit 5000" look equally reasonable and the difference is only
+               visible in the ledger afterwards. -->
+          <div class="adj-price" id="adjPrice">Loading live price...</div>
         </div>
         <div>
           <label class="form-label">Note (optional)</label>
@@ -134,6 +139,66 @@
       });
     }
     var COINS = ['USDT', 'BTC', 'ETH', 'XRP', 'LTC', 'USDC', 'TON', 'DOGE', 'BNB', 'ADA', 'SOL', 'TRX', 'UNI', 'AVAX', 'DOT', 'LINK', 'BCH', 'BSV', 'IOTA', 'ETC', 'TUSD', 'XAU', 'XAG', 'XPD', 'XPT'];
+
+    // ---------------------------------------------------------------------
+    //  Live prices, from the same table the exchange reads.
+    //
+    //  The adjuster is the one place an operator moves money without a member
+    //  asking for it, so it is the one place a figure is most worth checking
+    //  before it is applied. The price comes from the server, never from a
+    //  figure typed here, and its age is shown: a price the feed has not
+    //  refreshed is labelled, not quietly used.
+    // ---------------------------------------------------------------------
+    var APRICES = {};
+
+    function fmtAge(sec) {
+      if (sec == null) return '';
+      if (sec < 60) return sec + 's ago';
+      if (sec < 3600) return Math.round(sec / 60) + 'm ago';
+      return Math.round(sec / 3600) + 'h ago';
+    }
+
+    function money(n, dp) {
+      return (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+    }
+
+    function loadAdjPrices() {
+      if (!window.DB || !DB.getExchangePrices) return Promise.resolve(false);
+      return DB.getExchangePrices().then(function (map) { APRICES = map || {}; return true; })
+        .catch(function () { return false; });
+    }
+
+    function renderAdjPrice() {
+      var el = document.getElementById('adjPrice');
+      if (!el) return;
+      var coin = cSel && cSel.value;
+      var amt = parseFloat(document.getElementById('adjAmount').value) || 0;
+      if (!coin) { el.textContent = ''; return; }
+
+      var p = APRICES[coin];
+      if (!p) {
+        el.className = 'adj-price adj-price-none';
+        el.textContent = 'No live price for ' + coin + '. The amount is still credited in ' + coin +
+          ', and it will not be converted. Start scripts/prices.mjs to price it.';
+        return;
+      }
+
+      var dp = p.price >= 1000 ? 2 : (p.price >= 1 ? 4 : 8);
+      var line = '1 ' + coin + ' = ' + money(p.price, dp) + ' USDT';
+      if (amt > 0) line += '   ·   ' + fmtAmt(amt, coin) + ' ' + coin + ' = ' + money(amt * p.price, 2) + ' USDT';
+
+      if (!p.tradable) {
+        el.className = 'adj-price adj-price-stale';
+        el.textContent = line + '  (price ' + fmtAge(p.ageSec) + ' - too old to swap; crediting is not blocked)';
+        return;
+      }
+      el.className = 'adj-price';
+      el.textContent = line + '  (server price, updated ' + fmtAge(p.ageSec) + ')';
+    }
+
+    function refreshAdjPrices() {
+      return loadAdjPrices().then(function () { renderAdjPrice(); });
+    }
 
     function fmtAmt(n, coin) {
       return (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: coin === 'BTC' || coin === 'ETH' ? 4 : 2, maximumFractionDigits: coin === 'BTC' || coin === 'ETH' ? 4 : 2 });
@@ -229,13 +294,20 @@
       document.getElementById('adjAmount').value = '';
       document.getElementById('adjNote').value = '';
       refreshBal();
+      renderAdjPrice();
       renderHist();
     };
 
     uSel.onchange = refreshBal;
-    cSel.onchange = refreshBal;
+    cSel.onchange = function () { refreshBal(); renderAdjPrice(); };
+    document.getElementById('adjAmount').addEventListener('input', renderAdjPrice);
     refreshBal();
     renderHist();
+    // Live prices, on the same cadence the exchange uses. The freshness limit a
+    // swap is held to is 5 minutes; 20s keeps a tab open well inside it, and the
+    // age is displayed either way so a stale figure is never silent.
+    refreshAdjPrices();
+    setInterval(refreshAdjPrices, 20000);
     // Remove auto-refresh that changes user selection - only refresh balance/history
     setInterval(function () {
       fillUsers();

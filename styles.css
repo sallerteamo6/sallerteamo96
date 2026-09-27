@@ -947,6 +947,11 @@ table tr:last-child td{border-bottom:none}
 .form-card .fc-label{font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin:0 0 7px}
 .bal-chip{background:linear-gradient(135deg,#f0f4ff,#e8efff);border:1px solid #dbe4ff;border-radius:10px;padding:11px 14px;font-size:14px;color:#131f30;display:flex;align-items:center;justify-content:space-between;gap:8px}
 .bal-chip b{color:#1652f0;font-weight:800}
+/* Live price under the adjuster's amount box. Sits with the field it describes,
+   so the figure an operator is about to apply is the figure they can check. */
+.adj-price{margin-top:7px;font-size:12.5px;line-height:1.5;color:#5b6b82;font-variant-numeric:tabular-nums}
+.adj-price-stale{color:#92400e}
+.adj-price-none{color:#b45309}
 .sub-stat{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:99px;background:#fff;border:1px solid #e7eaf0;font-size:13px;font-weight:700;color:#131f30;box-shadow:0 2px 8px rgba(19,31,48,.05)}
 .sub-stat svg{color:#1652f0}
 .hero-metric{position:relative;z-index:1;text-align:right}
