@@ -63,6 +63,7 @@ const HARNESS = `<!DOCTYPE html>
     out.push((ok ? 'PASS ' : 'FAIL ') + label + (extra != null ? '  [' + extra + ']' : ''));
     document.getElementById('out').textContent = out.join('\\n');
   }
+  try {
   var ALL = ['alpha@example.test', 'bravo@example.test', 'charlie@example.test', 'delta@example.test'];
   function render() {
     var h = '';
@@ -78,7 +79,8 @@ const HARNESS = `<!DOCTYPE html>
   assert(box.getAttribute('autocomplete') === 'off', 'autocomplete=off is set on the element');
   assert(box.getAttribute('name') === 'q', 'a non-email name, so it is not treated as an identity field');
   assert(box.type === 'search', 'the field is a search box, not a free text box');
-  assert(box.getAttribute('data-lpignore') === 'true', 'password managers are told to ignore it');
+  assert(/readonly/.test(box.outerHTML), 'the box ships readonly, which is what browsers skip when autofilling');
+  assert(/data-lpignore/.test(box.outerHTML), 'password managers are told to ignore it');
 
   // Simulate the browser having filled it with the operator's own address.
   TrustApp.initSearchAutofillGuard('userSearch');
@@ -87,23 +89,49 @@ const HARNESS = `<!DOCTYPE html>
   setTimeout(function () {
     assert(box.value === '', 'a value the operator never typed is cleared', box.value);
 
+    // The guard must keep working, not just on its first pass. clear() dispatches
+    // an 'input' event to keep the page's filter in step, and that event lands on
+    // the guard's own "the operator typed this" listener - so without a guard on
+    // that path it disarms itself after one clear and the address comes back and
+    // stays. That is what the report after the first attempt showed.
+    var clears = 0;
+    for (var n = 0; n < 5; n++) {
+      box.value = 'sallerteam06@gmail.com';
+      box.__searchGuard.enforce();
+      if (box.value === '') clears++;
+    }
+    assert(clears === 5, 'the guard keeps clearing on every pass, not just the first', clears + '/5');
+
+    // A click only lifts the readonly lock. It must NOT count as typing, or a
+    // fill that Chrome applies on focus would survive from then on.
+    box.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    assert(!box.hasAttribute('readonly'), 'a click releases the readonly lock');
+    box.value = 'sallerteam06@gmail.com';
+    assert(typeof box.__searchGuard.enforce === 'function', 'the guard exposes an enforce hook for the render path');
+    box.__searchGuard.enforce();
+    assert(box.value === '', 'a fill after a click is still cleared, because a click is not typing', box.value);
+
+    // Once the operator really types, the value is theirs and stays theirs.
     box.value = 'bravo';
     box.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', bubbles: true }));
     window.dispatchEvent(new Event('load'));
     setTimeout(function () {
       assert(box.value === 'bravo', 'a typed filter survives the guard', box.value);
+      box.__searchGuard.enforce();
+      assert(box.value === 'bravo', 'and survives the enforce hook too', box.value);
 
       box.value = '';
       setTimeout(function () {
-        assert(box.value === '', 'an untouched empty box stays empty', box.value);
-        // The list itself must still show every user, which is the point.
-        assert(document.querySelectorAll('.user-name').length === ALL.length || box.value === '',
+        assert(document.querySelectorAll('.user-name').length === ALL.length,
           'the table still holds every user', document.querySelectorAll('.user-name').length);
         document.getElementById('out').textContent = out.join('\\n') + '\\nDONE\\n' +
           (out.some(function (l) { return l.indexOf('FAIL') === 0; }) ? 'RESULT:FAIL' : 'RESULT:OK');
       }, 200);
     }, 200);
   }, 200);
+  } catch (e) {
+    document.getElementById('out').textContent = out.join('\\n') + '\\nEXCEPTION: ' + (e && e.message);
+  }
 </` + `script>
 </body></html>`;
 

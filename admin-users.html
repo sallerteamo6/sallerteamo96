@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927c"></script>
-  <script src="app.js?v=20260927c"></script>
+    <script src="scripts/db.js?v=20260927d"></script>
+  <script src="app.js?v=20260927d"></script>
   <style>
     .profit-toggle{border:none;border-radius:14px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;min-width:74px;justify-content:center;}
     .profit-toggle.on{background:#07c160;color:#fff;}
@@ -90,7 +90,10 @@
     </div>
 
     <div class="admin-search">
-      <input type="search" id="userSearch" name="q" placeholder="Search email or UID..." autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-form-type="other">
+      <!-- readonly until the operator interacts: browsers skip readonly inputs
+           when autofilling, which is the only thing that reliably stopped Chrome
+           putting the signed-in admin's own address in this box. -->
+      <input type="search" id="userSearch" name="q" placeholder="Search email or UID..." autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" readonly data-lpignore="true" data-1p-ignore="true" data-form-type="other">
     </div>
 
     <div class="profit-panel">
@@ -411,6 +414,11 @@
     }
     function renderUsers() {
       var box = document.getElementById('userRows');
+      // Undo any value the browser put in the filter since the last paint. An
+      // empty filter shows everyone, so this can only help: without it a late
+      // autofill narrows the list to one admin and the page looks as if the other
+      // users have gone.
+      try { var g = document.getElementById('userSearch').__searchGuard; if (g && g.enforce) g.enforce(); } catch (e) {}
       var query = document.getElementById('userSearch').value.trim().toLowerCase();
       var all = TrustApp.getUsers();
       var users = all.filter(function (u) { return [u.email,u.account,u.uid_code,u.uid].join(' ').toLowerCase().indexOf(query)!==-1; });

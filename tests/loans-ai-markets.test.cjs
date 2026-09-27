@@ -87,6 +87,36 @@ function fn(source, name, indent = '  ') {
   assert.match(sql, /raise exception 'unknown market %, available: %'/);
   assert.match(sql, /raise exception 'unknown duration % for market %, available: %'/);
 
+  // The actual reported error was `unknown market ETHUSDT`. The home page links
+  // to trade.html?s=ETH%2FUSDT, and the whole pair was being sent as the symbol,
+  // so it reached open_trade as ETHUSDT and matched no products row.
+  const msCtx = { String };
+  vm.createContext(msCtx);
+  vm.runInContext(fn(app, 'marketSymbol'), msCtx);
+  assert.equal(msCtx.marketSymbol('ETH/USDT'), 'ETH', 'a paired symbol must reduce to its base');
+  assert.equal(msCtx.marketSymbol('eth/usdt'), 'ETH');
+  assert.equal(msCtx.marketSymbol('BTC'), 'BTC');
+  assert.match(trade, /var pairIn = \(params\.get\('s'\) \|\| 'BTC'\)/);
+  assert.match(trade, /var symbol = pairIn\.indexOf\('\/'\) >= 0 \? pairIn\.split\('\/'\)\[0\] : pairIn;/);
+  assert.match(trade, /var coinTitle = symbol \+ '\/' \+ quoteUnit;/);
+  assert.match(trade, /TrustApp\.findCoin\(pairIn\) \|\| TrustApp\.findCoin\(symbol\)/);
+  // The normaliser is the belt to those braces: even a caller that passes the
+  // whole pair again cannot reintroduce the fault.
+  assert.match(app, /var symbol = marketSymbol\(/);
+  assert.match(app, /var coin = marketSymbol\(/);
+  assert.match(dbjs, /p_symbol: String\(data\.symbol \|\| data\.pair \|\| ''\)\.toUpperCase\(\)\.split\('\/'\)\[0\]/);
+  assert.match(dbjs, /getProductTerms: function \(symbol, seconds\)[\s\S]{0,420}split\('\/'\)\[0\]/);
+
+  // ---- 2b. Every coin the front end lists is a tradable product ----------
+  const sql18 = fs.readFileSync(path.join(root, 'supabase', 'v2', '18_all_markets_and_auto_settle.sql'), 'utf8');
+  const OFFERED = ['BTC', 'ETH', 'LTC', 'XRP', 'DOGE', 'TON', 'ADA', 'BNB', 'TRX', 'UNI', 'AVAX', 'DOT',
+    'LINK', 'BCH', 'BSV', 'IOTA', 'ETC', 'USDC', 'TUSD', 'XAU', 'XAG', 'XPD', 'XPT', 'EUR', 'AUD', 'GBP'];
+  for (const c of OFFERED) {
+    assert.ok(new RegExp("\\('" + c + "',").test(sql18), 'no product row seeded for ' + c);
+  }
+  // Durations for every product, not only the twelve that existed before.
+  assert.match(sql18, /insert into public\.product_durations[\s\S]{0,240}from public\.products p[\s\S]{0,140}where p\.is_active/);
+
   // ---- 3. AI Quant reads v2's investments, and the money is server-side ---
   const aiRow = ctx.dbAiOrderToApp({
     id: 7, uid: 'e488bbf9-ac1c-4386-9cba-d35d077810db', product_id: 2,
@@ -152,16 +182,72 @@ function fn(source, name, indent = '  ') {
   assert.match(sql, /grant execute on function public\.cancel_investment\(bigint, text\) to authenticated;/);
   assert.match(sql, /if v_days <= 0 then[\s\S]{0,500}already_settled', true/);
 
+  // ---- 3b. The principal comes back when the term completes --------------
+  // settle_investment_day is superseded by 18, which adds the principal to the
+  // final day's payout. This is the "investment amount also returned" case.
+  assert.match(sql18, /create or replace function public\.settle_investment_day\(/);
+  assert.match(sql18, /v_payout := v_profit \+ \(case when v_matured then v\.principal else 0 end\);/);
+  assert.match(sql18, /'principal_returned', case when v_matured then v\.principal else 0 end/);
+  assert.match(sql18, /'days_paid', v_days/);
+  // The principal is inside the same locked transaction as the counter, which is
+  // what makes a retry safe: the guard finds no day left to settle.
+  assert.match(sql18, /for update;[\s\S]{0,1400}if v_days <= 0 then/);
+  // And the same in the unattended sweep.
+  assert.match(sql18, /create or replace function public\.settle_due_investments\(/);
+  assert.match(sql18, /v_paid := v_profit \+ \(case when v_mat then c\.principal else 0 end\);/);
+  assert.match(sql18, /for update of i skip locked/);
+  // A sweep never settles a day early: it compares the schedule's own due dates.
+  assert.match(sql18, /\(s ->> 'due_at'\)::timestamptz <= now\(\)/);
+  assert.match(sql18, /revoke all on function public\.settle_due_investments\(\) from public, anon, authenticated;/);
+  assert.match(sql18, /grant execute on function public\.settle_due_investments\(\) to service_role;/);
+  assert.ok(fs.existsSync(path.join(root, 'scripts', 'settle-investments.mjs')), 'no settlement runner script');
+  const runner = fs.readFileSync(path.join(root, 'scripts', 'settle-investments.mjs'), 'utf8');
+  assert.match(runner, /rpc\/settle_due_investments/);
+  // The service key comes from the environment only. config.js ships to every
+  // visitor, so a key read from there would be a public bypass of row level
+  // security. Comments are stripped first so the warning about it is not a hit.
+  const runnerCode = runner.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.ok(!/config\.js/.test(runnerCode), 'the runner must not read the service key from config.js');
+  assert.ok(!/require\(.*config/.test(runnerCode));
+  assert.match(runnerCode, /process\.env\.SUPABASE_SERVICE_KEY/);
+
+  // ---- 3c. All six plans exist, with the bounds the page shows ------------
+  for (const code of ['AIQ_1', 'AIQ_7', 'AIQ_15', 'AIQ_30', 'AIQ_90', 'AIQ_180']) {
+    assert.ok(new RegExp("\\('" + code + "',").test(sql18), 'no investment_products row for ' + code);
+  }
+  assert.match(sql18, /add column if not exists min_principal numeric\(24,8\);/);
+  assert.match(sql18, /add column if not exists max_principal numeric\(24,8\);/);
+  // The bounds are enforced in the database, not just drawn on the page.
+  assert.match(sql18, /if v_prod\.min_principal is not null and p_principal < v_prod\.min_principal then/);
+  assert.match(sql18, /if v_prod\.max_principal is not null and v_prod\.max_principal > 0 and p_principal > v_prod\.max_principal then/);
+  // And the page reads the catalogue instead of carrying its own copy.
+  assert.match(ai, /function loadPlans\(\)/);
+  assert.match(ai, /function renderPlans\(\)/);
+  assert.match(ai, /TrustApp\.getInvestmentProducts/);
+  assert.match(ai, /window\.addEventListener\('trustsync:investment_products', loadPlans\)/);
+  assert.match(app, /getInvestmentProducts: getInvestmentProducts/);
+  assert.match(dbjs, /getInvestmentProducts: function \(\)/);
+  assert.ok(!/<div class="product-card" onclick="openBuy\(\d\)/.test(ai), 'the plan cards must not be hard-coded any more');
+  assert.match(ai, /function findProduct\(code\)/);
+
   // ---- 4. The admin search box cannot be autofilled ----------------------
   const guard = fn(app, 'initSearchAutofillGuard');
   assert.match(guard, /setAttribute\('autocomplete', 'off'\)/);
   assert.match(guard, /data-lpignore/);
-  assert.match(guard, /if \(typed\) return;/, 'an operator who typed must keep what they typed');
+  assert.match(guard, /if \(typed && !force\) return;/, 'an operator who typed must keep what they typed');
   assert.match(guard, /el\.value = '';/);
+  // The attributes alone were tried first and Chrome ignored them, so the field
+  // is readonly until the operator shows intent, and the value is re-cleared on
+  // every render. Both are asserted because one without the other is not enough.
+  assert.match(guard, /el\.removeAttribute\('readonly'\)/);
+  assert.match(guard, /\['keydown', 'paste', 'input', 'drop'\]/);
+  assert.match(guard, /\['pointerdown', 'mousedown', 'touchstart', 'focus'\]/);
+  assert.match(guard, /state\.enforce = function \(\) \{ clear\(false\); \};/);
+  assert.match(guard, /setInterval\(/, 'Chrome can fill late, so the check cannot be a single pass');
+  assert.match(adminUsers, /readonly data-lpignore/, 'the input ships readonly so it is protected before any script runs');
   assert.match(adminUsers, /initSearchAutofillGuard\('userSearch'\)/);
+  assert.match(adminUsers, /__searchGuard; if \(g && g\.enforce\) g\.enforce\(\)/, 'every repaint re-checks the box');
   assert.match(adminUsers, /<input type="search" id="userSearch" name="q"[^>]*autocomplete="off"/);
-  // A text input with no autocomplete hint is what Chrome decides to fill with
-  // the signed-in address in the first place.
   assert.ok(!/<input type="text" id="userSearch"/.test(adminUsers), 'the filter must not be a bare type="text"');
   for (const f of ['admin-chat.html', 'admin-adjust.html', 'admin-addresses.html']) {
     const src = fs.readFileSync(path.join(root, f), 'utf8');

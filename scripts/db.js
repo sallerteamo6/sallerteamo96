@@ -1559,7 +1559,10 @@ var TrustDB = (function () {
     // The database stays the authority: open_trade re-reads the same rows.
     getProductTerms: function (symbol, seconds) {
       var list = this._cache.products || [];
-      var want = String(symbol || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      // Strip the quote first: the pages link with "ETH/USDT" and a products row
+      // is keyed on the base currency alone, so comparing the raw pair found
+      // nothing and the order was refused as an unknown market.
+      var want = String(symbol == null ? '' : symbol).toUpperCase().split('/')[0].replace(/[^A-Z0-9]/g, '');
       for (var i = 0; i < list.length; i++) {
         var p = list[i];
         if (String(p.symbol || '').toUpperCase() !== want) continue;
@@ -1591,7 +1594,7 @@ var TrustDB = (function () {
       var self_ = this;
       this._needUid();
       return this.rpc('open_trade', {
-        p_symbol: data.symbol || data.pair || (String(data.pair || '').split('/')[0]),
+        p_symbol: String(data.symbol || data.pair || '').toUpperCase().split('/')[0].replace(/[^A-Z0-9]/g, ''),
         p_coin: data.coin || 'USDT',
         p_side: data.side,
         p_amount: Number(data.amount),
@@ -1618,6 +1621,26 @@ var TrustDB = (function () {
     },
 
     // ---- AI Quant investments ----
+
+    // The plan catalogue, with the bounds open_investment enforces. The AI page
+    // draws its cards from this instead of carrying its own copy, which is what
+    // let the page and the database disagree about which plans exist.
+    getInvestmentProducts: function () {
+      return (this._cache.investmentProducts || []).map(function (p) {
+        return {
+          id: p.id,
+          code: p.code,
+          name: p.name,
+          period_days: parseInt(p.period_days, 10) || 0,
+          rate_min: parseFloat(p.rate_min) || 0,
+          rate_max: parseFloat(p.rate_max) || 0,
+          min_principal: p.min_principal == null ? null : parseFloat(p.min_principal),
+          max_principal: p.max_principal == null ? null : parseFloat(p.max_principal),
+          is_active: p.is_active !== false
+        };
+      }).filter(function (p) { return p.is_active; })
+        .sort(function (a, b) { return a.period_days - b.period_days; });
+    },
 
     getAIOrders: function () {
       return this._cache.aiOrders.map(this._toV1AIOrder)

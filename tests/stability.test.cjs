@@ -28,9 +28,13 @@ function fn(source,name,indent='  '){const re=new RegExp('^'+indent+'(?:async )?
  ctx.DB.openTrade=async(d)=>({id:'c-1',payout_pct:185,entry_price:100,balance:40});
  ctx.DB.settleTrade=async(id,px)=>({id,status:'won',amount:100,payout:285,profit:185,balance:325,payout_pct:185,settle_price:px});
  ctx.DB.pullBlob=async()=>true;
- vm.runInContext(fn(app,'openTrade'),ctx);vm.runInContext(fn(app,'settleTrade'),ctx);
+ vm.runInContext(fn(app,'marketSymbol'),ctx);vm.runInContext(fn(app,'openTrade'),ctx);vm.runInContext(fn(app,'settleTrade'),ctx);
  ctx.getUserId=()=>'user-1';ctx._notifyChange=()=>{};ctx._tradeIdMap={};
  const opened=await ctx.openTrade({pair:'BTC/USDT',side:'up',amount:100,price:100,duration:60});
+ // A whole pair must reduce to its base: the home page links with ?s=ETH%2FUSDT,
+ // and sending the pair through reached the server as "ETHUSDT".
+ await ctx.openTrade({pair:'ETH/USDT',symbol:'ETH/USDT',side:'up',amount:50,price:10,duration:60});
+ assert.equal(ctx.marketSymbol('ETH/USDT'),'ETH');assert.equal(ctx.marketSymbol('BTC'),'BTC');
  assert.equal(opened.id,'c-1');
  const settled=await ctx.settleTrade('c-1',101);
  assert.equal(settled.profit,185);assert.equal(settled.balance,325);

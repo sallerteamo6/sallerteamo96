@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927c"></script>
-  <script src="app.js?v=20260927c"></script>
+    <script src="scripts/db.js?v=20260927d"></script>
+  <script src="app.js?v=20260927d"></script>
 </head>
 <body class="ai-quant-page">
 
@@ -38,112 +38,7 @@
       </div>
       <div class="products-section">
         <h3 class="section-title"></h3>
-        <div class="products-grid">
-
-          <div class="product-card" onclick="openBuy(5)">
-            <div class="product-header">
-              <h4 data-i18n="ai.p1Name">AI Quant Demo</h4>
-              <span class="product-tag">1Days</span>
-            </div>
-            <div class="product-return">
-              <div class="return-range">
-                <span class="return-value">2%</span>
-                <span class="return-label" data-i18n="ai.dailyReturn">Daily Return</span>
-              </div>
-            </div>
-            <div class="product-info">
-              <div class="info-item"><span class="label" data-i18n="ai.minInvestment">Min Investment</span><span class="value">10.00 USDT</span></div>
-              <div class="info-item"><span class="label" data-i18n="ai.settlement">Settlement</span><span class="value" data-i18n="ai.dailySettle">Daily Settle</span></div>
-            </div>
-            <p class="product-desc" data-i18n="ai.p1Desc">1-day demo plan, daily return 2.0%</p>
-            <button class="buy-btn" onclick="event.stopPropagation();openBuy(5)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-7-7v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> <span data-i18n="ai.buyNow">Buy Now</span>
-            </button>
-          </div>
-
-          <div class="product-card" onclick="openBuy(1)">
-            <div class="product-header">
-              <h4 data-i18n="ai.p2Name">AI Quant Trial</h4>
-              <span class="product-tag">7Days</span>
-            </div>
-            <div class="product-return">
-              <div class="return-range">
-                <span class="return-value">2.5%</span>
-                <span class="return-label" data-i18n="ai.dailyReturn">Daily Return</span>
-              </div>
-            </div>
-            <div class="product-info">
-              <div class="info-item"><span class="label" data-i18n="ai.minInvestment">Min Investment</span><span class="value">100.00 USDT</span></div>
-              <div class="info-item"><span class="label" data-i18n="ai.settlement">Settlement</span><span class="value" data-i18n="ai.dailySettle">Daily Settle</span></div>
-            </div>
-            <p class="product-desc" data-i18n="ai.p2Desc">7-day trial plan, daily return 2.5%</p>
-            <button class="buy-btn" onclick="event.stopPropagation();openBuy(1)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-7-7v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> <span data-i18n="ai.buyNow">Buy Now</span>
-            </button>
-          </div>
-
-          <div class="product-card" onclick="openBuy(2)">
-            <div class="product-header">
-              <h4 data-i18n="ai.p3Name">AI Quant Standard</h4>
-              <span class="product-tag">30Days</span>
-            </div>
-            <div class="product-return">
-              <div class="return-range">
-                <span class="return-value">3%</span>
-                <span class="return-label" data-i18n="ai.dailyReturn">Daily Return</span>
-              </div>
-            </div>
-            <div class="product-info">
-              <div class="info-item"><span class="label" data-i18n="ai.minInvestment">Min Investment</span><span class="value">1000.00 USDT</span></div>
-              <div class="info-item"><span class="label" data-i18n="ai.settlement">Settlement</span><span class="value" data-i18n="ai.dailySettle">Daily Settle</span></div>
-            </div>
-            <p class="product-desc" data-i18n="ai.p3Desc">30-day standard plan, daily return 3.0%</p>
-            <button class="buy-btn" onclick="event.stopPropagation();openBuy(2)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-7-7v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> <span data-i18n="ai.buyNow">Buy Now</span>
-            </button>
-          </div>
-
-          <div class="product-card" onclick="openBuy(3)">
-            <div class="product-header">
-              <h4 data-i18n="ai.p4Name">AI Quant Professional</h4>
-              <span class="product-tag">90Days</span>
-            </div>
-            <div class="product-return">
-              <div class="return-range">
-                <span class="return-value">4%</span>
-                <span class="return-label" data-i18n="ai.dailyReturn">Daily Return</span>
-              </div>
-            </div>
-            <div class="product-info">
-              <div class="info-item"><span class="label" data-i18n="ai.minInvestment">Min Investment</span><span class="value">5000.00 USDT</span></div>
-              <div class="info-item"><span class="label" data-i18n="ai.settlement">Settlement</span><span class="value" data-i18n="ai.dailySettle">Daily Settle</span></div>
-            </div>
-            <p class="product-desc" data-i18n="ai.p4Desc">90-day professional plan, daily return 4.0%</p>
-            <button class="buy-btn" onclick="event.stopPropagation();openBuy(3)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-7-7v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> <span data-i18n="ai.buyNow">Buy Now</span>
-            </button>
-          </div>
-
-          <div class="product-card" onclick="openBuy(4)">
-            <div class="product-header">
-              <h4 data-i18n="ai.p5Name">AI Quant Premium</h4>
-              <span class="product-tag">180Days</span>
-            </div>
-            <div class="product-return">
-              <div class="return-range">
-                <span class="return-value">5%</span>
-                <span class="return-label" data-i18n="ai.dailyReturn">Daily Return</span>
-              </div>
-            </div>
-            <div class="product-info">
-              <div class="info-item"><span class="label" data-i18n="ai.minInvestment">Min Investment</span><span class="value">10000.00 USDT</span></div>
-              <div class="info-item"><span class="label" data-i18n="ai.settlement">Settlement</span><span class="value" data-i18n="ai.dailySettle">Daily Settle</span></div>
-            </div>
-            <p class="product-desc" data-i18n="ai.p5Desc">180-day premium plan, daily return 5.0%</p>
-            <button class="buy-btn" onclick="event.stopPropagation();openBuy(4)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-7-7v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> <span data-i18n="ai.buyNow">Buy Now</span>
-            </button>
-          </div>
+        <div class="products-grid" id="productsGrid"></div>
 
         </div>
       </div>
@@ -260,17 +155,76 @@
 
     function fmt(n) { return (parseFloat(n) || 0).toFixed(2); }
 
-    // `code` is the investment_products.code the server prices against. The rows
-    // in 05_seed.sql are AIQ_7, AIQ_15 and AIQ_30; the other plans below have no
-    // database product yet, so the server rejects them with a named error
-    // instead of the page quietly reporting a success that never happened.
-    var products = [
-      { id: 5, code: '', name: 'AI Quant Demo', period: 1, rateMin: 2.0, rateMax: 2.0, min: 10, max: 1000, desc: '1-day demo plan, daily return 2.0%' },
-      { id: 1, code: 'AIQ_7', name: 'AI Quant Trial', period: 7, rateMin: 2.5, rateMax: 2.5, min: 100, max: 10000, desc: '7-day trial plan, daily return 2.5%' },
-      { id: 2, code: 'AIQ_30', name: 'AI Quant Standard', period: 30, rateMin: 3.0, rateMax: 3.0, min: 1000, max: 50000, desc: '30-day standard plan, daily return 3.0%' },
-      { id: 3, code: '', name: 'AI Quant Professional', period: 90, rateMin: 4.0, rateMax: 4.0, min: 5000, max: 100000, desc: '90-day professional plan, daily return 4.0%' },
-      { id: 4, code: '', name: 'AI Quant Premium', period: 180, rateMin: 5.0, rateMax: 5.0, min: 10000, max: 0, desc: '180-day premium plan, daily return 5.0%' }
+    // The plan catalogue is a database fact, like the trading odds: the page used
+    // to carry its own copy, which drifted from investment_products and left
+    // three of the five plans unbuyable. This is the fallback used only before
+    // the reference table has loaded, and it is marked unavailable so a purchase
+    // cannot be attempted against a plan the server does not have.
+    var FALLBACK_PLANS = [
+      { code: 'AIQ_1',   name: 'AI Quant Demo',         period: 1,   rateMin: 2.0, rateMax: 2.0, min: 10,    max: 1000,    desc: '1-day demo plan, daily return 2.0%' },
+      { code: 'AIQ_7',   name: 'AI Quant Trial',        period: 7,   rateMin: 2.5, rateMax: 2.5, min: 100,   max: 10000,   desc: '7-day trial plan, daily return 2.5%' },
+      { code: 'AIQ_15',  name: 'AI Quant 15-Day',       period: 15,  rateMin: 2.5, rateMax: 2.5, min: 100,   max: 10000,   desc: '15-day plan, daily return 2.5%' },
+      { code: 'AIQ_30',  name: 'AI Quant Standard',     period: 30,  rateMin: 3.0, rateMax: 3.0, min: 1000,  max: 50000,   desc: '30-day standard plan, daily return 3.0%' },
+      { code: 'AIQ_90',  name: 'AI Quant Professional', period: 90,  rateMin: 4.0, rateMax: 4.0, min: 5000,  max: 100000,  desc: '90-day professional plan, daily return 4.0%' },
+      { code: 'AIQ_180', name: 'AI Quant Premium',      period: 180, rateMin: 5.0, rateMax: 5.0, min: 10000, max: 0,       desc: '180-day premium plan, daily return 5.0%' }
     ];
+    var products = FALLBACK_PLANS.slice();
+    var plansLoaded = false;
+    function loadPlans() {
+      if (!TrustApp.getInvestmentProducts) return;
+      var list = null;
+      try { list = TrustApp.getInvestmentProducts(); } catch (e) { list = null; }
+      if (!list || !list.length) return;
+      products = list.map(function (p) {
+        return {
+          id: p.id, code: p.code, name: p.name,
+          period: parseInt(p.period_days != null ? p.period_days : p.period, 10) || 0,
+          rateMin: parseFloat(p.rate_min != null ? p.rate_min : p.rateMin) || 0,
+          rateMax: parseFloat(p.rate_max != null ? p.rate_max : p.rateMax) || 0,
+          min: parseFloat(p.min_principal != null ? p.min_principal : p.min) || 0,
+          max: parseFloat(p.max_principal != null ? p.max_principal : p.max) || 0,
+          desc: ''
+        };
+      });
+      plansLoaded = true;
+      renderPlans();
+    }
+    function escHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function planRate(p) {
+      return p.rateMin === p.rateMax ? p.rateMin + '%' : p.rateMin + '% - ' + p.rateMax + '%';
+    }
+    // The cards are drawn from the catalogue rather than hand-written, so the
+    // name, the rate, the term and the bounds on screen are the ones the server
+    // will enforce. A static copy is what let the page and the database disagree
+    // about which plans exist.
+    function renderPlans() {
+      var grid = document.getElementById('productsGrid');
+      if (!grid) return;
+      if (!products.length) { grid.innerHTML = ''; return; }
+      grid.innerHTML = products.map(function (p) {
+        var code = escHtml(p.code || '');
+        return '<div class="product-card" onclick="openBuy(\'' + code + '\')">'
+          + '<div class="product-header"><h4>' + escHtml(p.name) + '</h4>'
+          + '<span class="product-tag">' + p.period + 'Days</span></div>'
+          + '<div class="product-return"><div class="return-range">'
+          + '<span class="return-value">' + escHtml(planRate(p)) + '</span>'
+          + '<span class="return-label" data-i18n="ai.dailyReturn">Daily Return</span></div></div>'
+          + '<div class="product-info">'
+          + '<div class="info-item"><span class="label" data-i18n="ai.minInvestment">Min Investment</span>'
+          + '<span class="value">' + fmt(p.min || 0) + ' USDT</span></div>'
+          + '<div class="info-item"><span class="label" data-i18n="ai.settlement">Settlement</span>'
+          + '<span class="value" data-i18n="ai.dailySettle">Daily Settle</span></div></div>'
+          + '<p class="product-desc">' + escHtml(p.desc || (p.period + '-day plan, daily return ' + planRate(p))) + '</p>'
+          + '<button class="buy-btn" onclick="event.stopPropagation();openBuy(\'' + code + '\')">'
+          + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14m-7-7v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> '
+          + '<span data-i18n="ai.buyNow">Buy Now</span></button></div>';
+      }).join('');
+    }
+    function uidx() { uid = TrustApp.getUserId ? TrustApp.getUserId() : uid; return uid; }
     var uid = TrustApp.getUserId();
     var userBalance = TrustApp.getBalance(uid, 'USDT');
     var _brt = 0;
@@ -376,17 +330,23 @@
       }).join('');
     }
 
-    function findProduct(id) {
-      for (var i = 0; i < products.length; i++) if (products[i].id === id) return products[i];
+    // Matched on the database product code, which is what open_investment
+    // prices against. It used to be matched on a page-local id, and the ids on
+    // the two sides had no relationship to each other.
+    function findProduct(code) {
+      var want = String(code || '').toUpperCase();
+      for (var i = 0; i < products.length; i++) {
+        if (String(products[i].code || '').toUpperCase() === want) return products[i];
+      }
       return null;
     }
 
-    function openBuy(id) {
-      current = findProduct(id);
-      if (!current) return;
+    function openBuy(code) {
+      current = findProduct(code);
+      if (!current) { toast('error', 'That plan is not available'); return; }
       document.getElementById('buyTitle').textContent = TrustApp.t('ai.buy') + ' ' + current.name;
       document.getElementById('mPeriod').textContent = current.period + ' ' + TrustApp.t('ai.days');
-      document.getElementById('mRate').textContent = current.rateMin + '% - ' + current.rateMax + '%';
+      document.getElementById('mRate').textContent = planRate(current);
       document.getElementById('mMethod').textContent = TrustApp.t('ai.dailySettle');
       var amt = document.getElementById('buyAmount');
       amt.value = current.min;
@@ -587,13 +547,22 @@ function setMaxAmount() {
       var ov = document.getElementById('ordersView');
       if (ov && ov.style.display !== 'none') loadOrders();
     });
-    if (TrustApp.restoreSession) TrustApp.restoreSession().then(refreshBalance);
-    if (window.DB && DB.ready) DB.ready().then(refreshBalance);
+    // The plan catalogue, drawn once the reference table arrives and again if it
+    // is refreshed. The cards are built from it, so the grid is empty until this
+    // runs and the fallback list stands in the meantime.
+    window.addEventListener('trustsync:investment_products', loadPlans);
+    window.addEventListener('trustsync:products', loadPlans);
+    renderPlans();
+    loadPlans();
+    if (TrustApp.restoreSession) TrustApp.restoreSession().then(function () { refreshBalance(); loadPlans(); });
+    if (window.DB && DB.ready) DB.ready().then(function () { refreshBalance(); loadPlans(); });
     // Safety net: session/balance can settle slightly after the events above;
     // a short re-read guarantees the real balance is shown even then.
-    setTimeout(refreshBalance, 700);
+    setTimeout(function () { refreshBalance(); loadPlans(); }, 700);
     document.addEventListener('visibilitychange', function () {
-      if (!document.hidden) refreshBalance();
+      if (document.hidden) return;
+      refreshBalance();
+      loadPlans();
     });
   </script>
 </body>

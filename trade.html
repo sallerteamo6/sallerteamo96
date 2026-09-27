@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927c"></script>
-  <script src="app.js?v=20260927c"></script>
+    <script src="scripts/db.js?v=20260927d"></script>
+  <script src="app.js?v=20260927d"></script>
 </head>
 <body>
   <div id="app">
@@ -180,9 +180,14 @@
 
   <script>
     var params = new URLSearchParams(location.search);
-    var symbol = (params.get('s') || 'BTC').toUpperCase().trim();
+    // The home page links here with the full pair, e.g. ?s=ETH%2FUSDT, so `symbol`
+    // arrives as "ETH/USDT". Everything that identifies a MARKET to the server
+    // needs the base currency only: sending "ETH/USDT" produced
+    // `unknown market ETHUSDT` and refused every order on a paired coin.
+    var pairIn = (params.get('s') || 'BTC').toUpperCase().trim();
+    var symbol = pairIn.indexOf('/') >= 0 ? pairIn.split('/')[0] : pairIn;
     var tab = params.get('tab') || 'crypto';
-    var market = TrustApp.findCoin(symbol);
+    var market = TrustApp.findCoin(pairIn) || TrustApp.findCoin(symbol);
     if (!market) {
       market = { s: symbol, alias: 'USDT', n: 'USDT', price: parseFloat(params.get('p')) || 63500, change: 0, dec: 2, i: null, tab: tab };
     }
@@ -190,9 +195,11 @@
     if (isFinite(pParam) && pParam > 0) market.price = pParam;
     var alias = market.n || market.alias || 'USDT';
     var dec = market.dec || 2;
-    var quoteUnit = symbol.indexOf('/') >= 0 ? symbol.split('/')[1] : alias;
+    // The quote the stake is actually denominated in: from the pair when the URL
+    // carried one, otherwise from the market row.
+    var quoteUnit = pairIn.indexOf('/') >= 0 ? pairIn.split('/')[1] : alias;
     var pricePre = (quoteUnit === 'USDT' || quoteUnit === 'USD') ? 'US$' : '';
-    var coinTitle = symbol.indexOf('/') >= 0 ? symbol : symbol + '/' + alias;
+    var coinTitle = symbol + '/' + quoteUnit;
     document.getElementById('coinTitle').textContent = coinTitle;
     document.getElementById('submitTitle').textContent = coinTitle + ' Trade';
     document.getElementById('tradeCoinName').textContent = symbol;

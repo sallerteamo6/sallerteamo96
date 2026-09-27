@@ -2355,14 +2355,24 @@
   // in the database, so the front end cannot quote itself a multiplier, and the
   // stake is debited by the same call that creates the order: there is no
   // window in which the money has left the wallet but no order exists.
+  // "ETH/USDT", "ETHUSDT" and "ETH" all mean the same market. Only the base
+  // currency is a products.symbol, so the quote is stripped here as well as at
+  // the call site: sending "ETH/USDT" reached open_trade as "ETHUSDT" and
+  // produced `unknown market` for every order on a paired coin.
+  function marketSymbol(raw) {
+    var s = String(raw == null ? '' : raw).toUpperCase().trim();
+    if (s.indexOf('/') >= 0) s = s.split('/')[0];
+    return s.replace(/[^A-Z0-9]/g, '');
+  }
+
   function openTrade(obj) {
     if (!dbActive()) return Promise.reject(new Error('Connection is not ready. Please retry.'));
     var uid = getUserId();
     if (!uid) return Promise.reject(new Error('Please sign in before trading'));
     var pair = String((obj && obj.pair) || 'BTC/USDT');
     var parts = pair.split('/');
-    var symbol = String((obj && obj.symbol) || parts[0] || 'BTC').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    var coin = String((obj && obj.coin) || parts[1] || 'USDT').toUpperCase().replace(/[^A-Z0-9]/g, '') || 'USDT';
+    var symbol = marketSymbol((obj && obj.symbol) || parts[0] || 'BTC');
+    var coin = marketSymbol((obj && obj.coin) || parts[1] || 'USDT') || 'USDT';
     var amt = parseFloat(obj && obj.amount) || 0;
     if (!(amt > 0)) return Promise.reject(new Error('Please enter a valid amount.'));
     return DB.openTrade({
@@ -2487,6 +2497,14 @@
       try { return (DB.getAIOrders() || []).map(dbAiOrderToApp); } catch (e) {}
     }
     return [];
+  }
+
+  // The plan catalogue the AI page draws its cards from. Null until the
+  // investment_products table has loaded, so a page can tell "not loaded yet"
+  // from "no plans".
+  function getInvestmentProducts() {
+    if (!dbReadable()) return null;
+    try { return DB.getInvestmentProducts() || null; } catch (e) { return null; }
   }
   function saveAIOrders(list) { return list; }
 
@@ -3233,14 +3251,26 @@
   }
 
   /* Keep the browser out of the admin filter boxes.
-     Chrome autofills a `type="text"` input whose placeholder mentions an email,
-     and it fills it with the signed-in operator's own address. On User
-     Management that meant the list came up pre-filtered to one admin, so the
-     page looked like every other user had vanished - the same symptom as the
-     card-list bug, from a completely different cause.
-     `autocomplete="off"` alone is advisory and Chrome ignores it, so the value
-     is also cleared once the page has settled if the operator never typed it.
-     An empty filter means "show everyone", so clearing is always safe. */
+     Chrome autofills a text input whose placeholder mentions an email, using the
+     signed-in operator's own address. On User Management that meant the list came
+     up filtered to that one admin, so the page looked like every other user had
+     vanished - the same symptom as the card-list bug, from a different cause.
+
+     `autocomplete="off"` alone did not stop it: Chrome ignores it on a field it
+     has decided is an identity field, and the report after that change showed
+     the address still sitting in the box. Two further measures, because either
+     one alone has been unreliable:
+
+       1. The field is `readonly` until the operator shows intent. Browsers skip
+          readonly inputs when autofilling, and this is the only approach that has
+          actually held. The attribute is in the HTML, so it is set before any
+          script runs.
+       2. Whatever lands in the box is cleared on every render while the operator
+          has not typed. A filter that is empty means "show everyone", so this is
+          always safe; a value they did type is never touched.
+
+     The password managers get their own ignore hints, since they fill these
+     independently of the browser. */
   function initSearchAutofillGuard(inputId) {
     if (typeof document === 'undefined') return;
     var el = document.getElementById(inputId);
@@ -3250,30 +3280,70 @@
     el.setAttribute('autocorrect', 'off');
     el.setAttribute('spellcheck', 'false');
     if (!el.getAttribute('name')) el.setAttribute('name', 'q');
-    // LastPass / 1Password / Bitwarden honour these and otherwise offer to fill
-    // the same field.
     el.setAttribute('data-lpignore', 'true');
     el.setAttribute('data-1p-ignore', 'true');
     el.setAttribute('data-form-type', 'other');
 
     var typed = false;
-    var mark = function () { typed = true; };
+    var released = false;
+    // clear() dispatches an `input` event so the page's own filter stays in step,
+    // and that event lands on the very listener that records "the operator typed
+    // this". Without this flag the guard disarmed itself on its first clear and
+    // never removed anything again, which is exactly what the report showed.
+    var dispatching = false;
+    var state = { typed: false };
+
+    var release = function () {
+      if (released) return;
+      released = true;
+      el.removeAttribute('readonly');
+    };
+    // Only real text entry counts as "the operator typed this". A tap or a focus
+    // only lifts the readonly lock: if a tap also marked the field as typed, a
+    // fill that Chrome applies on focus would survive from then on.
+    var mark = function () {
+      if (dispatching) return;
+      typed = true;
+      state.typed = true;
+      release();
+    };
     ['keydown', 'paste', 'input', 'drop'].forEach(function (evt) {
       el.addEventListener(evt, mark, true);
     });
+    ['pointerdown', 'mousedown', 'touchstart', 'focus'].forEach(function (evt) {
+      el.addEventListener(evt, release, true);
+    });
 
-    var clear = function () {
-      if (typed) return;
+    var clear = function (force) {
+      if (typed && !force) return;
       if (!el.value) return;
       el.value = '';
+      // Keep the page's own filter in step with the cleared box.
+      dispatching = true;
       try { el.dispatchEvent(new window.Event('input', { bubbles: true })); } catch (e) {}
+      dispatching = false;
     };
-    // Once on parse, once after load (Chrome fills late), and once more after a
-    // beat to catch the credential manager's second pass.
-    try { clear(); } catch (e) {}
+
+    // The one call the page makes on every render, so a value the browser
+    // re-applies after load is undone the next time the list repaints.
+    state.enforce = function () { clear(false); };
+    el.__searchGuard = state;
+
+    // Not readonly in the markup: release it if the markup has it.
+    if (el.hasAttribute('readonly')) released = false;
+
+    try { clear(false); } catch (e) {}
     if (typeof window !== 'undefined') {
-      window.addEventListener('load', function () { setTimeout(clear, 0); setTimeout(clear, 600); });
-      window.addEventListener('pageshow', function () { setTimeout(clear, 0); });
+      // Chrome can fill late and can fill again after a DOM change, so keep
+      // checking briefly rather than trusting one pass.
+      var tries = 0;
+      var tick = setInterval(function () {
+        clear(false);
+        if (++tries > 20) clearInterval(tick);
+      }, 250);
+      window.addEventListener('load', function () { clear(false); });
+      window.addEventListener('pageshow', function () { clear(false); });
+      if (document.readyState === 'complete') clear(false);
     }
   }
 
@@ -3695,6 +3765,7 @@
     getTradeTerms: getTradeTerms,
     updateTrade: updateTrade,
     getAIOrders: getAIOrders,
+    getInvestmentProducts: getInvestmentProducts,
     addAIOrder: addAIOrder,
     openInvestment: openInvestment,
     settleInvestmentDay: settleInvestmentDay,

@@ -2,11 +2,13 @@
 
 1. Keep a backup of your current website and database.
 2. If you have not already applied `supabase/v2/14_admin_data_fix.sql`, run it in Supabase SQL Editor first. It requires the existing v2 schema and admin-password setup.
-3. Run `supabase/v2/15_live_delivery.sql` if not already installed, then `supabase/v2/16_admin_session_fixes.sql`, then the NEW `supabase/v2/17_profit_mode_and_settlement.sql` in full, in that order. These upgrades preserve records, balances, UIDs, and the admin password. Do not rerun schema/seed/reset scripts on a live project.
+3. Run `supabase/v2/15_live_delivery.sql` if not already installed, then `supabase/v2/16_admin_session_fixes.sql`, then `supabase/v2/17_profit_mode_and_settlement.sql`, then the NEW `supabase/v2/18_all_markets_and_auto_settle.sql` - in that order, each in full. These upgrades preserve records, balances, UIDs, and the admin password. Do not rerun schema/seed/reset scripts on a live project.
 4. Replace the website files with this folder's contents. Preserve your production `scripts/config.js` if its settings differ.
 5. Press Ctrl+Shift+R and sign in again on both customer and admin pages.
 
-`17_profit_mode_and_settlement.sql` is required for trading to settle at all. Until it is applied, `open_trade`, `settle_trade` and `admin_set_profit_mode` do not exist and every order will fail with a "function not found" error. It adds functions only: no table is dropped, no balance or transaction row is rewritten, and no account is promoted.
+`17_profit_mode_and_settlement.sql` is required for trading to settle at all. Until it is applied, `open_trade`, `settle_trade` and `admin_set_profit_mode` do not exist and every order will fail with a "function not found" error.
+
+`18_all_markets_and_auto_settle.sql` makes every coin the site lists tradable, adds the AI Quant plans and their bounds, returns the principal at maturity, and adds the unattended daily settlement. It is safe to run more than once - every statement is an upsert on a natural key. Both files add functions and rows only: no table is dropped, no balance, contract, investment or user row is rewritten, and no account is promoted.
 
 ## The garbled characters were everywhere, not just the order panel
 
@@ -38,6 +40,46 @@ There was also no server path to pay an AI day at all: `update_investment_progre
 Approving an order is now a no-op report, because `open_investment` already created it as `active` with its rate and schedule drawn. The previous Approve wrote a status, `startAt`, `endAt` and schedule the server rejected outright, then showed a success toast. Reject is now **Cancel & Refund** and goes through `cancel_investment`.
 
 **The admin search box no longer fills itself.** Chrome autofills a text input whose placeholder mentions an email, and it used the signed-in operator's own address - so the User Management list came up filtered to that one admin and looked as if every other user had vanished. Same visible symptom as the card-list bug, completely different cause. The input is now `type="search"` with `autocomplete="off"`, a non-email `name`, and LastPass / 1Password / Bitwarder ignore hints; and because `autocomplete="off"` is advisory and Chrome ignores it on this kind of field, `initSearchAutofillGuard` also clears a value the operator never typed. A value they *did* type is never touched, and an empty filter means "show everyone", so clearing is always safe. The same attributes were added to the admin chat reply, the balance-adjustment note and the coin-address fields, which were equally exposed.
+
+## Every coin is tradable, and the "unknown market ETHUSDT" that caused it
+
+The error in the screenshot named the real cause: the page sent **`ETHUSDT`** as the market. The home page links to `trade.html?s=ETH%2FUSDT`, and the trade page passed that whole pair through as the symbol, so `open_trade` looked for a product called `ETHUSDT` and found nothing. Every order on a paired coin was refused, and ETH is not a special case - it is every coin.
+
+- The trade page now separates the pair from the base currency on arrival: `pairIn` is what the URL carried, `symbol` is the base. The market row, the odds lookup, the order and the record filter all use the base.
+- `marketSymbol()` in app.js and the two db.js call sites strip the quote as well. That is deliberate belt-and-braces: even a future caller that passes a whole pair again cannot reintroduce the fault.
+
+With that fixed, `products` was still seeded with only 12 of the coins the front end offers, so the other 17 were correctly refused. **Migration 18 seeds all 29** - the 19 crypto pairs, 4 metals and 6 forex entries - each with the same 60s / 120s / 300s durations, written as one statement over the whole table so a product added by hand also gets its durations.
+
+The metals and forex pairs carry a `price_symbol` sentinel (`METAL_XAU`, `FX_EURUSD`, ...) that will never resolve on Binance. That is intentional and matches the rule already documented in `scripts/settle.mjs`: an unquotable product **blocks rather than guesses**, because settling on a wrong price pays real money to the wrong side. They still settle through the countdown path, which uses the price the page is displaying.
+
+## The search box was still autofilling, and the first fix was quietly broken
+
+Two separate faults, and the first attempt fixed neither.
+
+**The attributes were not enough.** `autocomplete="off"` is advisory and Chrome ignores it on a field it has decided is an identity field, so the address stayed in the box. The field is now `readonly` in the HTML - browsers skip readonly inputs when autofilling, and this is the only thing that has actually held - with the lock lifted on the first pointer, focus or key event. Because the lock is in the markup it is in place before any script runs. On top of that, `initSearchAutofillGuard` re-checks the box on every repaint, and `renderUsers()` calls it, so a fill Chrome applies late is undone on the next paint.
+
+**My own guard was disarming itself.** It was verified in a real browser, which is how this surfaced. `clear()` sets the value and dispatches an `input` event so the page's own filter stays in step - and that synthetic event landed on the very listener that records "the operator typed this". So the first clear marked the field as typed and **nothing was ever cleared again**. A click now only lifts the readonly lock; only real text entry counts as typing, and the guard's own event is suppressed. `tests/autofill.browser.test.cjs` asserts this by clearing five times in a row, which is what catches the regression.
+
+A typed filter is never touched, and an empty filter means "show everyone", so clearing one is always safe.
+
+## AI Quant: all six plans, and a day that settles by itself
+
+**All six plans exist.** The page offered five and the database had three; the page also carried its own copy of the rates and bounds, which is how they drifted apart. The plan catalogue is now read from `investment_products` and the cards are drawn from it, so the name, rate, term and bounds on screen are the ones the server will enforce. `min_principal` and `max_principal` are new columns, and `open_investment` rejects a request outside them - the minimum used to be drawn on the page and enforced nowhere, so a crafted request could open a 0.01 USDT investment.
+
+**A day settles every 24 hours, unattended.** The rate and the per-day amounts were drawn once when the plan was opened and stored on the row, so settlement needs no external price feed and no human - it is arithmetic the database can do on its own.
+
+- `settle_due_investments()` (service_role only) sweeps every investment with a full day owed, pays it through `post_ledger`, and returns the principal when the term completes. A sweep never settles a day early: it compares the schedule's own `due_at` dates, which `open_investment` now sets a full day apart from the start rather than from whenever the last run happened to fire.
+- `scripts/settle-investments.mjs` calls it. Run it on a timer, every minute is reasonable:
+
+  ```
+  $env:SUPABASE_URL="https://xxxx.supabase.co"
+  $env:SUPABASE_SERVICE_KEY="eyJ..."
+  node scripts/settle-investments.mjs
+  ```
+
+  It is safe to run twice, twice at once, or every second: rows are locked with `skip locked`, `settled_days` only moves forward, and a day already paid is skipped rather than paid twice. The interval affects how promptly a day is paid, never how much.
+
+**The principal comes back.** `settle_investment_day` is superseded by migration 18, which adds the principal to the final day's payout, so a completed 1-day or 7-day plan has returned everything the member put in plus the profit. It sits inside the same locked transaction as the day counter, which is what makes a retry safe. A manual Settle Day can also be asked to settle everything currently due, so an operator is not clicking a 180-day plan 180 times.
 
 ## Nothing is allowed to claim money moved when it did not
 
@@ -119,7 +161,7 @@ All JavaScript files changed here and all inline page scripts passed syntax chec
 - `node tests/admin-list.browser.test.cjs` (real browser; skips with a notice if none is installed)
 - `node tests/autofill.browser.test.cjs` (real browser; skips with a notice if none is installed)
 
-They include execution of the User Management edit/modal, manual approval, role, status and archive handlers, the per-user and all-users Profit Mode toggles, matching withdrawal selection, delayed auth restoration, failed limit saves, and unchanged-data redraw suppression. They also cover UUID/UID mapping, admin access and expired-token priority, pagination, withdrawal destination/type, KYC fields, chat aliases and incoming events, operator replies, simultaneous reads, rejected writes, language persistence, single server-controlled balance changes, the result modal rendering the server's profit and detail rows, an unsettled order reporting its reason instead of a number, every shipped page being free of the double-encoded text, no page writing a balance from the browser, the legacy trade re-upload staying disabled, a loan row resolving to the member's login and member number, an untradable market being refused before the balance is touched, AI Quant reading v2's `investments` with countable schedule days, the admin card rebuild being non-destructive and click-stable in a real browser, and the admin filter box resisting autofill in a real browser.
+They include execution of the User Management edit/modal, manual approval, role, status and archive handlers, the per-user and all-users Profit Mode toggles, matching withdrawal selection, delayed auth restoration, failed limit saves, and unchanged-data redraw suppression. They also cover UUID/UID mapping, admin access and expired-token priority, pagination, withdrawal destination/type, KYC fields, chat aliases and incoming events, operator replies, simultaneous reads, rejected writes, language persistence, single server-controlled balance changes, the result modal rendering the server's profit and detail rows, an unsettled order reporting its reason instead of a number, every shipped page being free of the double-encoded text, no page writing a balance from the browser, the legacy trade re-upload staying disabled, a loan row resolving to the member's login and member number, a paired market symbol reducing to its base, every offered coin having a seeded product, an untradable market being refused before the balance is touched, AI Quant reading v2's `investments` with countable schedule days, all six plans existing with database-enforced bounds, the principal being returned at maturity, and the unattended settlement being service_role only and never settling a day early, the admin card rebuild being non-destructive and click-stable in a real browser, and the admin filter box resisting autofill in a real browser, including on every pass rather than only the first.
 
 The live database was not accessed. The new SQL was reviewed and its function signatures and grants were checked to match, but it could not be executed here. The browser tests cover the admin list and the filter box only; the trade, loan and AI Quant screens were verified by driving their functions against mocked server responses, not by loading a funded order. This is not a complete audit of trading, exchange, or investment settlement features. The exchange feature is knowingly non-functional rather than falsely reported as working; see above.
 
@@ -144,7 +186,11 @@ Use a customer browser and a separate admin browser. Apply `17_profit_mode_and_s
 15. Apply for a loan, then open Loan Management as admin and confirm the row shows the member's email and six-digit UID, not a uuid. Check the AI Quant and Balance Adjuster histories for the same.
 16. Trade a coin that is not in `products` (for example one only listed on the home page). Confirm the order is refused with the list of tradable markets, and that the balance is unchanged.
 17. Sign in as an admin, open User Management, and confirm the search box is empty on load - not filled with your own gmail address - and that all users are listed.
-18. Test a failed/offline submission. It must show an error and preserve the input; do not assume a request failed solely because its response timed out-check its history before retrying.
+18. Trade every tab in turn: crypto, metals and forex. Each must place an order without an `unknown market` error, and the odds shown before the order must equal the payout charged.
+19. Open User Management as admin and confirm the search box is empty on load, stays empty across several list refreshes, and still filters when you type. Refresh a few times: the address must not come back.
+20. Buy each of the six AI Quant plans. Confirm the principal leaves the wallet, the plan appears in your history with a day counter and a countdown, and the name and rate on the card match the database.
+21. With `scripts/settle-investments.mjs` running, buy the 1-day plan and wait. Confirm the profit is credited about 24 hours later and the principal comes back with it. Run the script twice in a row: the second run must pay nothing.
+22. Test a failed/offline submission. It must show an error and preserve the input; do not assume a request failed solely because its response timed out-check its history before retrying.
 
 
 Reference for realtime setup: https://supabase.com/docs/guides/realtime/postgres-changes
