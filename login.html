@@ -13,8 +13,8 @@
   <link rel="stylesheet" href="styles-auth.css">
   <script src="scripts/config.js?v=20260927k"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-  <script src="scripts/db.js?v=20260927k"></script>
-  <script src="app.js?v=20260927k"></script>
+  <script src="scripts/db.js?v=20260927-wallet2"></script>
+  <script src="app.js?v=20260927-wallet2"></script>
 </head>
 <body>
   <div id="app">
@@ -122,38 +122,36 @@
       if (top) top.style.display = 'flex';
     }
 
-    // connectWallet() is fire-and-forget: it shows its own toasts and stashes
-    // the address in _wallet. walletLogin() is the separate step that turns
-    // that address into a session, and it needs the address passed in. So we
-    // drive the handshake, then poll for the address before signing in.
+    var walletAttempt = null;
     function doWalletLogin() {
+      if (walletAttempt) return walletAttempt;
       say('', '');
       var wbtn = document.getElementById('walletConnectBtn');
       if (wbtn) { wbtn.disabled = true; wbtn.textContent = 'Connecting...'; }
-      try { TrustApp.connectWallet(); } catch (e) { /* reported below via poll */ }
-
-      var deadline = Date.now() + 90000;
-      var iv = setInterval(function () {
-        var w = null;
-        try { w = TrustApp.getWallet(); } catch (e) {}
-        if (w && w.address) {
-          clearInterval(iv);
-          if (wbtn) { wbtn.disabled = false; wbtn.textContent = 'Connect Wallet'; }
-          runAuth(function () { return TrustApp.walletLogin(w.address); }, 40000, 'Wallet sign-in')
-            .then(function (res) {
-              if (!res || !res.ok) { say('error', (res && res.msg) || 'Wallet sign-in failed', 'Try again'); return false; }
-              say('ok', 'Signed in. Redirecting...');
-              setTimeout(function () { location.href = getParam('r') || 'index.html'; }, 400);
-              return false;
-            });
-          return;
+      // connectWallet includes sign-in. Polling getWallet() and calling
+      // walletLogin again replaced the first nonce while the user was signing.
+      walletAttempt = Promise.resolve().then(function () {
+        return TrustApp.connectWallet({ redirect: false, onStatus: function (text) {
+          if (wbtn) wbtn.textContent = text;
+          say('warn', text);
+        } });
+      }).then(function (res) {
+        if (!res || !res.ok) {
+          say('error', (res && res.msg) || 'Wallet sign-in failed', 'Try again', doWalletLogin);
+          return false;
         }
-        if (Date.now() > deadline) {
-          clearInterval(iv);
-          if (wbtn) { wbtn.disabled = false; wbtn.textContent = 'Connect Wallet'; }
-          say('error', 'No wallet detected. Install a browser wallet extension, then try again.', 'Try again');
-        }
-      }, 400);
+        say('ok', 'Signed in. Redirecting...');
+        setTimeout(function () { location.href = TrustApp.walletReturnUrl(); }, 400);
+        return true;
+      }).catch(function (e) {
+        say('error', (e && e.message) || 'Wallet sign-in failed', 'Try again', doWalletLogin);
+        return false;
+      }).then(function (ok) {
+        walletAttempt = null;
+        if (wbtn) { wbtn.disabled = !!ok; wbtn.textContent = ok ? 'Signed in' : 'Connect Wallet'; }
+        return ok;
+      });
+      return walletAttempt;
     }
 
     function updateBtn() {
@@ -174,7 +172,7 @@
     //  failure can be read, and a frozen button explains nothing. This
     //  stays until the next attempt.
     // ---------------------------------------------------------------
-    function say(kind, text, retryLabel) {
+    function say(kind, text, retryLabel, retryAction) {
       var box = document.getElementById('authMsg');
       if (!box) return;
       box.className = 'auth-msg' + (kind ? ' on auth-msg-' + kind : '');
@@ -186,7 +184,7 @@
         b.type = 'button';
         b.className = 'auth-retry';
         b.textContent = retryLabel;
-        b.onclick = function () { say('', ''); doLogin({ preventDefault: function () {} }); };
+        b.onclick = function () { say('', ''); if (retryAction) retryAction(); else doLogin({ preventDefault: function () {} }); };
         box.appendChild(b);
       }
     }

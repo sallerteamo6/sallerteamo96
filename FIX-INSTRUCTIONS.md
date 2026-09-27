@@ -1,3 +1,7 @@
+# Wallet login repair — 27 September 2026
+
+For this update, follow **WALLET-LOGIN-FIX.md** first. Apply migration 26 and redeploy the wallet-login function as well as uploading the website files. The instructions below describe earlier project updates.
+
 # Install this update
 
 1. Keep a backup of your current website and database.
@@ -127,38 +131,12 @@ With that fixed, `products` was still seeded with only 12 of the coins the front
 
 The metals and forex pairs carry a `price_symbol` sentinel (`METAL_XAU`, `FX_EURUSD`, ...) that will never resolve on Binance. That is intentional and matches the rule already documented in `scripts/settle.mjs`: an unquotable product **blocks rather than guesses**, because settling on a wrong price pays real money to the wrong side. They still settle through the countdown path, which uses the price the page is displaying.
 
-## Connect Wallet connected, then refused to log in
+## Connect Wallet sign-in
 
-**Migration 24 plus one Edge Function.**
-
-The button worked. It connected MetaMask or WalletConnect, showed the address, and then sign-in always failed with *"Wallet sign-in is not available on this build"*, so from the member's side the button was simply broken.
-
-That refusal was correct, and the reason is the point. Signing in with a wallet means recovering the signer from an Ethereum signature and checking it against the address being claimed. If the page did that itself, a visitor could type any address with any signature and be let in, because they would be checking their own lie. The previous author refused rather than ship that. This is the missing half, not a reversal of the decision.
-
-**Where each part lives:**
-
-| Job | Where | Why there |
-|---|---|---|
-| Issue a single-use challenge | `wallet_issue_nonce` (migration 24) | A nonce anyone can re-read is a login token anyone can copy |
-| Build the text that gets signed | the same function | If the page built it, a tampered message would still verify |
-| Recover the signer | `wallet-login` Edge Function | Postgres cannot do secp256k1 recovery |
-| Burn the challenge once | `wallet_consume_nonce`, `service_role` only | anon must not be able to invalidate someone else's sign-in |
-| Create or find the account | Edge Function + `wallet_link_profile` | One address, one account, permanently |
-| Turn the result into a session | `verifyOtp` in the browser | No password is ever handed to the page |
-
-**The properties that matter, and where they are enforced:**
-
-- **The challenge is single-use and lasts ten minutes.** It is burnt inside the same transaction that hands it out, and burnt *even when the signature is then wrong* - so a captured signature cannot be retried against a second address, and one challenge is worth one guess.
-- **The address in the request is never trusted.** It only ever looks up a challenge that was issued for that same address, and the signature has to recover to it. A caller who controls the request body controls nothing that matters.
-- **A wallet cannot be attached to a second account.** `wallet_link_profile` refuses when the address is already on another profile, so an address cannot be picked up twice and take a balance with it. `0xAbC` and `0xabc` are one account, via `users_account_ci_idx`.
-- **No credential reaches the browser.** A new account gets a random password that is never transmitted, and the session comes from a one-time token via `generate_link` + `verifyOtp`. The `service_role` key lives only in the function's environment; a test asserts it appears in no shipped file.
-- **A wallet account is a real account.** It goes through `_activateSession` like a password sign-in, so the rest of the app gets the same session, the same tables and the same RLS and cannot accidentally skip a step.
-
-**One known limit, stated rather than hidden:** a smart-contract wallet (Safe, Argent and similar) signs through EIP-1271, which can only be checked by calling the chain. That is reported as "use email and password" instead of being guessed at.
-
-Until the function is deployed the button now says *"Wallet sign-in is not set up on this server yet. Please sign in with your email and password."* instead of connecting and then refusing.
-
-`tests/wallet-login.test.cjs` drives the whole flow, including a signature the server rejects, and asserts that no signature recovery exists in the page or in `scripts/db.js` - that absence is the security property.
+See **WALLET-LOGIN-FIX.md** for the current installation instructions, causes,
+regression tests, and deployment checks. Migration 24 supplies the nonce table;
+migration 26 and the updated Edge Function repair authentication and profile
+creation. The deployed configuration belongs in `supabase/config.toml`.
 
 ## Three bugs, one of them mine
 
@@ -176,7 +154,7 @@ So the form reported success, the old password stopped working, and then the new
 
 Migration 23 is corrected as well, so a fresh install never hits it. A test asserts nothing is written in front of the salt in *either* file.
 
-**Wallet connected but never logged in.** `DB.walletAuth` sent only an `apikey` header. Supabase verifies the JWT on every Edge Function call *at the gateway, before the code runs*, and a request with no bearer token is answered 401 there — so the wallet connected, the request was refused before `wallet-login` ever saw it, and the reason never reached the page. The anon key is itself a valid JWT, so it is now sent as a bearer token, and `supabase/functions/wallet-login/config.toml` sets `verify_jwt = false` to match. 404 and 401 are now reported as what they are: 404 says the deploy command, 401 names `verify_jwt`.
+**Wallet login:** this historical gateway-only fix was incomplete. Use the current repair in **WALLET-LOGIN-FIX.md**, including migration 26 and the updated Edge Function.
 
 **"Checking admin access" between every two admin pages.** Each navigation re-ran session restore, waited for the connection, then re-read the user list over the network — several seconds, for a result that had not changed. A successful check is now remembered for the tab, and the next admin page opens straight away with no checking state; the check still runs behind the page, so a revoked operator is re-locked seconds later rather than never.
 

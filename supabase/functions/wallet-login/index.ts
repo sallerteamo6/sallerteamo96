@@ -6,8 +6,8 @@
  *   signer from an Ethereum signature and checking it against the address being
  *   claimed. If the page did that itself, a visitor could type any address and
  *   any signature and be let in, because they would be checking their own lie.
- *   So the signature is checked here, in a function that holds the service_role
- *   key and is not reachable from the page.
+ *   The page calls this public endpoint. Signature verification and the service
+ *   credential stay on the server; callers cannot choose a verified identity.
  *
  * WHAT IT DOES
  *   nonce  - ask the database for a single-use challenge. The message is built
@@ -19,12 +19,12 @@
  *            for a session.
  *
  * DEPLOY
- *   supabase functions deploy wallet-login
- *   supabase secrets set --env-file .env.wallet      (SUPABASE_SERVICE_KEY only)
+ *   Apply 24_wallet_login_challenges.sql and 26_wallet_login_repair.sql first.
+ *   supabase functions deploy wallet-login --no-verify-jwt
  *
  *   Set SITE_URL in the secrets to the address members actually use, including
- *   the scheme. It goes into the signed text; the database falls back to the
- *   request host when it is absent.
+ *   the scheme. It goes into the signed text. Supabase supplies the service
+ *   role key automatically; never place it in the browser configuration.
  *
  * WHAT IT WILL NOT DO
  *   It never accepts an address on trust. The address in the request is only ever
@@ -33,7 +33,7 @@
  *   controls nothing that matters.
  */
 
-import { verifyMessage, getAddress } from "npm:ethers@6";
+import { verifyMessage } from "npm:ethers@6";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -58,9 +58,16 @@ function env(name: string): string {
 }
 
 function authHeaders(extra: Record<string, string> = {}) {
+  // SUPABASE_SERVICE_KEY was a local-script convention, not a hosted default.
+  // Prefer the injected key. Also support the new secret-key environment map.
+  let key = env("SUPABASE_SERVICE_ROLE_KEY") || env("SUPABASE_SERVICE_KEY");
+  if (!key) {
+    try { key = JSON.parse(env("SUPABASE_SECRET_KEYS") || "{}").default || ""; } catch { /* reported below */ }
+  }
+  if (!key || !env("SUPABASE_URL")) throw new Error("Missing server auth configuration");
   return {
-    apikey: env("SUPABASE_SERVICE_KEY"),
-    Authorization: `Bearer ${env("SUPABASE_SERVICE_KEY")}`,
+    apikey: key,
+    ...(key.startsWith("sb_secret_") ? {} : { Authorization: `Bearer ${key}` }),
     "Content-Type": "application/json",
     ...extra,
   };
@@ -100,19 +107,14 @@ function randomPassword(): string {
 }
 
 /**
- * GoTrue needs an email on every account, and a wallet has none. The address is
- * the real identity, so the email is a derived placeholder that nobody can
- * receive: the local part is the address, the domain is taken from the project
- * URL. It is never sent to anyone, and confirming the address is what stops
- * GoTrue sending it a confirmation mail at all.
+ * This flow uses a confirmed Auth email identity for each wallet. The email is
+ * a non-deliverable internal placeholder; the wallet signature is the proof.
+ * Existing linked accounts keep their original Auth email.
  */
 function derivedEmail(address: string): string {
-  const site = env("SITE_URL") || env("SUPABASE_URL") || "localhost";
-  let host = site.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-  if (!host || host.includes("supabase.co") === false) {
-    try { host = new URL(site).host; } catch { host = host || "localhost"; }
-  }
-  return `${address.toLowerCase().replace(/^0x/, "")}@${host}`;
+  // A reserved, non-deliverable domain independent of a website/domain change.
+  // Returning accounts use the email from auth.users, never this fallback.
+  return `${address.toLowerCase().replace(/^0x/, "")}@wallet.invalid`;
 }
 
 Deno.serve(async (req) => {
@@ -137,7 +139,8 @@ Deno.serve(async (req) => {
   try {
     // ---- 1. Challenge -----------------------------------------------------
     if (action === "nonce") {
-      const out = await rpc("wallet_issue_nonce", { p_address: addr });
+      const origin = new URL(env("SITE_URL") || env("SUPABASE_URL")).origin;
+      const out = await rpc("wallet_issue_nonce", { p_address: addr, p_origin: origin });
       return json({
         ok: true,
         address: out.address,
@@ -209,13 +212,24 @@ Deno.serve(async (req) => {
       // First time this wallet has been seen. The password is random and is
       // never sent anywhere: it exists only so GoTrue will accept the account,
       // and the session below is minted separately.
-      const created = await authAdmin("/admin/users", "POST", {
-        email,
-        password: randomPassword(),
-        email_confirm: true,
-        user_metadata: { wallet_address: addr, login_method: "wallet" },
-      });
-      link0 = { uid: created?.id, email: created?.email || email };
+      try {
+        const created = await authAdmin("/admin/users", "POST", {
+          email,
+          password: randomPassword(),
+          email_confirm: true,
+          user_metadata: { wallet_address: addr, login_method: "wallet" },
+          // Only the server can write this. It allows recovery if the profile
+          // write fails after Auth created the account, without trusting metadata
+          // that an ordinary email user can edit.
+          app_metadata: { wallet_address: addr, login_method: "wallet" },
+        });
+        link0 = { uid: created?.id, email: created?.email || email };
+      } catch (e) {
+        // Another completed verification may have created this same account.
+        // Reuse only a linked or server-marked identity, never an email match.
+        link0 = await rpc("wallet_user_email", { p_address: addr });
+        if (!link0?.uid) throw e;
+      }
     }
     if (!link0?.uid) {
       return json({ ok: false, error: "The account could not be prepared. Try again." }, 500);
@@ -251,9 +265,15 @@ Deno.serve(async (req) => {
       type: "magiclink",
       email: link0.email,
     });
-    const tokenHash = link?.properties?.hashed_token;
+    // Raw GoTrue REST returns these fields at the top level. Only auth-js
+    // wraps them in `properties`; reading that wrapper here lost every token.
+    const tokenHash = link?.hashed_token || link?.properties?.hashed_token;
+    const linkUserId = link?.id || link?.user?.id;
+    if (linkUserId && linkUserId !== link0.uid) {
+      throw new Error("Session identity does not match the verified wallet");
+    }
     if (!tokenHash) {
-      return json({ ok: false, error: "The account exists but no session could be issued. Sign in with email." }, 500);
+      return json({ ok: false, error: "No sign-in session was returned. Please try again or contact support." }, 500);
     }
 
     return json({ ok: true, address: addr, email: link0.email, token_hash: tokenHash });
@@ -262,6 +282,12 @@ Deno.serve(async (req) => {
     // GoTrue reports a bad generate_link for a user that does not exist. That is
     // a real misconfiguration, not a member error, so it is not dressed up as one.
     console.error("wallet-login failed:", message);
+    if (/suspended or banned/i.test(message)) {
+      return json({ ok: false, error: "This account is suspended or banned. Please contact support." }, 403);
+    }
+    if (/already linked/i.test(message)) {
+      return json({ ok: false, error: "This wallet has conflicting account records. Please contact support." }, 409);
+    }
     return json({ ok: false, error: "Wallet sign-in is not set up on the server yet." }, 500);
   }
 });

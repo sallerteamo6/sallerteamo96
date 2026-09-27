@@ -1,0 +1,6 @@
+# Function settings are read from supabase/config.toml by the Supabase CLI.
+# The endpoint is called before login; it verifies the wallet signature itself.
+project_id = "sallerteam096"
+
+[functions.wallet-login]
+verify_jwt = false

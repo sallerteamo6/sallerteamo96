@@ -53,7 +53,7 @@ var TrustDB = (function () {
     // Bumped whenever the auth/bootstrap path changes, so a page can prove
     // which build the browser actually loaded. A stale cached db.js was
     // indistinguishable from a bug that had not been fixed yet.
-    VERSION: 'v2.6.0-session-stability',
+    VERSION: 'v2.6.1-wallet-login-repair',
     _diag: [],
     _diagLog: function (msg) {
       try {
@@ -553,70 +553,79 @@ var TrustDB = (function () {
     // action: 'nonce'  -> { message, nonce, expires_at }
     // action: 'verify' -> { token_hash, email, address }
     walletAuth: function (action, payload) {
-      var self_ = this;
       if (!this.ENABLED) return Promise.reject(new Error('Database not configured'));
       var body = Object.assign({ action: action }, payload || {});
+      var controller = new AbortController();
+      var timer = setTimeout(function () { controller.abort(); }, 20000);
+      var headers = { 'Content-Type': 'application/json', apikey: this.anon };
+      // Publishable keys are not JWTs. The function authenticates a signature,
+      // and its gateway verification is disabled in supabase/config.toml.
+      if (String(this.anon || '').split('.').length === 3) headers.Authorization = 'Bearer ' + this.anon;
       return fetch(this.walletAuthUrl(), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: this.anon,
-          // Supabase verifies the JWT on every Edge Function call before the
-          // function body runs, and a request with no bearer token is answered
-          // 401 at the gateway - so the wallet appeared to connect and then did
-          // nothing at all, with the real cause never reaching the page. The anon
-          // key is itself a valid JWT, so sending it is enough. The function is
-          // meant to be reached without a session: it authenticates the member by
-          // their signature, not by a token.
-          'Authorization': 'Bearer ' + this.anon
-        },
+        headers: headers,
+        signal: controller.signal,
         body: JSON.stringify(body)
       }).then(function (res) {
         return res.text().then(function (text) {
           var json = null;
           try { json = text ? JSON.parse(text) : null; } catch (e) { json = null; }
           if (!res.ok || !json || json.ok !== true) {
-            // 404 is the common one: the function was never deployed, or the URL
-            // is wrong. 401/403 with no JSON body is the gateway refusing the
-            // request before it reaches the code, which on its own means verify_jwt
-            // is on. Both used to be reported as "not set up", which sent people
-            // looking for a setting that already existed.
+            var msg = (json && (json.error || json.msg || json.message)) || ('Wallet sign-in failed (' + res.status + ')');
             if (res.status === 404) {
-              throw new Error('Wallet sign-in has not been deployed on this server yet. Run: supabase functions deploy wallet-login');
+              msg = 'Wallet sign-in has not been enabled on this server. Please contact support.';
             }
             if (res.status === 401 || res.status === 403) {
               var detail = (json && (json.error || json.msg || json.message)) || '';
-              throw new Error(detail
-                ? detail
-                : 'The wallet sign-in function rejected this request. Check that verify_jwt is false in supabase/functions/wallet-login/config.toml');
+              msg = detail || 'Wallet sign-in is unavailable. Please contact support.';
             }
-            var msg = (json && (json.error || json.msg || json.message)) || ('Wallet sign-in failed (' + res.status + ')');
             var e = new Error(msg);
             e.status = res.status;
             throw e;
           }
           return json;
         });
-      });
+      }).catch(function (e) {
+        if (e && e.name === 'AbortError') throw new Error('The sign-in server took too long to respond. Try again.');
+        throw e;
+      }).finally(function () { clearTimeout(timer); });
     },
 
     // The Edge Function hands back a one-time token rather than a password, so
     // no long-lived credential is ever in the browser's hands. verifyOtp turns
     // it into a session, and from there this is the same session any other
     // sign-in produces.
-    adoptWalletSession: function (email, tokenHash) {
+    adoptWalletSession: function (email, tokenHash, expectedAddress) {
       var self_ = this;
       if (!email || !tokenHash) return Promise.reject(new Error('Wallet sign-in did not return a session'));
       return this._waitForClient().then(function (lib) {
-        return lib.auth.verifyOtp({ token_hash: String(tokenHash), type: 'email' });
-      }).then(function (res) {
-        if (res.error) throw new Error(res.error.message || 'Wallet sign-in could not be completed');
-        self_._authUser = res.data.user;
-        self_._session = res.data.session;
-        self_._bootstrap();
-        return self_._loadTable('users', 'id').then(function () {
-          var row = self_._cache.users.find(function (u) { return u.id === self_._authUser.id; });
-          return { ok: true, user: self_._toV1User(row || self_._synthUser(self_._authUser)) };
+        return lib.auth.verifyOtp({ token_hash: String(tokenHash), type: 'email' }).then(function (res) {
+          if (res.error) throw new Error(res.error.message || 'Wallet sign-in could not be completed');
+          var user = res.data && res.data.user;
+          var session = res.data && res.data.session;
+          if (!user || !session || !session.access_token || !session.user || session.user.id !== user.id ||
+              String(user.email || '').toLowerCase() !== String(email).toLowerCase()) {
+            throw new Error('Wallet sign-in did not create an authenticated session. Try again.');
+          }
+          self_._adoptSession(session);
+          // Read the saved profile explicitly. A synthetic user can make login
+          // look successful even though no row exists for the administrator.
+          return self_.q('users?id=eq.' + encodeURIComponent(user.id) + '&select=*', {}).then(function (rows) {
+            var row = rows && rows[0];
+            if (!row || row.id !== user.id || row.login_method !== 'wallet' || row.is_guest ||
+                (expectedAddress && String(row.account).toLowerCase() !== String(expectedAddress).toLowerCase())) {
+              throw new Error('Your wallet profile could not be loaded. Try again or contact support.');
+            }
+            self_._cache.users = self_._cache.users.filter(function (u) { return u.id !== row.id; }).concat([row]);
+            self_._dispatchTrustSync('users');
+            self_._bootstrap().catch(function () {});
+            return { ok: true, user: self_._toV1User(row) };
+          }).catch(function (error) {
+            return lib.auth.signOut({ scope: 'local' }).catch(function () {}).then(function () {
+              self_._adoptSession(null);
+              throw error;
+            });
+          });
         });
       });
     },

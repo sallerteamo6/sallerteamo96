@@ -622,113 +622,101 @@
   }
 
   var _connectBusy = false;
+  var _connectPromise = null;
+  var _walletLoginPromise = null;
 
-  function connectWallet() {
+  function walletReturnUrl() {
+    try {
+      var target = new URLSearchParams(window.location.search).get('r') || 'index.html';
+      var url = new URL(target, window.location.href);
+      if (url.origin === window.location.origin && /^https?:$/.test(url.protocol)) return url.href;
+    } catch (e) {}
+    return 'index.html';
+  }
+
+  // One promise owns connection, signing, server verification and activation.
+  // Callers must await it; an exposed address alone is not a signed-in session.
+  function connectWallet(options) {
+    if (_connectPromise) return _connectPromise;
+    options = options || {};
     var existing = getWallet();
     if (existing && existing.address && isLoggedIn()) {
       _wallet = null;
       closeWalletConnect();
       applyWalletBtn();
       toast('info', 'Wallet disconnected');
-      return;
+      return Promise.resolve({ ok: false, disconnected: true });
     }
-    if (_connectBusy) return;
     _connectBusy = true;
-    function setBtn(connecting) {
+    function status(text) {
       var btn = document.getElementById('walletBtn');
-      var txt = document.getElementById('walletText');
-      if (btn) btn.disabled = connecting;
-      if (txt) txt.textContent = connecting ? 'Connecting...' : 'Connect Wallet';
+      var label = document.getElementById('walletText');
+      if (btn) btn.disabled = true;
+      if (label) label.textContent = text;
+      if (typeof options.onStatus === 'function') options.onStatus(text);
     }
-    setBtn(true);
-    var settled = false;
-    var userRejected = false;
     function finish() {
       _connectBusy = false;
-      setBtn(false);
+      _connectPromise = null;
       applyWalletBtn();
     }
-    function fail(msg) {
-      if (settled) return;
-      settled = true;
-      try { toast('error', msg); } catch (e) {}
-      finish();
-    }
-    function done(addr, name, source, provider) {
-      if (settled) return;
-      settled = true;
-      if (!addr) { fail('Wallet connection failed'); return; }
-      // signer: the live provider. Kept here because a wallet address cannot
-      // produce a signature on its own and login needs to ask the wallet to sign
-      // a challenge. This object is in-memory only, so it is never serialised
-      // and never leaves the tab.
-      _wallet = { address: addr, provider: name, signer: provider, source: source, connectedAt: Date.now() };
-      if (source !== 'WalletConnect v2') closeWalletConnect();
-      var wlEnabled = true;
-      try { wlEnabled = !!(window.AppConfig && window.AppConfig.walletLoginEnabled !== false); } catch (e) {}
-      function after() { finish(); }
-      function connectedToast() {
-        try { toast('success', (name || 'Wallet') + ' connected: ' + addr.slice(0, 6) + '...' + addr.slice(-4)); } catch (e) {}
-      }
-      if (wlEnabled) {
-        Promise.resolve(walletLogin(addr)).then(function (r) {
-          if (r && r.ok) {
-            try { toast('success', t('wallet.loginSuccess') || 'Wallet login successful'); } catch (e) {}
-            setTimeout(function () {
-              try {
-                var r2 = '';
-                var qs = window.location.search;
-                if (qs && qs.indexOf('r=') !== -1) {
-                  var parts = qs.replace(/^\?/, '').split('&');
-                  for (var i = 0; i < parts.length; i++) {
-                    var kv = parts[i].split('=');
-                    if (kv[0] === 'r') r2 = decodeURIComponent(kv[1] || '');
-                  }
-                }
-                window.location.href = r2 || 'index.html';
-              } catch (e) {}
-            }, 1000);
-          } else {
-            connectedToast();
-          }
-          after();
-        }).catch(function () { connectedToast(); after(); });
-      } else {
-        connectedToast();
-        after();
-      }
-    }
-    // Run both at once: the WalletConnect QR opens immediately so the user
-    // always sees a code to scan, while an installed extension wallet can
-    // still auto-connect in the background.
-    var injectPromise = waitForInjectedProvider(3000).then(function (found) {
-      if (found && found.provider) {
-        return found.provider.request({ method: 'eth_requestAccounts' }).then(function (accounts) {
-          if (accounts && accounts[0]) { done(accounts[0], providerDisplayName(found.provider, found.info), found.source, found.provider); return true; }
-          return false;
-        }).catch(function (e) {
-          if (e && (e.code === 4001 || (e.message && e.message.indexOf('rejected') !== -1))) userRejected = true;
-          return false;
+    status('Connecting...');
+    _connectPromise = Promise.resolve().then(function () {
+      // Reuse the provider after a rejected signature; do not open a second QR.
+      if (existing && existing.signer) {
+        return existing.signer.request({ method: 'eth_accounts' }).then(function (accounts) {
+          if (accounts && accounts.length) return accounts;
+          return existing.signer.request({ method: 'eth_requestAccounts' });
+        }).then(function (accounts) {
+          return { address: accounts && accounts[0], provider: existing.signer,
+            name: existing.provider, source: existing.source };
         });
       }
-      return false;
-    }).catch(function () { return false; });
-    injectPromise.then(function (ok) {
-      if (!ok && userRejected) finish();
-    });
-    connectViaWalletConnect(null, function (uri, link) {
-      try { toast('info', 'Scan the QR code with your wallet app'); } catch (e) {}
-    }).then(function (res) {
-      if (res.accounts && res.accounts[0]) { done(res.accounts[0], 'WalletConnect v2', 'WalletConnect v2', res.provider); return true; }
-      return false;
-    }).catch(function (e) {
-      injectPromise.then(function (injectedOk) {
-        if (settled || injectedOk) return;
-        var msg = (e && e.message) || 'Wallet connection failed';
-        if (userRejected) msg = 'Connection rejected';
-        fail(msg);
+      // Prefer the installed wallet. Launching an extension and a QR wallet
+      // simultaneously left a second approval request alive after signing in.
+      return waitForInjectedProvider(1200).then(function (found) {
+        if (found && found.provider) {
+          return found.provider.request({ method: 'eth_requestAccounts' }).then(function (accounts) {
+            return { address: accounts && accounts[0], provider: found.provider,
+              name: providerDisplayName(found.provider, found.info), source: found.source };
+          });
+        }
+        return connectViaWalletConnect(null, function () {
+          status('Approve the connection in your wallet...');
+        }).then(function (res) {
+          return { address: res.accounts && res.accounts[0], provider: res.provider,
+            name: 'WalletConnect v2', source: 'WalletConnect v2' };
+        });
       });
-    });
+    }).then(function (connected) {
+      var addr = connected.address;
+      var provider = connected.provider;
+      var source = connected.source;
+      if (!addr || !/^0x[0-9a-fA-F]{40}$/.test(addr)) throw new Error('No wallet account was selected. Try again.');
+      _wallet = { address: addr, provider: connected.name, signer: provider, source: source, connectedAt: Date.now() };
+      if (source !== 'WalletConnect v2') closeWalletConnect();
+      if (window.AppConfig && window.AppConfig.walletLoginEnabled === false) {
+        return { ok: false, connected: true, msg: 'Wallet sign-in is disabled. Use email and password.' };
+      }
+      status('Confirm sign-in in your wallet...');
+      return walletLogin(addr);
+    }).then(function (result) {
+      if (!result || !result.ok) {
+        var message = (result && result.msg) || 'Wallet sign-in failed. Try again.';
+        toast('error', message);
+        return { ok: false, msg: message };
+      }
+      toast('success', t('wallet.loginSuccess') || 'Wallet login successful');
+      if (options.redirect !== false) setTimeout(function () {
+        window.location.href = walletReturnUrl();
+      }, 400);
+      return result;
+    }).catch(function (error) {
+      var message = walletLoginErrorText(error);
+      toast('error', message);
+      return { ok: false, msg: message };
+    }).then(function (result) { finish(); return result; });
+    return _connectPromise;
   }
 
   function resetWalletText(el) {
@@ -739,8 +727,9 @@
     var w = getWallet();
     var btn = document.getElementById('walletBtn');
     var txt = document.getElementById('walletText');
-    if (btn) btn.disabled = false;
-    if (w) {
+    if (btn) btn.disabled = _connectBusy;
+    if (_connectBusy) return;
+    if (w && isLoggedIn()) {
       if (btn) btn.classList.add('connected');
       if (txt) txt.textContent = w.address.slice(0, 6) + '...' + w.address.slice(-4);
     } else {
@@ -1924,6 +1913,7 @@
   }
 
   function walletLogin(address) {
+    if (_walletLoginPromise) return _walletLoginPromise;
     address = String(address || '').trim();
     if (!address) return Promise.resolve({ ok: false, msg: 'Connect a wallet first' });
     if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
@@ -1941,7 +1931,7 @@
       return Promise.resolve({ ok: false, msg: 'Reconnect the wallet, then sign in' });
     }
 
-    return DB.walletAuth('nonce', { address: address }).catch(function (e) {
+    _walletLoginPromise = DB.walletAuth('nonce', { address: address }).catch(function (e) {
       // Before the wallet-login function existed this whole path refused, after
       // connecting, with "Wallet sign-in is not available on this build" - which
       // sent people looking through settings for a switch that was not there.
@@ -1958,11 +1948,17 @@
       if (!ch || !ch.message || !ch.nonce) throw new Error('The server did not return a sign-in request');
       return signer.request({
         method: 'personal_sign',
-        params: [ch.message, address]
+        // EIP-1193 wallets expect UTF-8 bytes encoded as 0x hex.
+        params: ['0x' + Array.from(new TextEncoder().encode(ch.message), function (b) {
+          return b.toString(16).padStart(2, '0');
+        }).join(''), address]
       }).then(function (signature) {
         return DB.walletAuth('verify', { address: address, nonce: ch.nonce, signature: signature })
           .then(function (out) {
-            return DB.adoptWalletSession(out.email, out.token_hash);
+            if (String(out.address || '').toLowerCase() !== address.toLowerCase()) {
+              throw new Error('The sign-in response does not match your wallet. Try again.');
+            }
+            return DB.adoptWalletSession(out.email, out.token_hash, address);
           });
       });
     }).then(function (res) {
@@ -1976,7 +1972,8 @@
       return res;
     }).catch(function (e) {
       return { ok: false, msg: walletLoginErrorText(e) };
-    });
+    }).then(function (result) { _walletLoginPromise = null; return result; });
+    return _walletLoginPromise;
   }
 
   // PostgREST and the Edge Function both report failures as JSON envelopes, and
@@ -1984,14 +1981,13 @@
   function walletLoginErrorText(e) {
     var raw = String((e && e.message) || e || '');
     if (/"(?:error|message)"\s*:\s*"([^"]+)"/.test(raw)) raw = RegExp.$1;
-    if (/rejected|denied|cancell?ed/i.test(raw)) return 'Sign-in was cancelled in the wallet';
+    if ((e && Number(e.code) === 4001) || /user rejected|user denied|cancell?ed|request rejected/i.test(raw)) return 'Sign-in was cancelled in the wallet';
     if (/User rejected/i.test(raw)) return 'Sign-in was cancelled in the wallet';
     if (/\b4001\b/.test(raw)) return 'Sign-in was cancelled in the wallet';
-    if (routableError(raw)) return raw;
     if (/Failed to fetch|NetworkError|load failed/i.test(raw)) {
       return 'Could not reach the server. Check your connection and try again.';
     }
-    return raw || 'Wallet sign-in failed. Try again.';
+    return routableError(raw) ? raw : 'Wallet sign-in failed. Try again or contact support.';
   }
 
   // True when the text is worth showing as-is: an explanation, not a stack trace
@@ -3983,6 +3979,7 @@
     register: register,
     login: login,
     walletLogin: walletLogin,
+    walletReturnUrl: walletReturnUrl,
     logout: logout,
     changePassword: changePassword,
     changeAdminPassword: changeAdminPassword,
