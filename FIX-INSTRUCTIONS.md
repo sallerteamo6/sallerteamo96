@@ -2,7 +2,7 @@
 
 1. Keep a backup of your current website and database.
 2. If you have not already applied `supabase/v2/14_admin_data_fix.sql`, run it in Supabase SQL Editor first. It requires the existing v2 schema and admin-password setup.
-3. Run `supabase/v2/15_live_delivery.sql` if not already installed, then `supabase/v2/16_admin_session_fixes.sql`, then `supabase/v2/17_profit_mode_and_settlement.sql`, then `supabase/v2/18_all_markets_and_auto_settle.sql`, then `supabase/v2/19_settlement_enum_fix.sql`, then `supabase/v2/20_payouts_multi_trade_numeric_fix.sql`, then the NEW `supabase/v2/21_quote_currency_usdt.sql` - in that order, each in full. These upgrades preserve records, balances, UIDs, and the admin password. Do not rerun schema/seed/reset scripts on a live project.
+3. Run `supabase/v2/15_live_delivery.sql` if not already installed, then `supabase/v2/16_admin_session_fixes.sql`, then `supabase/v2/17_profit_mode_and_settlement.sql`, then `supabase/v2/18_all_markets_and_auto_settle.sql`, then `supabase/v2/19_settlement_enum_fix.sql`, then `supabase/v2/20_payouts_multi_trade_numeric_fix.sql`, then `supabase/v2/21_quote_currency_usdt.sql`, then the NEW `supabase/v2/22_ai_settlement_cron.sql` - in that order, each in full. These upgrades preserve records, balances, UIDs, and the admin password. Do not rerun schema/seed/reset scripts on a live project.
 4. Replace the website files with this folder's contents. Preserve your production `scripts/config.js` if its settings differ.
 5. Press Ctrl+Shift+R and sign in again on both customer and admin pages.
 
@@ -117,6 +117,35 @@ The error in the screenshot named the real cause: the page sent **`ETHUSDT`** as
 With that fixed, `products` was still seeded with only 12 of the coins the front end offers, so the other 17 were correctly refused. **Migration 18 seeds all 29** - the 19 crypto pairs, 4 metals and 6 forex entries - each with the same 60s / 120s / 300s durations, written as one statement over the whole table so a product added by hand also gets its durations.
 
 The metals and forex pairs carry a `price_symbol` sentinel (`METAL_XAU`, `FX_EURUSD`, ...) that will never resolve on Binance. That is intentional and matches the rule already documented in `scripts/settle.mjs`: an unquotable product **blocks rather than guesses**, because settling on a wrong price pays real money to the wrong side. They still settle through the countdown path, which uses the price the page is displaying.
+
+## Nothing waits for a browser or an operator: what is written where
+
+**Requests a member makes are already safe.** Every one of them is written by the member straight into Postgres, so an admin who is offline or has the page closed loses nothing - the admin is only ever a reader:
+
+| Item | Written by the member through |
+|---|---|
+| Support message | `POST chat_messages` |
+| Deposit / withdrawal | `POST transactions`, status forced to `pending` |
+| Loan application | `POST loans` |
+| KYC / verification | `customer_submit_kyc` |
+| AI Quant order | `open_investment` |
+| Trade | `open_trade`, settled by the database |
+
+Each admin page pulls its own tables when it opens, and `admin_live_revisions` compares row versions so anything that changed while the page was shut is re-pulled. Realtime is only the live push; it is not the transport. A deposit that shows a 0.00 balance is a deposit that has not been paid out yet, not money that has gone missing.
+
+**AI Quant settlement did not, and now does.** `settle_investment_day` is granted to `authenticated` but the only caller was the button on `admin-quants.html`, and `settle_due_investments()` is granted to `service_role` only - so no browser could reach it and no database job ran it. A member who closed their browser got no daily credit unless that one Node process happened to be running.
+
+`22_ai_settlement_cron.sql` puts the sweep in Postgres on `pg_cron`, every five minutes. It needs no server, no Node process, no browser and no operator. That is possible because the plan's rate and every per-day amount are drawn once when the member opens the plan and stored on the row, so settling a day is arithmetic the database can already do unaided - `settle_due_investments()` takes no arguments, which is exactly what a cron job can call.
+
+Check it took:
+
+```sql
+select jobname, schedule, active from cron.job where jobname = 'trust_settle_due_investments';
+```
+
+**Trades are deliberately not in the cron.** `settle_due_contracts` needs a live exit price for each open market and Postgres cannot reach Binance's API, so a trade still needs `scripts/settle-everything.mjs` running - or the member's own trade page, which settles from the price it is displaying. Scheduling that from the database would settle trades at a stale or invented price, which pays real money to the wrong side.
+
+The migration is written so it cannot fail a deployment: it raises a notice and carries on if `pg_cron` is unavailable, if the extension is not installed on the server, or if the project has not applied migration 18 yet. Re-running it replaces the job rather than adding a second one.
 
 ## Metals and forex showed no balance, and could not be traded at all
 
