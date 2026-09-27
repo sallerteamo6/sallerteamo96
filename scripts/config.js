@@ -65,13 +65,26 @@
       // auth.uid(); the app never mints or parses its own tokens.
       USE_SUPABASE_AUTH: true,
       // Wallet sign-in. The signature has to be checked somewhere the person
-      // signing cannot reach, so it is checked by the wallet-login Edge Function
-      // and not here. Left empty it defaults to <DB_URL>/functions/v1/wallet-login,
-      // which is where `supabase functions deploy wallet-login` puts it.
+      // signing cannot reach, so it is checked by a wallet-login Edge Function
+      // and not here.
       //
-      // Until that function is deployed, walletLogin() says so plainly instead of
-      // connecting and then refusing, which is what it used to do.
-      WALLET_AUTH_URL: '',
+      // 2026-09-27: this was empty, which made walletAuthUrl() fall back to
+      // <DB_URL>/functions/v1/wallet-login. The function is deployed and works -
+      // but it went in under the auto-generated names `quick-action` and
+      // `smooth-endpoint`, not as `wallet-login`, so that fallback URL 404s and
+      // the page reports the server as not set up.
+      //
+      // The name is not cosmetic: Supabase routes /functions/v1/<name> by exact
+      // slug, and the CLI/dashboard assigns a random name when one is not given.
+      // Both of the following were verified over the network with a real
+      // signature: a server-built challenge, a recovered signer matching the
+      // address, and a one-time session token returned.
+      //
+      // THE DURABLE FIX needs no file change: deploy the function again and give
+      // it exactly the name `wallet-login`, then set this back to ''. Leaving a
+      // name here is fine too, but it has to be changed if the function is ever
+      // renamed or deleted.
+      WALLET_AUTH_URL: 'https://mpiqktgpgmbsljqgypzk.supabase.co/functions/v1/quick-action',
       ENABLED: !isPlaceholder(DB_URL) && !isPlaceholder(DB_ANON_KEY)
     };
 })(window);
