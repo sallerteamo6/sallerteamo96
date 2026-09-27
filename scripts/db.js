@@ -455,12 +455,49 @@ var TrustDB = (function () {
       }
 
       // The Phone provider ships disabled, so the Phone tab on the register
-      // form fails with GoTrue's terse "not enabled". Say which setting is
-      // missing instead of leaving a raw provider string on the form.
-      if (/phone logins? (is|are) not enabled|provider is not enabled|sign-?ups? (are|is) not allowed|not enabled/i.test(msg)) {
+      // form fails with GoTrue's terse refusal. Say which setting is missing
+      // instead of leaving a raw provider string on the form.
+      //
+      // GoTrue reports this as HTTP 422 with `error_code: phone_provider_disabled`
+      // and, depending on the endpoint, the message "Phone signups are disabled"
+      // (POST /signup) or "Phone logins are disabled" (POST /token).
+      //
+      // The structured code is matched first because it is stable; the messages
+      // are matched as well because a gateway that drops the code still reports
+      // the text. The previous pattern here asked for "signups are not allowed"
+      // and "phone logins are not enabled", and GoTrue says neither - it says
+      // "are disabled" - so every phone attempt put the bare
+      // "Phone signups are disabled" on the form, which is the string reported
+      // in the screenshot, and the explanation this function exists to give never
+      // ran. A bare `not enabled` is still caught afterwards as a last resort.
+      var code = String((e && (e.error_code || e.code)) || '');
+      if (/phone_provider_disabled/.test(code) ||
+          /phone (sign-?ups?|log-?ins?) (are|is) disabled|phone (sign-?ups?|log-?ins?) (is|are) not enabled/i.test(low)) {
         return new Error(
           'That sign-in method is not enabled on this site. Phone numbers need the ' +
-          'Phone provider switched on in Supabase (Authentication -> Providers -> ' +
+          'Phone provider switched on in Supabase (Authentication -> Sign In / Providers -> ' +
+          'Phone) and connected to an SMS service. Email sign-up works without any ' +
+          'of that.'
+        );
+      }
+
+      // An "Invalid API key" from the gateway means the anon key in
+      // scripts/config.js does not belong to the project in DB_URL, or was
+      // rotated. Nothing on the site can work until that is corrected, and the
+      // gateway's hint does not survive to the form, so name it.
+      if (/invalid api key|unauthorized_invalid_api_key/i.test(String(code) + ' ' + low)) {
+        return new Error(
+          'This site cannot reach its database: the Supabase API key in ' +
+          'scripts/config.js is not valid for the project URL configured beside it. ' +
+          'Copy the current anon key from Dashboard -> Project Settings -> API. ' +
+          'No sign-in, sign-up or wallet request can succeed until it matches.'
+        );
+      }
+
+      if (/not enabled/i.test(low)) {
+        return new Error(
+          'That sign-in method is not enabled on this site. Phone numbers need the ' +
+          'Phone provider switched on in Supabase (Authentication -> Sign In / Providers -> ' +
           'Phone) and connected to an SMS service. Email sign-up works without any ' +
           'of that.'
         );
