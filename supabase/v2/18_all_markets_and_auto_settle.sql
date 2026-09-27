@@ -53,19 +53,25 @@ insert into public.products (symbol, name, price_symbol, payout_pct, min_amount,
   ('ETC',  'Ethereum Classic', 'ETCUSDT', 174, 10, 'USDT', 18),
   ('USDC', 'USD Coin',     'USDCUSDT', 174, 10, 'USDT', 19),
   ('TUSD', 'TrueUSD',      'TUSDUSDT', 173, 10, 'USDT', 20),
-  -- metals, quoted in USD
-  ('XAU',  'Gold',         'METAL_XAU', 173, 10, 'USD', 21),
-  ('XAG',  'Silver',       'METAL_XAG', 173, 10, 'USD', 22),
-  ('XPD',  'Palladium',    'METAL_XPD', 172, 10, 'USD', 23),
-  ('XPT',  'Platinum',     'METAL_XPT', 172, 10, 'USD', 24),
-  -- forex, quoted in USD
-  ('EUR',  'Euro',         'FX_EURUSD', 172, 10, 'USD', 25),
-  ('AUD',  'Australian Dollar', 'FX_AUDUSD', 172, 10, 'USD', 26),
-  ('GBP',  'Pound Sterling',    'FX_GBPUSD', 171, 10, 'USD', 27),
+  -- metals. The price is a USD price, but the order is settled in USDT, the
+  -- currency the wallet holds. These rows used to be quoted in USD, which made
+  -- the order form read a USD balance of 0.00 and debit a USD balance that no
+  -- member had, so no metals or forex order could be placed. See migration 21.
+  ('XAU',  'Gold',         'METAL_XAU', 173, 10, 'USDT', 21),
+  ('XAG',  'Silver',       'METAL_XAG', 173, 10, 'USDT', 22),
+  ('XPD',  'Palladium',    'METAL_XPD', 172, 10, 'USDT', 23),
+  ('XPT',  'Platinum',     'METAL_XPT', 172, 10, 'USDT', 24),
+  -- forex, settled in USDT for the same reason
+  ('EUR',  'Euro',         'FX_EURUSD', 172, 10, 'USDT', 25),
+  ('AUD',  'Australian Dollar', 'FX_AUDUSD', 172, 10, 'USDT', 26),
+  ('GBP',  'Pound Sterling',    'FX_GBPUSD', 171, 10, 'USDT', 27),
   -- USD/CNY and USD/JPY have USD as the base, which products.symbol cannot
   -- express (it is the unique key and 'USD' is already taken as a quote coin),
-  -- so they are recorded under a distinct symbol that no page will offer. Add
-  -- them properly only after deciding how a USD-base pair should be keyed.
+  -- so they are recorded under a distinct symbol that no page will offer. They
+  -- are also quoted per US dollar, so their quote currency really is CNY and JPY
+  -- - and neither is in the wallet, so no order can be funded from one. They
+  -- stay listed for their price and are left inactive by migration 21. Add them
+  -- properly only after deciding how a USD-base pair should be keyed and funded.
   ('USDCNY', 'US Dollar / Chinese Yuan', 'FX_USDCNY', 171, 10, 'CNY', 28),
   ('USDJPY', 'US Dollar / Japanese Yen',  'FX_USDJPY', 171, 10, 'JPY', 29)
 on conflict (symbol) do update

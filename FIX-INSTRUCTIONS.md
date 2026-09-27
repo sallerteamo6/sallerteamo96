@@ -2,7 +2,7 @@
 
 1. Keep a backup of your current website and database.
 2. If you have not already applied `supabase/v2/14_admin_data_fix.sql`, run it in Supabase SQL Editor first. It requires the existing v2 schema and admin-password setup.
-3. Run `supabase/v2/15_live_delivery.sql` if not already installed, then `supabase/v2/16_admin_session_fixes.sql`, then `supabase/v2/17_profit_mode_and_settlement.sql`, then `supabase/v2/18_all_markets_and_auto_settle.sql`, then `supabase/v2/19_settlement_enum_fix.sql`, then the NEW `supabase/v2/20_payouts_multi_trade_numeric_fix.sql` - in that order, each in full. These upgrades preserve records, balances, UIDs, and the admin password. Do not rerun schema/seed/reset scripts on a live project.
+3. Run `supabase/v2/15_live_delivery.sql` if not already installed, then `supabase/v2/16_admin_session_fixes.sql`, then `supabase/v2/17_profit_mode_and_settlement.sql`, then `supabase/v2/18_all_markets_and_auto_settle.sql`, then `supabase/v2/19_settlement_enum_fix.sql`, then `supabase/v2/20_payouts_multi_trade_numeric_fix.sql`, then the NEW `supabase/v2/21_quote_currency_usdt.sql` - in that order, each in full. These upgrades preserve records, balances, UIDs, and the admin password. Do not rerun schema/seed/reset scripts on a live project.
 4. Replace the website files with this folder's contents. Preserve your production `scripts/config.js` if its settings differ.
 5. Press Ctrl+Shift+R and sign in again on both customer and admin pages.
 
@@ -117,6 +117,36 @@ The error in the screenshot named the real cause: the page sent **`ETHUSDT`** as
 With that fixed, `products` was still seeded with only 12 of the coins the front end offers, so the other 17 were correctly refused. **Migration 18 seeds all 29** - the 19 crypto pairs, 4 metals and 6 forex entries - each with the same 60s / 120s / 300s durations, written as one statement over the whole table so a product added by hand also gets its durations.
 
 The metals and forex pairs carry a `price_symbol` sentinel (`METAL_XAU`, `FX_EURUSD`, ...) that will never resolve on Binance. That is intentional and matches the rule already documented in `scripts/settle.mjs`: an unquotable product **blocks rather than guesses**, because settling on a wrong price pays real money to the wrong side. They still settle through the countdown path, which uses the price the page is displaying.
+
+## Metals and forex showed no balance, and could not be traded at all
+
+**Migration 21. Run it after 20.**
+
+The metals and forex tabs showed `Balance: 0.00` and no order could be placed. The 0.00 was the visible symptom; the real fault was one layer down. Those products were seeded with `quote_coin = 'USD'` while the wallet holds USDT, and the order form reads its balance in the market's quote currency. So it read a USD balance that does not exist - and `open_trade` then debited the stake from USD as well, so every metals and forex order was refused with
+
+    insufficient USD balance: available 0, required 100
+
+for a member holding a large USDT balance. The form also labelled that number `USDT` in the markup while reading it from the USD balance, so the screen said "0.00 USDT" and was wrong twice over.
+
+**Everything now settles in USDT**, the currency the wallet actually holds. The price is still a USD price and USDT is a dollar stablecoin, so the figure on screen is the same either way - and it matches how every real venue quotes gold and FX (`XAU/USDT`, not `XAU/USD`). Migration 21 updates all rows; migration 18 was also corrected so a fresh install is never seeded in USD in the first place.
+
+**The server now decides the currency, not the request.** `open_trade` reads `products.quote_coin` and ignores the coin the page asks for. A request that can name the currency it is debited in is exactly what let a USD-denominated order reach a USDT-only wallet, so the client no longer has a say. `p_coin` is still accepted so the RPC's argument list is unchanged, and the function refuses for exactly the same eight reasons as before - changing the currency added no new way to reject an order.
+
+On the front end, the stake currency comes from the market row and never from the URL, because a link saved from an older build still says `XAU/USD`; `syncOdds` then re-checks it against `products.quote_coin` and corrects the form if the two disagree. The balance number and its unit label are written together by one function, so they cannot drift apart again.
+
+**Two markets are deliberately not tradable.** `USD/CNY` and `USD/JPY` are quoted per US dollar, so their quote currency really is CNY and JPY - and neither is in the wallet, so no order can be funded from one. They also have USD as their base, which `products.symbol` cannot express. They stay listed on the home page, where the prices are worth seeing, and the order form now says why rather than reporting insufficient funds. Migration 21 leaves them inactive. To offer them, decide how a USD-base pair should be keyed and funded, then:
+
+```sql
+update public.products set is_active = true where symbol in ('USDCNY','USDJPY');
+```
+
+## A running order now says how much time is left
+
+The record list showed a running order as `Profit/Loss: Settles when the time is up`, which tells a member nothing while their stake is committed. Each running order now carries a **Time left** countdown, ticking once a second.
+
+It is counted from the contract's own `expires_at` as written by the database, not from a timer started when the page opened - so reloading the page half way through an order shows the true remainder instead of restarting the count from a full duration. A contract with no `expires_at` falls back to `created_at + duration`, and a row with neither shows `--` rather than an invented number. When the countdown reaches zero the row says `Settling` and pulls the settled result in, with a guard so several orders ending together queue one fetch instead of several.
+
+The post-order countdown modal counts against the same deadline, so the two cannot disagree. `fmtRemain` is covered by a test that runs it: the first version printed `01::00` for an hour, which no amount of reading the source would have caught.
 
 ## The search box was still autofilling, and the first fix was quietly broken
 

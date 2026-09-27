@@ -236,13 +236,18 @@
     var change = parseFloat(row.change);
     return {
       s: sym,
-      n: name,
+      // `n` is the quote currency: rebuildFlat() builds the pair as s + '/' + n
+      // and pricePrefix() reads it. A remote row put the display name here, which
+      // made a pair read "XAU/Gold" and the balance read a currency nobody holds,
+      // so an explicit quote wins and `name` is only the last resort.
+      n: trim(row.quote_coin) || trim(row.quote) || name || 'USDT',
       price: price,
       change: change,
       dec: decimalsFor(price),
       i: (sym === 'USD' ? (ICON_BY_NAME[name] || 'USD_CNY.svg') : (ICON_MAP[sym] || null)),
       pid: row.pid,
       tab: tab,
+      x: (row.x === 1 || row.x === true) ? 1 : 0,
       isUp: row.isUp === 1 || row.isUp === true
     };
   }
@@ -271,17 +276,20 @@
         { s: 'TUSD', n: 'USDT', price: 0.95985, change: -3.59, dec: 5, i: 'TUSD.png' }
       ],
       metal: [
-        { s: 'XAU', n: 'USD', price: 4043.60, change: 0.56, dec: 2, i: 'XAU.svg' },
-        { s: 'XAG', n: 'USD', price: 57.575, change: 0.98, dec: 3, i: 'XAG.svg' },
-        { s: 'XPD', n: 'USD', price: 1281.22, change: 1.88, dec: 2, i: 'XPD.svg' },
-        { s: 'XPT', n: 'USD', price: 1647.52, change: 2.03, dec: 2, i: 'XPT.svg' }
+        { s: 'XAU', n: 'USDT', price: 4043.60, change: 0.56, dec: 2, i: 'XAU.svg' },
+        { s: 'XAG', n: 'USDT', price: 57.575, change: 0.98, dec: 3, i: 'XAG.svg' },
+        { s: 'XPD', n: 'USDT', price: 1281.22, change: 1.88, dec: 2, i: 'XPD.svg' },
+        { s: 'XPT', n: 'USDT', price: 1647.52, change: 2.03, dec: 2, i: 'XPT.svg' }
       ],
       forex: [
-        { s: 'EUR', n: 'USD', price: 1.1281, change: -1.52, dec: 4, i: 'EUR.svg' },
-        { s: 'AUD', n: 'USD', price: 0.7127, change: 1.96, dec: 4, i: 'AUD.svg' },
-        { s: 'GBP', n: 'USD', price: 1.3433, change: 0.25, dec: 4, i: 'GBP.svg' },
-        { s: 'USD', n: 'CNY', price: 6.7289, change: -0.24, dec: 4, i: 'USD_CNY.svg' },
-        { s: 'USD', n: 'JPY', price: 111.467, change: 0.08, dec: 3, i: 'USD_JPY.svg' }
+        { s: 'EUR', n: 'USDT', price: 1.1281, change: -1.52, dec: 4, i: 'EUR.svg' },
+        { s: 'AUD', n: 'USDT', price: 0.7127, change: 1.96, dec: 4, i: 'AUD.svg' },
+        { s: 'GBP', n: 'USDT', price: 1.3433, change: 0.25, dec: 4, i: 'GBP.svg' },
+        // Quoted per US dollar, so their quote currency really is CNY and JPY.
+        // The wallet holds USDT, so these cannot be funded and are not tradable;
+        // they stay listed because the prices are worth seeing. x:1 marks that.
+        { s: 'USD', n: 'CNY', price: 6.7289, change: -0.24, dec: 4, i: 'USD_CNY.svg', x: 1 },
+        { s: 'USD', n: 'JPY', price: 111.467, change: 0.08, dec: 3, i: 'USD_JPY.svg', x: 1 }
       ]
     };
   }
@@ -298,7 +306,12 @@
         d.base = d.price;
         d.baseChange = d.change;
         marketFlat[d.pair] = d;
-        if (!marketFlat[d.s]) marketFlat[d.s] = d;
+        // A market flagged x:1 cannot be funded, so it must not answer to its
+        // bare symbol either: "USD" is the base of USD/CNY and USD/JPY, and
+        // claiming it would resolve ?s=USD to a currency cross that no USDT
+        // balance can pay for. It stays reachable by its full pair, which is how
+        // the trade page gets to read the flag and say why.
+        if (!d.x && !marketFlat[d.s]) marketFlat[d.s] = d;
       });
     });
   }

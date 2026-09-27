@@ -4,6 +4,7 @@ const root = path.join(__dirname, '..');
 const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
 const dbjs = fs.readFileSync(path.join(root, 'scripts/db.js'), 'utf8');
 const trade = fs.readFileSync(path.join(root, 'trade.html'), 'utf8');
+const css = fs.readFileSync(path.join(root, 'styles.css'), 'utf8');
 const users = fs.readFileSync(path.join(root, 'admin-users.html'), 'utf8');
 const sql = fs.readFileSync(path.join(root, 'supabase', 'v2', '17_profit_mode_and_settlement.sql'), 'utf8');
 function fn(source, name, indent = '  ') {
@@ -335,8 +336,62 @@ function fn(source, name, indent = '  ') {
   assert.match(trade, /onclick="closeCountdown\(\)"/);
   assert.match(trade, /onclick="cancelCountdown\(\)"/);
   // And a running order is not shown as a red 0.00 loss.
-  assert.match(trade, /Settles when the time is up/);
+  assert.ok(!/Profit\/Loss<\/span><span class="value" style="color:#8a94a6;">--/.test(trade),
+    'a running order must not print a profit figure it does not have yet');
   assert.match(trade, /: 'Running'/);
+
+  // ---- 8b. A running order says how much time is left ------
+  // The countdown has to come from the contract's own expires_at, not from a
+  // timer started when the page opened: reload half way through an order and the
+  // number on screen must still be the real remainder, or it counts from
+  // nothing and overstates the time the stake is committed for.
+  const loadFn = fn(trade, 'loadRecords', '    ');
+  assert.match(loadFn, /expiresAt:/, 'records must keep expires_at to count down from');
+  assert.match(loadFn, /t\.expires_at/, 'the countdown must read the contract expiry');
+  assert.match(loadFn, /t\.duration/, 'a contract without expires_at must fall back to createdAt + duration');
+  assert.match(trade, /class="label">Time left<\/span>/, 'a running order must label the time left');
+  assert.match(trade, /data-until="' \+ \(r\.expiresAt/, 'the time left must carry the deadline into the DOM');
+  assert.match(trade, /function tickRecTimers\(\)/);
+  const tickTimer = fn(trade, 'tickRecTimers', '    ');
+  assert.match(tickTimer, /Date\.parse\(/, 'the countdown must parse the deadline it was given');
+  assert.match(tickTimer, /- now/, 'the countdown must measure against the current time');
+  assert.match(tickTimer, /fmtRemain\(left\)/, 'the countdown must show the remainder');
+  // Missing deadline must say so rather than invent a number.
+  assert.match(tickTimer, /!isFinite\(until\)[\s\S]{0,80}'--'/, 'an order with no deadline must show -- and not a made-up time');
+  // A second, not the 2s price tick or the 4s record reload, or the seconds jump.
+  assert.match(trade, /setInterval\(tickRecTimers, 1000\)/,
+    'the time left must tick once a second, so the seconds do not jump');
+  // Zero means the order is due: fetch the settled result rather than sit on a
+  // row that still claims to be running.
+  assert.match(tickTimer, /Settling/);
+  assert.match(tickTimer, /reloadRecords\(\)/, 'reaching zero must pull the settled result in');
+  assert.match(tickTimer, /recTimerReloading/, 'several orders reaching zero together must not queue several fetches');
+  // Only the text is rewritten, so the list does not re-render under the cursor.
+  assert.match(tickTimer, /querySelectorAll\('\.rec-timer'\)/,
+    'the tick must update the existing nodes, not rebuild the list');
+  // The order countdown modal counts against the same deadline.
+  const startFn = fn(trade, 'startCountdown', '    ');
+  assert.match(startFn, /order\.expires_at/, 'the countdown modal must use the contract expiry, not a local guess');
+  assert.match(startFn, /isFinite\(until\)/, 'the modal must keep the duration as a fallback when the server sent no expiry');
+  assert.match(css, /\.rec-timer\{/, 'the time left must be styled');
+  assert.match(css, /tabular-nums/, 'the countdown digits must not shift sideways every second');
+
+  // Run it, rather than only reading it. The formatting is the whole point of
+  // the feature and a regex cannot tell 01:05 from 01::05.
+  const fmtRemainSrc = fn(trade, 'fmtRemain', '    ');
+  const fmtRemain = new Function('return (' + fmtRemainSrc + ')')();
+  // Hours are zero-padded too, so the field keeps its width as it grows into
+  // three digits and the digits never shuffle sideways.
+  for (const [ms, want] of [[0, '00:00'], [999, '00:00'], [1000, '00:01'], [59999, '00:59'],
+                            [60000, '01:00'], [65432, '01:05'], [599000, '09:59'],
+                            [3599999, '59:59'], [3600000, '01:00:00'], [3661000, '01:01:01'],
+                            [7205000, '02:00:05'], [86400000, '24:00:00'], [-5000, '00:00']]) {
+    assert.equal(fmtRemain(ms), want, 'time left of ' + ms + 'ms must read ' + want);
+  }
+  // loadRecords' fallback when a contract carries no expires_at.
+  const created = '2026-09-27T10:00:00.000Z';
+  assert.equal(new Date(new Date(created).getTime() + 300 * 1000).toISOString(),
+    '2026-09-27T10:05:00.000Z', 'a 300s order opens must expire 300s later');
 
   // ---- 9. A failed settlement explains itself and keeps the details ------
   const errNodes = {};
@@ -393,8 +448,87 @@ function fn(source, name, indent = '  ') {
   errCtx.setSettling(false);
   assert.equal(el2('settlingBox').style.display, 'none');
 
+  // ---- 11. The currency an order is charged in -----------------------------
+  // The metals and forex tabs showed "Balance: 0.00" and could not be traded at
+  // all. Those products were quoted in USD, the order form read the USD balance,
+  // and the stake was debited from USD too, so every metals and forex order was
+  // refused as "insufficient USD balance: available 0" for a member holding a
+  // large USDT balance. The 0.00 was the symptom; the unfundable stake was the bug.
+  const sql21 = fs.readFileSync(path.join(sqlDir, '21_quote_currency_usdt.sql'), 'utf8');
+  const sql21Code = sql21.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map(l => l.replace(/--.*$/, '')).join('\n');
+  assert.match(sql21Code, /update public\.products set quote_coin = 'USDT'/,
+    'every product must settle in the currency the wallet actually holds');
+  // The server decides the currency. A request that can name the currency it is
+  // debited in is what put a USD-denominated order on a USDT-only wallet.
+  const open21 = sql21Code.split('create or replace function public.open_trade')[1].split('\nend $$')[0];
+  assert.match(open21, /v_coin := coalesce\(nullif\(v_product\.quote_coin, ''\)/,
+    'open_trade must take the currency from the product row');
+  assert.match(open21, /post_ledger\(v_uid, v_coin, -p_amount/,
+    'the stake must be debited in the currency the function resolved');
+  assert.ok(!/post_ledger\(v_uid, coalesce\(p_coin/.test(open21),
+    'the stake must not be debited in a currency the request chose');
+  assert.ok(!/post_ledger\(v_uid, p_coin/.test(open21),
+    'the client-supplied coin must not reach the ledger');
+  // The same 8 refusals as migration 20: settling the currency is not a new
+  // reason to refuse an order.
+  const reasons21 = [...open21.matchAll(/raise exception '([^']+)'/g)].map(m => m[1]);
+  assert.deepEqual(reasons21.map(r => r.replace(/\s+/g, ' ')), reasons,
+    'open_trade gained or lost a refusal while changing the currency');
+  // The two USD-base FX crosses cannot be funded by a USDT wallet, so they are
+  // left visible but not tradable rather than failing at the order.
+  assert.match(sql21Code, /set is_active = false where symbol in \('USDCNY', 'USDJPY'\)/);
+  // The market list must quote what the wallet holds, or the form reads a
+  // balance that is not there.
+  assert.ok(!/\{ s: 'XAU', n: 'USD'/.test(app), 'metals must not be quoted in a currency the wallet lacks');
+  assert.ok(!/\{ s: 'EUR', n: 'USD'/.test(app), 'forex must not be quoted in a currency the wallet lacks');
+  assert.match(app, /\{ s: 'XAU', n: 'USDT'/);
+  assert.match(app, /\{ s: 'EUR', n: 'USDT'/);
+  // n is the quote currency: rebuildFlat builds the pair as s + '/' + n. A
+  // remote row put the display name there, giving pairs like "XAU/Gold".
+  const parseItem = fn(app, 'parseItem', '  ');
+  assert.match(parseItem, /n: trim\(row\.quote_coin\) \|\| trim\(row\.quote\) \|\| name/,
+    'a remote market row must resolve its quote currency, not fall back to the display name');
+  // An unfundable market must not answer to its bare symbol either, or ?s=USD
+  // resolves to a currency cross no USDT balance can pay for.
+  const rebuild = fn(app, 'rebuildFlat', '  ');
+  assert.match(rebuild, /if \(!d\.x && !marketFlat\[d\.s\]\)/,
+    'a market flagged x:1 must not claim its bare symbol');
+  assert.match(app, /i: 'USD_CNY\.svg', x: 1 \}/, 'the USD-base crosses are marked untradable');
+
+  // The order form: the currency comes from the market row, never the URL. A link
+  // saved from an older build said XAU/USD and produced the 0.00 read.
+  const tradeSetup = trade.slice(trade.indexOf('var pairIn ='), trade.indexOf('var currentInterval'));
+  assert.match(tradeSetup, /var quoteUnit = alias;/,
+    'the stake currency must come from the market row, not the URL pair');
+  assert.ok(!/pairIn\.split\('\/'\)\[1\]/.test(tradeSetup),
+    'the stake currency must not be taken from the URL');
+  // products.quote_coin is what the server charges, so it outranks the market list.
+  const syncOdds = fn(trade, 'syncOdds', '    ');
+  assert.match(syncOdds, /if \(t\.coin && t\.coin !== quoteUnit\)/,
+    'syncOdds must take the settlement currency from the products table');
+  assert.match(syncOdds, /refreshWalletReadout\(\)/, 'a corrected currency must refresh the balance shown');
+  // The number and the unit label were set in two places and the markup said USDT
+  // while the number came from USD, so a full balance read as 0.00 USDT.
+  assert.match(trade, /<span id="walletBalanceUnit">/, 'the balance unit must not be hard-coded in the markup');
+  assert.ok(!/walletBalanceLabel">0\.00<\/b> USDT/.test(trade),
+    'the balance label must not hard-code USDT next to a number read in another currency');
+  const readout = fn(trade, 'refreshWalletReadout', '    ');
+  assert.match(readout, /getBalance\(TrustApp\.getUserId\(\), quoteUnit\)/);
+  assert.match(readout, /unit\.textContent = quoteUnit/,
+    'the unit label must be written from the same currency as the number');
+  // The two balance readers must go through the one helper, or they drift again.
+  assert.ok(!/walletBalanceLabel'\)\.textContent = TrustApp\.getBalance/.test(trade),
+    'no reader may set the balance without its unit');
+  // And the reason an untradable market cannot be funded is explained, not
+  // reported as insufficient funds.
+  const mktCheck = fn(trade, 'marketCheck', '    ');
+  assert.match(mktCheck, /if \(market && market\.x\)/);
+  assert.match(mktCheck, /priced in/, 'an unfundable market must say why');
+  assert.match(mktCheck, /Nothing was taken from your balance/);
+
   console.log('PASS: clean encoding, server-settled profit and details in the result modal, priced from the database, ' +
     'ledger-backed open/settle, admin profit-mode switch on both scopes, a non-destructive admin list rebuild, ' +
     'the contract_status enum cast, random() kept out of numeric arithmetic, 20/30/40 payouts, concurrent orders, ' +
-    'background settlement, and a settlement failure that explains itself');
+    'background settlement, a settlement failure that explains itself, time left on every running order counted ' +
+    'from the contract expiry, and metals and forex settling in the currency the wallet holds');
 })().catch(e => { console.error(e); process.exitCode = 1; });
