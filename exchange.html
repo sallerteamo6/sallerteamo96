@@ -109,7 +109,13 @@
       setTimeout(function () { el.remove(); }, 2000);
     }
 
-    var EXCHANGE_FEE = 0.1;
+    // No fee is applied here. The spread lives in the database
+    // (exchange_coins.p_spread_bps, default 0) so it is charged inside the same
+    // transaction as the swap and cannot be skipped by editing the page. A fee
+    // constant in this file used to subtract 0.1% from the displayed figure
+    // while the server charged nothing, so the number shown and the number
+    // applied were different by construction.
+
     var uid = TrustApp.getUserId();
 
     // The DB session restore is async: getUserId() is null until it resolves,
@@ -126,49 +132,61 @@
     }
 
     function allCoins() {
-      var out = [];
-      ['USDT', 'USDC'].forEach(function (c) { if (out.indexOf(c) === -1) out.push(c); });
-      var crypto = (TrustApp.MARKET && TrustApp.MARKET.crypto) || [];
-      crypto.forEach(function (d) { if (d.s && out.indexOf(d.s) === -1) out.push(d.s); });
-      return out;
+      // Whatever the server prices, and never a hardcoded list: a coin the
+      // platform cannot price must not be offered as swappable.
+      var list = coins();
+      if (!list.length) return ['USDT'];
+      if (list.indexOf('USDT') === -1) list.unshift('USDT');
+      return list;
     }
 
-    // Live prices (exchange page only): batch Binance ticker, refreshed on an
-    // interval + on tab focus. Falls back to the platform market snapshot and
-    // finally to a 1:1 rate so the page keeps working offline.
-    var EX_LIVE = {};
-    var EX_LIVE_AT = 0;
-    var EX_LIVE_SYMS = ['BTC', 'ETH', 'LTC', 'XRP', 'DOGE', 'TON', 'ADA', 'BNB', 'TRX', 'UNI', 'AVAX'];
-    function liveSrc(sym) { return (sym === 'USDT' || sym === 'USDC') ? 1 : (EX_LIVE[sym] || 0); }
-    function fetchLivePrices(done) {
-      var pairs = EX_LIVE_SYMS.map(function (s) { return s + 'USDT'; });
-      fetch('https://api.binance.com/api/v3/ticker/price?symbols=' + encodeURIComponent(JSON.stringify(pairs)), { credentials: 'omit' })
-        .then(function (r) { return r.json(); })
-        .then(function (arr) {
-          if (!arr || !arr.length || !arr[0].symbol) throw new Error('empty ticker');
-          arr.forEach(function (t) { var s = String(t.symbol).replace(/USDT$/, ''); EX_LIVE[s] = parseFloat(t.price) || 0; });
-          EX_LIVE_AT = Date.now();
-          if (done) done(true);
-        })
-        .catch(function () {
-          // Live feed unavailable (blocked/offline): warm the platform market
-          // snapshot instead so the fallback rate is as fresh as possible.
-          if (typeof TrustApp.fetchMarket === 'function') {
-            TrustApp.fetchMarket(function () { if (done) done(false); });
-          } else if (done) done(false);
-        });
+    // ---------------------------------------------------------------------
+    //  Prices come from the server, and the server decides the rate.
+    //
+    //  This page used to fetch Binance in the browser and divide two numbers to
+    //  show a rate. That is fine for a quote and fatal for a swap: the rate that
+    //  decided the fill has to be the one the server also used, or the member is
+    //  shown a number that was never applied to their money. So the page reads
+    //  public.prices - the same rows exchange_coins reads - and shows the server's
+    //  price, with its age. A price past the limit is shown as stale and cannot
+    //  be swapped, because the function would refuse it anyway.
+    //
+    //  scripts/prices.mjs keeps those rows current. If it stops, nothing here
+    //  invents a price; the swaps stop too, by name.
+    // ---------------------------------------------------------------------
+    var PRICES = {};
+    var MAX_AGE_SEC = 300;
+
+    function priceOf(sym) { return PRICES[sym] || null; }
+
+    // The coins the platform can actually hold and price: whatever the server has
+    // a live price for. Not a hardcoded list, so adding a coin is a price-feed
+    // change rather than a code change, and a coin that cannot be priced never
+    // appears to be swappable.
+    function coins() {
+      return Object.keys(PRICES).filter(function (s) { return s !== 'USDT' || true; }).sort();
     }
-    function refreshPrices() { fetchLivePrices(function () { calc(); }); }
+
+    function fmtAge(sec) {
+      if (sec == null) return '';
+      if (sec < 60) return sec + 's ago';
+      if (sec < 3600) return Math.round(sec / 60) + 'm ago';
+      return Math.round(sec / 3600) + 'h ago';
+    }
+
+    function loadPrices() {
+      if (!window.DB || !DB.getExchangePrices) return Promise.resolve(false);
+      return DB.getExchangePrices().then(function (map) {
+        PRICES = map || {};
+        return true;
+      }).catch(function () { return false; });
+    }
 
     function rateOf(sym) {
-      if (sym === 'USDT' || sym === 'USDC') return 1;
-      var lv = liveSrc(sym);
-      if (lv > 0) return lv;
-      var d = TrustApp.findCoin ? TrustApp.findCoin(sym) : null;
-      return d ? (parseFloat(d.price) || 1) : 1;
+      if (sym === 'USDT') return 1;              // seeded at exactly 1, never fetched
+      var p = priceOf(sym);
+      return p && p.price > 0 ? p.price : 0;
     }
-
-    function rate(sel) { return rateOf(sel.value); }
 
     function buildOptions(selected) {
       return allCoins().map(function (s) {
@@ -194,13 +212,36 @@
     }
 
     function calc() {
+      var fromSel = document.getElementById('fromCoin'), toSel = document.getElementById('toCoin');
       var amt = parseFloat(document.getElementById('fromAmount').value) || 0;
-      var fromR = rate(document.getElementById('fromCoin'));
-      var toR = rate(document.getElementById('toCoin'));
-      var usd = amt * fromR;
-      var recv = usd / toR * (1 - EXCHANGE_FEE / 100);
-      document.getElementById('toAmount').value = recv === 0 ? '' : recv.toFixed(recv < 0.01 ? 8 : (recv < 10 ? 4 : 2));
-      document.getElementById('rateLine').textContent = TrustApp.t('exch.rate') + ': 1 ' + document.getElementById('fromCoin').value + ' = ' + (fromR / toR).toFixed(6) + ' ' + document.getElementById('toCoin').value + (EX_LIVE_AT > 0 ? ' live' : ' static');
+      var f = fromSel.value, t = toSel.value;
+      var fromR = rateOf(f), toR = rateOf(t);
+      var out = document.getElementById('toAmount');
+      var line = document.getElementById('rateLine');
+      var stale = [];
+
+      if (!fromR || !toR) {
+        out.value = '';
+        line.textContent = 'Live price unavailable for ' + (!fromR ? f : t) + '. No coins were moved.';
+        return;
+      }
+
+      // Same arithmetic the server does, so the figure on screen is the figure
+      // that will be credited. The server rounds to 8dp; matching that here means
+      // the two never disagree by a rounding step.
+      var recv = Math.round(amt * fromR / toR * 1e8) / 1e8;
+      out.value = recv === 0 ? '' : recv;
+
+      if (PRICES[f] && !PRICES[f].tradable) stale.push(f);
+      if (PRICES[t] && !PRICES[t].tradable) stale.push(t);
+
+      var rateTxt = '1 ' + f + ' = ' + (fromR / toR).toFixed(8) + ' ' + t;
+      if (stale.length) {
+        rateTxt += '  (price ' + fmtAge(PRICES[stale[0]].ageSec) + ' - too old to swap)';
+      } else if (PRICES[f] && PRICES[f].ageSec != null) {
+        rateTxt += '  (server price, updated ' + fmtAge(PRICES[f].ageSec) + ')';
+      }
+      line.textContent = rateTxt;
     }
 
     function setMax() {
@@ -209,16 +250,31 @@
     }
 
     function getExchanges() {
-      // Exchange history is stored as DB transactions (type 'exchange').
+      // Read from the ledger, which the function wrote: both legs, with the rate
+      // in the note. The old version parsed a transaction description string,
+      // which is why it could not tell a real swap from anything else.
       refreshUid();
       try {
-        return (TrustApp.getTxns() || []).filter(function (t) { return t.type === 'exchange' && String(t.uid) === String(uid); }).map(function (t) {
-          var m = /EX\s+(\S+)\s+([\d.]+)-\>\s*(\S+)\s+([\d.eE+\-]+)/.exec(t.description || t.note || '');
-          var fromAmount = parseFloat(t.amount) || 0;
-          var to = m ? m[3] : '?';
-          var toAmount = m ? (parseFloat(m[4]) || 0) : 0;
-          return { uid: t.uid, from: t.coin, fromAmount: fromAmount, to: to, toAmount: toAmount, at: t.createdAt || t.created_at || t.at || '' };
+        var rows = TrustDB.getExchangeHistory ? TrustDB.getExchangeHistory() : [];
+        var out = [];
+        var byPair = {};
+        rows.forEach(function (r) {
+          var d = parseFloat(r.delta) || 0;
+          // The debit leg is the one the note describes as the coin being sold.
+          var m = /exchange ([-\d.]+) (\S+) -> ([-\d.]+) (\S+) at/.exec(r.note || '');
+          if (!m) return;
+          var entry = {
+            at: r.created_at,
+            from: m[2], fromAmount: parseFloat(m[1]),
+            to: m[4], toAmount: parseFloat(m[3])
+          };
+          // Each swap wrote two rows with the same note; keep one of the pair.
+          var key = r.created_at + '|' + entry.from;
+          if (byPair[key]) return;
+          byPair[key] = true;
+          out.push(entry);
         });
+        return out;
       } catch (e) { return []; }
     }
 
@@ -237,28 +293,69 @@
     }
 
     // A swap moves two balances at once, so it cannot be done from the browser:
-    // the client would have to post two independent writes with no transaction
-    // around them, and one of them failing leaves the member with neither coin.
-    // There is no server-side swap yet, so this is reported plainly rather than
-    // showing a success toast for a swap that never happened. Until a swap RPC
-    // exists (post_ledger on both sides, in one transaction, at a server-side
-    // rate) this button cannot complete a swap.
+    // two independent writes with no transaction around them can half-apply, and
+    // the member is left with neither coin. exchange_coins does both legs in one
+    // transaction, at the server's own price, and refuses rather than guessing.
+    //
+    // Nothing about the rate is sent. There is no parameter to put it in.
     function doExchange() {
       refreshUid();
-      if (!uid) { toast('error', TrustApp.t('common.loginRequired') || 'Please login first'); return; }
+      if (!uid) { toast('error', 'Please sign in first'); return; }
       var amt = parseFloat(document.getElementById('fromAmount').value) || 0;
       var f = document.getElementById('fromCoin').value, t = document.getElementById('toCoin').value;
-      if (amt <= 0) { toast('error', TrustApp.t('exch.enterAmount')); return; }
-      if (f === t) { toast('error', TrustApp.t('exch.sameCoin')); return; }
-      var bal = TrustApp.getBalance(uid, f);
-      if (amt > bal) { toast('error', TrustApp.t('exch.insufficient').replace('{c}', f)); return; }
-      toast('error', 'Swapping ' + amt + ' ' + f + ' to ' + t + ' is not available yet. No coins were moved. Please contact support.');
+      if (amt <= 0) { toast('error', 'Enter an amount'); return; }
+      if (f === t) { toast('error', 'Choose two different coins'); return; }
+
+      // Do not send something the server will refuse. Checking here is a
+      // courtesy, not a control: the function re-checks all of it.
+      var pf = priceOf(f), pt = priceOf(t);
+      if (!pf || !pt) { toast('error', 'Live price unavailable. No coins were moved.'); return; }
+      if (!pf.tradable || !pt.tradable) {
+        toast('error', 'The price for ' + (!pf.tradable ? f : t) + ' is ' + fmtAge((!pf.tradable ? pf : pt).ageSec) + ', which is too old to trade at. No coins were moved.');
+        return;
+      }
+
+      var btn = document.getElementById('exchangeBtn');
+      var label = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = 'Exchanging...'; }
+
+      DB.exchangeCoins(f, amt, t).then(function (res) {
+        if (!res || res.ok !== true) throw new Error((res && res.error) || 'The exchange did not go through.');
+        // The server's figures, not the ones typed above. If the price moved
+        // between the quote and the fill, the member sees what they actually
+        // got rather than what they were shown.
+        document.getElementById('toAmount').value = res.amount_out;
+        toast('success', 'Exchanged ' + res.amount_in + ' ' + res.coin_in + ' for ' + res.amount_out + ' ' + res.coin_out);
+        document.getElementById('fromAmount').value = '';
+        document.getElementById('fromAmount').dispatchEvent(new Event('input', { bubbles: true }));
+        if (TrustApp.refreshBalances) TrustApp.refreshBalances();
+        return loadPrices().then(function () { updateBals(); renderHist(); calc(); });
+      }).catch(function (e) {
+        toast('error', (e && e.message) || 'The exchange failed. No coins were moved.');
+      }).then(function () {
+        if (btn) { btn.disabled = false; btn.textContent = label || 'Exchange'; }
+      });
     }
 
-    document.getElementById('fromCoin').innerHTML = buildOptions('USDT');
-    document.getElementById('toCoin').innerHTML = buildOptions('BTC');
+    function fillCoinOptions() {
+      var list = allCoins();
+      var f = document.getElementById('fromCoin'), t = document.getElementById('toCoin');
+      var keepF = f.value, keepT = t.value;
+      f.innerHTML = buildOptions(list.indexOf(keepF) !== -1 ? keepF : 'USDT');
+      t.innerHTML = buildOptions(list.indexOf(keepT) !== -1 && keepT !== f.value ? keepT : (list.filter(function (c) { return c !== f.value; })[0] || 'USDT'));
+    }
+
+    function refreshPrices() {
+      return loadPrices().then(function () {
+        fillCoinOptions();
+        updateBals();
+        calc();
+        renderHist();
+      });
+    }
+
     document.getElementById('fromAmount').addEventListener('input', calc);
-    document.getElementById('fromCoin').onchange = function () { updateBals(); calc(); };
+    document.getElementById('fromCoin').onchange = function () { fillCoinOptions(); updateBals(); calc(); };
     document.getElementById('toCoin').onchange = function () { updateBals(); calc(); };
     window.addEventListener('storage', function (e) {
       if (e.key === 'trustBalances' || e.key === null) updateBals();
@@ -269,16 +366,21 @@
       if (!document.hidden) { updateBals(); refreshPrices(); }
     });
     setInterval(function () { updateBals(); renderHist(); }, 3000);
-    setInterval(refreshPrices, 30000);
+    // The server's price, refreshed on the same cadence the freshness limit
+    // assumes. Twenty seconds is well inside the five-minute window, so a tab
+    // left open does not drift into a price the exchange would refuse.
+    setInterval(refreshPrices, 20000);
     // The real identity only appears after the async session restore; refresh
     // the balance + history the moment it lands so we never show another
     // account's (or zero) balances.
     if (TrustApp.restoreSession) TrustApp.restoreSession().then(function () { refreshUid(); });
     if (window.DB && DB.onReady) DB.onReady(function () { refreshUid(); });
-    refreshPrices();
+    // Balances render immediately; the coin list cannot be built until the
+    // server's prices arrive, so the first paint shows the form with no options
+    // and fills in once loadPrices resolves.
     updateBals();
-    calc();
     renderHist();
+    refreshPrices();
   </script>
 </body>
 </html>

@@ -307,31 +307,48 @@ Deno.serve(async (req) => {
 
     // ---- 5. Link the profile and mint the session, together ---------------
     // Both need only the uid and the email, which are both settled by now, and
-    // neither reads what the other writes: the link writes public.users, the
-    // mint talks to GoTrue. So they run at the same time instead of one after
-    // the other, which is one round trip instead of two.
+    // neither reads what the other writes: the link writes public.users, the mint
+    // talks to GoTrue. So they run at the same time instead of one after the
+    // other, which is one round trip instead of two.
     //
+    // Each result is captured rather than thrown, because a bare Promise.all
+    // reports whichever rejection happens to land first. That made the specific
+    // answer a member needs - a suspended account, or a wallet already linked
+    // somewhere else - lose the race against a generic failure and come out as
+    // "not set up on the server". The link is checked first and on purpose: its
+    // errors are the ones written for a member, and it is the call that decides
+    // whether this account is allowed to hold anything.
+    const [linkErr, link] = await Promise.all([
+      rpc("wallet_link_profile", {
+        p_uid: link0.uid,
+        p_address: addr,
+        p_email: link0.email,
+      }).then(
+        () => null,
+        (e) => e as Error,
+      ),
+      authAdmin("/admin/generate_link", "POST", {
+        type: "magiclink",
+        email: link0.email,
+      }).then(
+        (v) => v,
+        (e) => e as Error,
+      ),
+    ]);
+
+    if (linkErr) throw linkErr;
+    if (link instanceof Error) throw link;
+
     // generate_link does not send an email, it mints a one-time token. The
     // client exchanges it for a session with verifyOtp, so no long-lived
     // credential is ever passed to the browser and the password generated above
     // is never transmitted anywhere.
     //
     // The insert trigger in 06_auth.sql sets account from the email, so a wallet
-    // profile is created with the derived placeholder and rewritten here to the
-    // real 0x address. This also fails if the address is already on another
-    // profile, which is the point.
-    const [, link] = await Promise.all([
-      rpc("wallet_link_profile", {
-        p_uid: link0.uid,
-        p_address: addr,
-        p_email: link0.email,
-      }),
-      authAdmin("/admin/generate_link", "POST", {
-        type: "magiclink",
-        email: link0.email,
-      }),
-    ]);
-
+    // profile is created with the derived placeholder and rewritten by the link
+    // above to the real 0x address. That call also fails if the address is
+    // already on a different profile, which is the point.
+    //
     // Raw GoTrue REST returns these fields at the top level. Only auth-js
     // wraps them in `properties`; reading that wrapper here lost every token.
     const tokenHash = link?.hashed_token || link?.properties?.hashed_token;

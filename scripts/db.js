@@ -414,6 +414,57 @@ var TrustDB = (function () {
     },
 
     // =====================================================================
+    // Exchange
+    //
+    // The rate is never taken from this file or from the page. exchange_coins
+    // reads it from public.prices inside the database, which no browser can
+    // write, and the page is shown the same rows the server will use - so the
+    // quote on screen is the quote that gets filled, and a member cannot name
+    // their own. The only thing that travels outward is the rate actually used,
+    // which the function returns after the fact.
+    // =====================================================================
+
+    // The server's current prices, with how old each one is. tradable is the
+    // server's own verdict, computed with the same freshness limit exchange_coins
+    // applies, so the page cannot offer a swap that is going to be refused.
+    getExchangePrices: function () {
+      return this.rpc('list_live_prices', { p_max_age_sec: 300 })
+        .then(function (rows) {
+          var out = {};
+          (rows || []).forEach(function (r) {
+            out[r.symbol] = {
+              price: parseFloat(r.price_usdt) || 0,
+              fetchedAt: r.fetched_at,
+              ageSec: r.age_sec,
+              tradable: r.tradable === true
+            };
+          });
+          return out;
+        });
+    },
+
+    // p_coinIn / p_amountIn / p_coinOut only. There is deliberately no rate
+    // parameter, so there is nowhere for one to be smuggled in.
+    exchangeCoins: function (coinIn, amountIn, coinOut) {
+      if (typeof this.ENABLED === 'undefined') return Promise.reject(new Error('Database not configured'));
+      return this.rpc('exchange_coins', {
+        p_coin_in: String(coinIn || '').toUpperCase(),
+        p_amount_in: String(amountIn),
+        p_coin_out: String(coinOut || '').toUpperCase()
+      });
+    },
+
+    // A member's own swaps, newest first. Read from the ledger rather than by
+    // parsing transaction text: the ledger already holds both legs with the rate
+    // in the note, and reason='exchange' is written by the function itself.
+    getExchangeHistory: function () {
+      var self_ = this;
+      return this.q('ledger_entries?select=coin,delta,balance_after,reason,note,created_at&reason=eq.exchange&order=created_at.desc&limit=100')
+        .then(function (rows) { return rows || []; })
+        .catch(function () { return []; });
+    },
+
+    // =====================================================================
     // Auth
     // =====================================================================
 
