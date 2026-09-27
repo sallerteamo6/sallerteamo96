@@ -22,13 +22,6 @@
   position: relative;
 }
 
-.login-top-left {
-  position: absolute;
-  top: 20px;
-  left: 20px;
-  z-index: 10;
-}
-
 .login-wrapper {
   width: 100%;
   max-width: 400px;
@@ -102,18 +95,77 @@
 .login-button.disabled:hover,
 .login-button:disabled:hover { background-color: #bdc3c7; }
 
-/* Wallet sign-in mode: centered column, generous 40px gap, fade in. */
-.wallet-login-mode {
+/* The old .wallet-login-mode screen and its authFadeIn keyframes went with the
+   two-step mode switch. .login-top-left went with it too; the wallet entry
+   point is now the button in the card, and index.html keeps its own header
+   button. Nothing referenced either class any more. */
+
+/* --- Wallet sign-in: one button, one click ---------------------------------
+   Replaces the old two-step "mode" screen. That screen hid the password form
+   and offered a second Connect Wallet button plus a link back, so the wallet
+   took two clicks and a page transition to reach, and any message raised while
+   connecting was rendered on a screen the member had just been moved off.
+   The button is outlined rather than filled so it reads as the alternative to
+   the filled Login button above it, not as a second primary action. */
+.auth-divider {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 40px;
-  animation: authFadeIn .6s ease-in;
+  gap: 12px;
+  margin: 22px 0 4px;
+  color: #9ca3af;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
 }
 
-@keyframes authFadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #e0e0e0;
+}
+
+.wallet-cta {
+  width: 100%;
+  margin-top: 14px;
+  padding: 13px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #fff;
+  color: #3498db;
+  border: 1.5px solid #3498db;
+  border-radius: 4px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+}
+
+.wallet-cta svg { width: 20px; height: 20px; flex-shrink: 0; }
+
+.wallet-cta:hover:not(:disabled) { background: rgba(52, 152, 219, .08); }
+.wallet-cta:active:not(:disabled) { transform: scale(.99); }
+
+.wallet-cta:disabled {
+  color: #9ca3af;
+  border-color: #d1d5db;
+  cursor: not-allowed;
+}
+
+.wallet-cta.connected {
+  color: #15803d;
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, .08);
+}
+
+.wallet-hint {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #6b7280;
 }
 
 /* --- Register page ------------------------------------------------------- */

@@ -1,6 +1,10 @@
 # Function settings are read from supabase/config.toml by the Supabase CLI.
 # The endpoint is called before login; it verifies the wallet signature itself.
-project_id = "sallerteam096"
+# This is the real project ref from scripts/config.js, so a deploy with no
+# --project-ref resolves to the right project instead of failing to link.
+project_id = "mpiqktgpgmbsljqgypzk"
 
 [functions.wallet-login]
+# The page calls this before anyone is signed in, so there is no JWT to check.
+# The function verifies the wallet signature itself before issuing a session.
 verify_jwt = false

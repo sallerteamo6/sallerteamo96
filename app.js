@@ -851,6 +851,7 @@
     'login.remember': { en: 'Remember me', zh: '记住我', ja: 'ログイン状態を保持', ko: '로그인 유지', fa: 'مرا به خاطر بسپار', de: 'Angemeldet bleiben', fr: 'Se souvenir de moi', es: 'Recordarme', it: 'Ricordami', pt: 'Lembrar-me', ru: 'Запомнить меня' },
     'login.login': { en: 'Login', zh: '登录', ja: 'ログイン', ko: '로그인', fa: 'ورود', de: 'Anmelden', fr: 'Connexion', es: 'Iniciar sesión', it: 'Accedi', pt: 'Entrar', ru: 'Войти' },
     'login.register': { en: 'Register', zh: '注册', ja: '登録', ko: '회원가입', fa: 'ثبت نام', de: 'Registrieren', fr: "S'inscrire", es: 'Registrarse', it: 'Registrati', pt: 'Registar', ru: 'Регистрация' },
+    'login.walletHint': { en: 'Sign in with your wallet. No password needed.', zh: '使用钱包登录，无需密码。', ja: 'ウォレットでログイン。パスワードは不要です。', ko: '지갑으로 로그인하세요. 비밀번호가 필요 없습니다.', fa: 'با کیف پول وارد شوید. رمز عبور لازم نیست.', de: 'Mit der Wallet anmelden. Kein Passwort nötig.', fr: 'Connexion avec votre portefeuille. Aucun mot de passe requis.', es: 'Inicia sesión con tu billetera. Sin contraseña.', it: 'Accedi con il tuo portafoglio. Nessuna password necessaria.', pt: 'Inicie sessão com a sua carteira. Sem palavra-passe.', ru: 'Войдите через кошелёк. Пароль не нужен.' },
 
     /* ---- register ---- */
     'reg.phoneNumber': { en: 'Phone Number', zh: '手机号码', ja: '電話番号', ko: '휴대폰 번호', fa: 'شماره تلفن', de: 'Telefonnummer', fr: 'Numéro de téléphone', es: 'Número de teléfono', it: 'Numero di telefono', pt: 'Número de telefone', ru: 'Номер телефона' },
