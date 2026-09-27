@@ -8,11 +8,11 @@
   <meta name="color-scheme" content="light">
   <link rel="icon" type="image/png" href="favicon.png">
   <title>Trade - Trust</title>
-  <link rel="stylesheet" href="styles.css?v=20260927-wallet8">
-  <script src="scripts/config.js?v=20260927-wallet8"></script>
+  <link rel="stylesheet" href="styles.css?v=20260927-wallet12">
+  <script src="scripts/config.js?v=20260927-wallet12"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927-wallet8"></script>
-  <script src="app.js?v=20260927-wallet8"></script>
+    <script src="scripts/db.js?v=20260927-wallet12"></script>
+  <script src="app.js?v=20260927-wallet12"></script>
 </head>
 <body>
   <div id="app">
@@ -97,7 +97,7 @@
           </div>
           <div>
             <span class="modal-row-label">Wallet</span>
-            <button class="wallet-display" onclick="openSheet('walletSheet')"><span id="walletLabel">USDT</span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#8b93a6" stroke-width="2"><path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            <button class="wallet-display" onclick="openWalletSheet()"><span id="walletLabel">USDT</span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#8b93a6" stroke-width="2"><path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
           </div>
           <div class="coin-select-container">
             <input type="number" class="amount-input" id="amountInput" placeholder="Min 10" min="0" step="0.01" value="100">
@@ -131,8 +131,10 @@
   <div class="sheet-overlay" id="walletSheet" style="display:none;" onclick="this.style.display='none'">
     <div class="sheet" onclick="event.stopPropagation()">
       <div class="sheet-header"><h3>Select Wallet</h3><button onclick="document.getElementById('walletSheet').style.display='none'"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6L18 18"></path></svg></button></div>
-      <div class="sheet-item active" onclick="pickWallet('USDT')"><span>USDT</span><span class="odds">0.00</span></div>
-      <div class="sheet-item" onclick="pickWallet('BTC')"><span>BTC</span><span class="odds">0.00</span></div>
+      <!-- Filled by renderWalletSheet() from the member's real balances. This used
+           to be two hard-coded rows reading 0.00, so a member holding USDT and BTC
+           was told they held neither. -->
+      <div id="walletSheetList"></div>
     </div>
   </div>
 
@@ -372,11 +374,96 @@
       document.getElementById('oddsLabel').textContent = num2(odds) + '%';
     }
 
-    function pickWallet(w) {
+    // ---------------------------------------------------------------------
+    //  Live price
+    // ---------------------------------------------------------------------
+    //  Read from public.prices - the same table the account page, the header and
+    //  the exchange use. It used to come from TrustApp.findCoin(), the
+    //  /api/market/all list, which falls back to a hard-coded snapshot when that
+    //  fetch fails and is nudged by a random fraction every two seconds. The
+    //  chart therefore drew a random walk seeded from 77,000, and the entry price
+    //  sent to open_trade came from the same number.
+    //
+    //  The random fallback here is gone for the same reason. If the feed is
+    //  unavailable the last known price is held, and the freshness limit on the
+    //  server decides whether an order can be placed at all. Inventing a number
+    //  for a chart is one thing; inventing the entry price of a trade is not.
+    // ---------------------------------------------------------------------
+    var livePrice = { value: 0, ageSec: null, at: 0 };
+
+    function refreshLivePrice() {
+      if (!window.DB || !DB.valuePrices) return Promise.resolve(livePrice.value);
+      return DB.valuePrices().then(function (map) {
+        var p = map ? map[symbol] : null;
+        if (p && p.price > 0) {
+          livePrice.value = p.price;
+          livePrice.ageSec = p.ageSec;
+          livePrice.at = Date.now();
+        }
+        return livePrice.value;
+      }).catch(function () { return livePrice.value; });
+    }
+
+    // The wallet sheet used to be two hard-coded rows reading 0.00, so a member
+    // holding USDT and BTC was shown as holding neither, and the order form then
+    // refused their own money as insufficient.
+    //
+    //  Only the market's own quote currency can be staked, and that is the
+    //  server's decision, not this page's: open_trade overwrites the requested
+    //  coin with products.quote_coin, because a request that could name the
+    //  currency it is debited in is how a USD order reached a member who only
+    //  held USDT and read back as 0.00 with no explanation. So the other rows are
+    //  listed with their real balance and marked as not stakeable here, rather
+    //  than offered and then silently ignored.
+    function stakeableCoins(bal) {
+      var order = [];
+      if ((parseFloat(bal[quoteUnit]) || 0) > 0) order.push(quoteUnit);
+      for (var c in bal) {
+        if (c !== quoteUnit && (parseFloat(bal[c]) || 0) > 0) order.push(c);
+      }
+      return order;
+    }
+
+    function renderWalletSheet() {
+      var box = document.getElementById('walletSheetList');
+      if (!box) return;
+      var uid = TrustApp.getUserId();
+      if (!uid) { box.innerHTML = '<div class="sheet-note">Sign in to see your balances.</div>'; return; }
+      var bal = TrustApp.getBalances ? TrustApp.getBalances(uid) : {};
+      var coins = stakeableCoins(bal);
+      // No funds at all, or none in the one currency this market settles in.
+      // The second case matters: a member with BTC but no USDT was offered
+      // "0.00 USDT" as a choice, and choosing it was refused a moment later as
+      // an insufficient balance. A row that cannot be used is not a choice.
+      if (!coins.length) {
+        box.innerHTML = '<div class="sheet-note">You have no ' + quoteUnit
+          + ' to stake on ' + symbol + '/' + quoteUnit + '.</div>';
+        return;
+      }
+
+      box.innerHTML = coins.map(function (c) {
+        var amt = parseFloat(bal[c]) || 0;
+        var canStake = c === quoteUnit;
+        var d = c === 'USDT' ? 2 : (c === 'BTC' || c === 'ETH' ? 4 : 2);
+        var cls = 'sheet-item' + (!canStake ? ' sheet-item-off' : '') + (c === wallet && canStake ? ' active' : '');
+        return '<div class="' + cls + '"' + (canStake ? ' onclick="pickWallet(\'' + c + '\', this)"' : '') + '>'
+          + '<span>' + c + (canStake ? '' : ' <em class="sheet-tag">not stakeable on ' + symbol + '/' + quoteUnit + '</em>') + '</span>'
+          + '<span class="odds">' + fmt(amt, d) + ' ' + c + '</span>'
+          + '</div>';
+      }).join('') + '<div class="sheet-note">Only ' + quoteUnit + ' can be staked on this market, and it is settled in '
+        + quoteUnit + '. Other balances are shown so you can see them.</div>';
+    }
+
+    function openWalletSheet() {
+      renderWalletSheet();
+      document.getElementById('walletSheet').style.display = 'flex';
+    }
+
+    function pickWallet(w, el) {
       wallet = w;
       document.getElementById('walletLabel').textContent = w;
       document.querySelectorAll('#walletSheet .sheet-item').forEach(function (it) { it.classList.remove('active'); });
-      event.target.closest('.sheet-item').classList.add('active');
+      if (el) el.classList.add('active');
       document.getElementById('walletSheet').style.display = 'none';
     }
 
@@ -1183,10 +1270,12 @@
     }
 
     function tick() {
-      var live = TrustApp.findCoin ? TrustApp.findCoin(symbol) : null;
-      var lv = live ? live.price : 0;
+      // Held from the last successful read rather than invented. See the live
+      // price block above: a random number here used to become the entry price
+      // of a real order.
+      var lv = livePrice.value > 0 ? livePrice.value : price;
       var last = series[series.length - 1];
-      var nv = lv > 0 ? lv : last.c * (1 + (Math.random() - 0.5) * 0.002);
+      var nv = lv;
       var pv = series[series.length - 2] ? series[series.length - 2].c : last.c;
       if (Math.random() < 0.18) {
         series.push({ o: nv, h: nv, l: nv, c: nv, v: 40 + Math.random() * 160 });
@@ -1214,6 +1303,17 @@
 
     renderRecords();
     initChart();
+    // Take the real price as soon as the feed answers, then keep it warm. The
+    // chart and the entry price both read livePrice, so this is the only thing
+    // that moves them off the market list.
+    refreshLivePrice().then(function (v) {
+      if (v > 0) { price = v; priceBase = v; initChart(); }
+    });
+    setInterval(refreshLivePrice, 30000);
+    // The sheet is a view of balances, so it is re-read whenever balances change
+    // rather than only when it is opened. refreshWalletReadout() already covers
+    // the Balance line on the confirm form.
+    window.addEventListener('trustsync:user_balances', renderWalletSheet);
     // Orders placed in an earlier visit, or whose countdown was closed, settle as
     // soon as they are due. The server decides whether one is due and refuses
     // anything that is not, and settlement is idempotent, so a periodic attempt
@@ -1244,19 +1344,23 @@
 
     function toast(type, msg) { TrustApp.toast(type, msg); }
 
+    // The market list is no longer allowed to set the price. It falls back to a
+    // hard-coded snapshot when /api/market/all fails, so letting it write here
+    // meant a chart and an entry price could come from a file in this repo -
+    // and then a random number generator nudged both every two seconds.
+    // fetchMarket is still called, because the list supplies the icon and the
+    // percentage change, but the price itself comes from public.prices only.
     TrustApp.fetchMarket(function () {
-      var refreshed = TrustApp.findCoin(symbol);
-      if (refreshed) {
-        market.price = refreshed.price;
-        market.change = refreshed.change;
-        price = market.price;
-        priceBase = price;
-        change = market.change;
-    curPriceEl.textContent = pricePre + fmt(price, dec);
-        curChangeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
-        curChangeEl.className = 'change ' + (change >= 0 ? 'rise' : 'fall');
-        overlayEl.textContent = fmt(price, dec);
-      }
+      refreshLivePrice().then(function (v) {
+        var refreshed = v > 0 ? { price: v } : null;
+        if (refreshed) {
+          market.price = refreshed.price;
+          price = market.price;
+          priceBase = price;
+          curPriceEl.textContent = pricePre + fmt(price, dec);
+          overlayEl.textContent = fmt(price, dec);
+        }
+      });
     });
   </script>
 </body>

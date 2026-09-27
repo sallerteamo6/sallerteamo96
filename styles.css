@@ -591,6 +591,13 @@ textarea.form-input{height:auto;padding:12px 15px;resize:vertical}
 .sheet-item .odds{color:#5b616e;font-weight:600}
 .sheet-item.active{background:#1652f0;color:#fff}
 .sheet-item.active .odds{color:#fff}
+/* A coin the member holds that this market cannot be settled in. Shown with its
+   real balance so it is visible, greyed because selecting it would be ignored by
+   open_trade, which overwrites the requested currency with the market's own. */
+.sheet-item-off{opacity:.55;cursor:default}
+.sheet-item-off .odds{color:#8a909c;font-weight:500}
+.sheet-tag{font-style:normal;font-size:11px;opacity:.75;margin-left:4px}
+.sheet-note{padding:10px 4px 2px;font-size:11.5px;line-height:1.5;color:#8a909c}
 .countdown-modal{width:90%;max-width:480px;background:#fff;border-radius:20px;padding:24px;box-shadow:0 20px 60px rgba(19,31,48,.25);position:relative}
 .settling-container{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;gap:24px}
 .countdown-circle{width:120px;height:120px;border-radius:50%;background:linear-gradient(135deg,#1652f0,#3772ff);align-items:center;display:flex;justify-content:center;box-shadow:0 8px 24px rgba(22,82,240,.3)}
