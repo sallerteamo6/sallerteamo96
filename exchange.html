@@ -236,6 +236,13 @@
       }).join('');
     }
 
+    // A swap moves two balances at once, so it cannot be done from the browser:
+    // the client would have to post two independent writes with no transaction
+    // around them, and one of them failing leaves the member with neither coin.
+    // There is no server-side swap yet, so this is reported plainly rather than
+    // showing a success toast for a swap that never happened. Until a swap RPC
+    // exists (post_ledger on both sides, in one transaction, at a server-side
+    // rate) this button cannot complete a swap.
     function doExchange() {
       refreshUid();
       if (!uid) { toast('error', TrustApp.t('common.loginRequired') || 'Please login first'); return; }
@@ -245,17 +252,7 @@
       if (f === t) { toast('error', TrustApp.t('exch.sameCoin')); return; }
       var bal = TrustApp.getBalance(uid, f);
       if (amt > bal) { toast('error', TrustApp.t('exch.insufficient').replace('{c}', f)); return; }
-      var usd = amt * rateOf(f);
-      var recv = usd / rateOf(t) * (1 - EXCHANGE_FEE / 100);
-      TrustApp.addBalance(uid, f, -amt);
-      TrustApp.addBalance(uid, t, recv);
-      try { TrustApp.addTxn({ uid: uid, account: uid, type: 'exchange', coin: f, amount: amt, status: 'confirmed', note: 'EX ' + f + ' ' + amt + '->' + t + ' ' + recv }).catch(function (e) { toast('error', e.message); }); } catch (e2) {}
-      toast('success', TrustApp.t('exch.success'));
-      document.getElementById('fromAmount').value = '';
-      document.getElementById('toAmount').value = '';
-      calc();
-      updateBals();
-      renderHist();
+      toast('error', 'Swapping ' + amt + ' ' + f + ' to ' + t + ' is not available yet. No coins were moved. Please contact support.');
     }
 
     document.getElementById('fromCoin').innerHTML = buildOptions('USDT');

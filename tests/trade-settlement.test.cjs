@@ -16,10 +16,17 @@ function fn(source, name, indent = '  ') {
   // ---- 1. No page ships the double-encoded text any more -----------------
   // The signature of the old corruption: a UTF-8 lead byte rendered as Latin-1
   // (U+00C2 / U+00C3 / U+00E2) immediately followed by a C1 or Latin-1
-  // supplement character, i.e. "Ã‚", "Ãƒ", "â€".
-  const mojibake = /[\u00c2\u00c3\u00e2][\u0080-\u00bf\u2018\u2019\u201c\u201d\u20ac]/;
-  for (const [name, src] of [['trade.html', trade], ['app.js', app], ['admin-users.html', users], ['scripts/db.js', dbjs]]) {
-    assert.ok(!mojibake.test(src), name + ' still contains mojibake');
+  // supplement character, i.e. "Ã‚", "Ãƒ", "â€". The long blobs it produced were
+  // spread across every shipped page, not just the trade panel, so this walks
+  // the whole set.
+  const mojibake = /[\u00c2\u00c3\u00e2][\u0080-\u00bf\u2018\u2019\u201c\u201d\u20ac\u2013\u2014]/;
+  const shipped = fs.readdirSync(root)
+    .filter(f => /\.(html|js|css)$/.test(f) || /^scripts\/.*\.js$/.test(f.replace(/\\/g, '/')))
+    .map(f => path.join(root, f));
+  for (const file of shipped) {
+    const src = fs.readFileSync(file, 'utf8');
+    assert.ok(!mojibake.test(src), path.basename(file) + ' still contains mojibake');
+    assert.ok(src.indexOf('\ufffd') === -1, path.basename(file) + ' contains a replacement character');
   }
   // The close buttons and the record separator are real markup again.
   assert.match(trade, /class="close-btn" onclick="closeSubmit\(\)">\s*<svg/);
@@ -127,6 +134,26 @@ function fn(source, name, indent = '  ') {
   assert.match(app, /openTrade: openTrade/);
   assert.match(app, /settleTrade: settleTrade/);
   assert.ok(!/settleExpiredTrades/.test(app), 'the client-side auto-settler must stay gone');
+  // A rejected adjustment must not be swallowed into a fake local total: that
+  // silent catch is how a settled trade showed a profit that never arrived.
+  const addBalance = fn(app, 'addBalance');
+  assert.ok(!/\.catch\(function \(\) \{ return/.test(addBalance), 'addBalance must not fake a success');
+  assert.match(addBalance, /return Promise\.reject/);
+  assert.match(addBalance, /admin_adjust_balance|_notifyChange\('user_balances'\)/);
+  // No page may re-upload a settled order, which in v2 is a second debit.
+  const migrate = fn(app, 'migrateLegacyTrades');
+  assert.match(migrate, /return false;/, 'the legacy trade re-upload must stay disabled');
+  assert.ok(!/DB\.addTrade/.test(migrate));
+  // The AI page must not debit the principal itself: open_investment does it.
+  const ai = fs.readFileSync(path.join(root, 'ai.html'), 'utf8');
+  assert.ok(!/TrustApp\.addBalance/.test(ai), 'ai.html must not debit the principal in the browser');
+  assert.match(ai, /TrustApp\.openInvestment\(/);
+  assert.match(app, /openInvestment: openInvestment/);
+  assert.match(dbjs, /openInvestment: function \(code, principal, coin\)/);
+  // A swap has no server path, so it must not claim one.
+  const ex = fs.readFileSync(path.join(root, 'exchange.html'), 'utf8');
+  assert.ok(!/TrustApp\.addBalance/.test(ex), 'exchange.html must not move two balances in the browser');
+  assert.match(ex, /No coins were moved/);
 
   // ---- 5. The new RPCs exist, are owned, and are reachable only as intended
   assert.match(sql, /create or replace function public\.open_trade\(/);

@@ -13,11 +13,23 @@ project**; the old project is retained only as an archive.
 | 4 | `04_realtime.sql` | realtime publication |
 | 5 | `05_seed.sql` | markets, durations, AI products, settings, addresses |
 | 6 | `06_auth.sql` | Supabase Auth trigger + manual dashboard checklist |
+| 7 | `07_signup_fix.sql` … `16_admin_session_fixes.sql` | additive upgrades; run only the ones your project is missing |
+| 8 | `17_profit_mode_and_settlement.sql` | **required for trading.** `open_trade` + `settle_trade` so an order's stake and payout both go through `post_ledger`, and the audited `admin_set_profit_mode` switch. Without it every order fails with "function not found". |
 
 Run each file in the Supabase SQL editor. `06_auth.sql` also contains settings
 that can only be applied in the dashboard — follow the checklist at the bottom
 of that file, especially **`DB_PRIVILEGE = anon`**, without which RLS is
 bypassed and every table is world-readable.
+
+### Which settler runs
+
+`settle_contract` and `settle_expired` are `service_role` only and are driven by
+`scripts/settle.mjs` on a timer, quoting a real price. `settle_trade` is the
+owner-only path the countdown uses when the page is open; it takes the exit
+price the page was showing, uses it only to decide the *direction* of the move,
+and rolls the win against the contract's quoted odds in the database. Running
+`settle.mjs` is still the right production arrangement, and the two agree
+because both consult `profit_mode_for()`.
 
 ## What was wrong with v1
 

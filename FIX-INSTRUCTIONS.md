@@ -8,6 +8,28 @@
 
 `17_profit_mode_and_settlement.sql` is required for trading to settle at all. Until it is applied, `open_trade`, `settle_trade` and `admin_set_profit_mode` do not exist and every order will fail with a "function not found" error. It adds functions only: no table is dropped, no balance or transaction row is rewritten, and no account is promoted.
 
+## The garbled characters were everywhere, not just the order panel
+
+The double-encoded text was in **every** shipped page, not only `trade.html`, and had spread to the point where some pages were mostly garbage: `setup.html` 156 KB of which 151 KB was mojibake, `export-local.html` 31 KB of which 30 KB, `admin-chat.html` a 4 KB unread-badge marker, plus a CSS comment. All of it is gone. Each site now has the character it should have had, written as an HTML entity, a CSS escape or a JS escape so an editor re-encode cannot turn it into garbage again.
+
+## Nothing is allowed to claim money moved when it did not
+
+`TrustApp.addBalance` called the admin-only `admin_adjust_balance` RPC, and on rejection returned a locally computed total as if it had succeeded:
+
+```js
+return DB.addBalance(uid, coin, delta).then(function () { return next; }).catch(function () { return next; });
+```
+
+That one line is the shared root cause of the missing trade payout, and it was hiding the same failure in three other places. It now rejects, and it never invents a result. Direct balance adjustment is explicitly the administrator path; a member's own money moves through `open_trade` / `settle_trade` / `open_investment`, which debit and credit inside the same transaction as the thing being bought.
+
+Consequences of that change, and what each page does now:
+
+- **Trade page** - no client balance write at all; the order is opened and settled by the server. Already covered above.
+- **AI Quant purchase (`ai.html`)** - was calling `addBalance(uid,'USDT',-amt)` *and* `open_investment`, which debits the principal itself: a double charge, and in practice neither happened. The client debit is gone, the plan now carries the database product code (`AIQ_7`, `AIQ_30`), and the purchase is awaited so a refusal is reported. **The 1-day, 90-day and 180-day plans have no row in `investment_products` and will be rejected by name.** Add them in `05_seed.sql` or the database to offer them.
+- **Coin swap (`exchange.html`)** - there is no server-side swap, so a swap cannot be made correct from the browser: two independent balance writes with no transaction around them can half-apply, and the `exchange` transaction type it filed is not even in the `txn_type` enum. The button now says plainly that swapping is not available and that no coins were moved, instead of showing a success toast. A swap needs one RPC that posts both `post_ledger` entries in a single transaction at a server-side rate; that is not something to invent from a client-supplied rate, because a member could then name their own rate.
+- **AI Quant settlement (`admin-quants.html`)** - the day credit and the rejection refund are awaited. If the credit fails the day counter is **not** advanced, so the schedule can never show a day as paid that was not paid, and the toast says to refund from the Balance Adjuster.
+- **Legacy trade migration** - this used to re-create historical localStorage trades through `DB.addTrade`. In v2 an order *is* a row that debits the stake, so "re-creating" a settled trade is a **second debit against the member's balance**, not a data copy. It could not have worked either: it passed a `product_id` the legacy row never had, so every row was rejected and the failure was swallowed. It is now disabled. History is not lost - `getTrades()` still merges the localStorage rows into the list it returns, so old orders stay visible on the trade page and in the order history, they are just not duplicated server-side.
+
 ## Trade settlement, Profit Mode and the admin list
 
 **Trade profit/loss now reaches the account.** Previously the page debited the stake and paid the profit with `TrustApp.addBalance`, which calls the `admin_adjust_balance` RPC. That RPC requires an administrator and a written reason, so for an ordinary member both calls failed and the error was swallowed. The stake and the payout now move inside the database, in the same transaction that opens and settles the contract:
@@ -28,6 +50,8 @@ Residual risk, stated plainly: `settle_trade` still receives the exit price from
 - The mobile card list moved the live `<td>` nodes out of the table and hid it, so a rebuild that did not finish left an empty panel. Cards are now built from a clone; the table is only hidden once its replacement is in the DOM, and a failed build leaves the real table visible.
 - A `MutationObserver` on `document.body` with `subtree: true` rebuilt every table on any change anywhere on the page - a toast, a modal, another panel - and a rebuild collapsed every open row. The observer now watches only each table's `<tbody>`, so it fires when the rows change and never on a click.
 - Open/closed state is keyed by the row, so a rebuild brings the open details back instead of collapsing them. Tapping one row only toggles that row.
+
+This was reproduced and verified in a real browser, not by reading the code: `tests/admin-list.browser.test.cjs` drives the actual `app.js` card builder against the real `admin-users.html` table at phone width in headless Chrome, and asserts all 19 behaviours - every user still listed, the live table never gutted, cloned buttons still calling their handlers, a tap opening only its own row, open rows surviving a re-render, an unrelated DOM change not rebuilding the list, and the empty state showing as a table rather than a blank card panel. Run against the pre-fix builder the same harness fails five of them, including *"the open rows survived the re-render"*, which is the reported symptom. It skips with a notice if no Chrome or Edge is installed.
 
 - Login restoration now waits for Supabase identity, independently of slower table loading. Support sends and withdrawal submission recheck the authenticated session.
 - Customer/admin support sends retain error reporting and server confirmation; removed redundant chat repaint timers that disrupted scrolling.
@@ -64,10 +88,11 @@ All JavaScript files changed here and all inline page scripts passed syntax chec
 - `node tests/delivery.test.cjs`
 - `node tests/stability.test.cjs`
 - `node tests/trade-settlement.test.cjs`
+- `node tests/admin-list.browser.test.cjs` (real browser; skips with a notice if none is installed)
 
-They include execution of the User Management edit/modal, manual approval, role, status and archive handlers, the per-user and all-users Profit Mode toggles, matching withdrawal selection, delayed auth restoration, failed limit saves, and unchanged-data redraw suppression. They also cover UUID/UID mapping, admin access and expired-token priority, pagination, withdrawal destination/type, KYC fields, chat aliases and incoming events, operator replies, simultaneous reads, rejected writes, language persistence, single server-controlled balance changes, the result modal rendering the server's profit and detail rows, an unsettled order reporting its reason instead of a number, and the admin card rebuild being non-destructive and click-stable.
+They include execution of the User Management edit/modal, manual approval, role, status and archive handlers, the per-user and all-users Profit Mode toggles, matching withdrawal selection, delayed auth restoration, failed limit saves, and unchanged-data redraw suppression. They also cover UUID/UID mapping, admin access and expired-token priority, pagination, withdrawal destination/type, KYC fields, chat aliases and incoming events, operator replies, simultaneous reads, rejected writes, language persistence, single server-controlled balance changes, the result modal rendering the server's profit and detail rows, an unsettled order reporting its reason instead of a number, every shipped page being free of the double-encoded text, no page writing a balance from the browser, the legacy trade re-upload staying disabled, and the admin card rebuild being non-destructive and click-stable in a real browser.
 
-The live database was not accessed. The new SQL was reviewed but could not be executed here. Browser rendering tests could not run because the browser executable was unavailable. This is not a complete audit of trading, exchange, or investment settlement features.
+The live database was not accessed. The new SQL was reviewed but could not be executed here. The browser test covers the admin list only; the trade and settlement screens were verified by driving their functions against mocked server responses, not by loading a funded order. This is not a complete audit of trading, exchange, or investment settlement features. The exchange feature is knowingly non-functional rather than falsely reported as working; see above.
 
 ## Live acceptance check after installation
 
@@ -82,8 +107,11 @@ Use a customer browser and a separate admin browser. Apply `17_profit_mode_and_s
 7. Place a 10 USDT 60s order with a funded test account. Watch the balance drop by exactly 10 when the order is confirmed, and again by 10 when it settles. Confirm the result modal lists the market, direction, duration, payout rate, stake, entry and exit price, return, net profit/loss and the new balance, and that the figure shown equals the balance change.
 8. Check the same order in the order history and in the admin trade feed. Confirm the history shows the same net profit/loss.
 9. Turn Profit Mode ON for one test user in User Management, then place an order as that user. Confirm it settles as a win at the full quoted payout and that the result modal says "Applied by administrator". Turn it OFF and confirm a further order settles normally. Repeat with the all-users switch and confirm it covers accounts whose own toggle is off.
-10. On a phone-width admin window, expand a user row, wait through several list refreshes, and confirm the expanded details stay expanded and the other users are still listed. Tap a second row and confirm the first row is unaffected.
-11. Test a failed/offline submission. It must show an error and preserve the input; do not assume a request failed solely because its response timed out—check its history before retrying.
+10. On a phone-width admin window, expand a user row, wait through several list refreshes, and confirm the expanded details stay expanded and the other users are still listed. Tap a second row and confirm the first row is unaffected. Confirm the Edit and Manually approve buttons in a card still work.
+11. Open the AI Quant page. Buying a 7-day or 30-day plan must debit the principal and create the order. The 1-day, 90-day and 180-day plans should say they are not available rather than reporting a success - add them to `investment_products` if you want to sell them.
+12. On the exchange page, confirm the button says swapping is not available and no balance changes.
+13. On the AI Quant admin page, settle one day and confirm the credit reaches the member's balance. Withdraw or revoke the admin session and retry: the day must NOT advance and the message must say to refund from the Balance Adjuster.
+14. Test a failed/offline submission. It must show an error and preserve the input; do not assume a request failed solely because its response timed out—check its history before retrying.
 
 
 Reference for realtime setup: https://supabase.com/docs/guides/realtime/postgres-changes

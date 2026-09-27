@@ -167,7 +167,7 @@
   // bootDbHooks() runs: onReady fires mid-eval and would otherwise be
   // reset to false by the later `var` initialization, letting a second
   // trustsync event run the migration again (duplicate rows).
-  var _migTradesDone = false;
+  var _migTradesDone = true;
 
   (function bootDbHooks() {
     if (typeof DB === 'undefined' || !DB) return;
@@ -175,8 +175,8 @@
       try { reloadConfigFromDb(); } catch (e) {}
       try { applyI18n(); } catch (e) {}
       try { updateMenuUser(); } catch (e) {}
-      try { migrateLegacyTrades(); } catch (e) {}
-      // Settlement is owned by the server; never attempt it during page load.
+      // Settlement is owned by the server; never attempt it during page load,
+      // and never re-upload history: see migrateLegacyTrades.
     }
     if (DB.onReady) DB.onReady(hook);
     if (typeof window !== 'undefined') {
@@ -2104,14 +2104,27 @@
     return amt;
   }
 
+  // Direct balance adjustment. This is the ADMIN path (admin_adjust_balance)
+  // and it is deliberately the only one: a member's own money moves through
+  // open_contract / settle_trade / open_investment / swap_coins, which debit and
+  // credit inside the same transaction as the thing being bought.
+  //
+  // It used to swallow a server rejection and hand back a locally computed
+  // total, so a caller that asked for money to move was told it had moved when
+  // nothing was written. That is how a settled trade could show a profit that
+  // never reached the account. It now rejects, and it never invents a result.
   function addBalance(uid, coin, delta) {
     delta = parseFloat(delta) || 0;
-    if (dbActive()) {
-      var next = getBalance(uid, coin) + delta;
-      next = Math.max(0, next);
-      return DB.addBalance(uid, coin, delta).then(function () { return next; }).catch(function () { return next; });
+    if (!delta) return Promise.reject(new Error('Adjustment cannot be zero'));
+    if (!dbActive()) return Promise.reject(new Error('Connection is not ready'));
+    if (!adminToken() && !isCurrentUserAdmin()) {
+      return Promise.reject(new Error('Only an administrator can adjust a balance directly. ' +
+        'Purchases and settlements move money on their own.'));
     }
-    return Promise.resolve(Math.max(0, getBalance(uid, coin) + delta));
+    return DB.addBalance(uid, coin, delta, 'Manual balance adjustment').then(function (balance) {
+      _notifyChange('user_balances');
+      return balance;
+    });
   }
 
   function getTxns() {
@@ -2341,71 +2354,21 @@
   }
 
   // One-time migration: push legacy/offline localStorage trades into Supabase.
+  //
+  // DISABLED, and it must stay that way. In v2 an order is a row in `contracts`
+  // and opening one debits the stake in the same transaction (open_trade), so
+  // "re-creating" a historical trade is not a data copy - it is a second debit
+  // against the member's balance for a contract that already settled. It also
+  // could not work as written: DB.addTrade passes a product_id the legacy row
+  // never had, so open_contract rejected every row and the failure was
+  // swallowed.
+  //
+  // History is not lost. getTrades() still merges the localStorage rows into
+  // the list it returns, so a member's old orders remain visible on the trade
+  // page and in their order history, they are simply not duplicated server
+  // side. Nothing in the UI calls this.
   function migrateLegacyTrades() {
-    if (_migTradesDone) return;
-    _migTradesDone = true;
-    if (!dbActive()) return;
-    DB.ready().then(function () {
-      if (!dbActive()) return;
-      var seen = {};
-      var existing = [];
-      try { existing = DB.getTrades() || []; } catch (e) {}
-      existing.forEach(function (r) { seen[String(r.id)] = 1; });
-      var usersList = [];
-      try { usersList = getUsers(); } catch (e) {}
-      function uidForLegacy(x) {
-        if (x.uid !== undefined && x.uid !== null && String(x.uid) !== '') return String(x.uid);
-        if (!x.user && !x.account) return '';
-        var acct = String(x.user || x.account || '');
-        for (var i = 0; i < usersList.length; i++) {
-          if (String(usersList[i].account || '') === acct) return String(usersList[i].uid);
-        }
-        return '';
-      }
-      var raw = [];
-      try { raw = JSON.parse((typeof localStorage !== 'undefined' && localStorage.getItem('trustTrades')) || '[]') || []; } catch (e) {}
-      raw.forEach(function (x) {
-        var t = legacyTradeToApp(x);
-        if (!t || seen[String(t.id)]) return;
-        seen[String(t.id)] = 1;
-        var legacyUid = uidForLegacy(x);
-        // trades.uid is BIGINT NOT NULL (FK to users): rows without a
-        // resolvable numeric uid cannot be persisted, so leave the mirror
-        // copy in place — it stays visible locally via the merge in getTrades().
-        if (!legacyUid || !/^\d+$/.test(legacyUid)) return;
-        // Cross-device guard: skip if an identical trade already exists in DB
-        // (same opened_at + pair + amount + account), even with a new DB id.
-        var dup = existing.some(function (r) {
-          return String(r.opened_at || '') === String(t.createdAt || '') &&
-                 String(r.pair || '') === String(t.pair || '') &&
-                 parseFloat(r.amount || 0) === parseFloat(t.amount || 0) &&
-                 String(r.account || '') === String(t.user || '');
-        });
-        if (dup) return;
-        DB.addTrade({
-          uid: legacyUid,
-          account: t.user || null,
-          pair: t.pair,
-          side: t.side,
-          amount: t.amount,
-          price: t.price,
-          status: t.status,
-          duration: t.duration,
-          sellPrice: t.sellPrice,
-          settledAt: t.settledAt,
-          profit: t.profit
-        }).then(function () {
-          // Write succeeded: drop the recoverable mirror copy so history
-          // stays deduped (the DB row is now the single source of truth).
-          try {
-            if (typeof localStorage === 'undefined' || !localStorage.getItem) return;
-            var cur = JSON.parse(localStorage.getItem('trustTrades') || '[]') || [];
-            var nxt = cur.filter(function (r) { return String(r.id) !== String(t.id); });
-            localStorage.setItem('trustTrades', JSON.stringify(nxt));
-          } catch (e2) {}
-        }).catch(function () {});
-      });
-    }).catch(function () {});
+    return false;
   }
 
   var AI_KEY = 'trustAIOrders';
@@ -2416,6 +2379,27 @@
     return [];
   }
   function saveAIOrders(list) { return list; }
+
+  // Open an AI Quant investment. The product is named by its database code, not
+  // by a page-local id, and the principal is debited by open_investment itself,
+  // so this is one server round trip that either creates the order and takes the
+  // money or does neither. It rejects on refusal: a page that used to show a
+  // success toast here was reporting an investment that did not exist.
+  function openInvestment(obj) {
+    if (!dbActive()) return Promise.reject(new Error('Connection is not ready. Please retry.'));
+    var uid = getUserId();
+    if (!uid) return Promise.reject(new Error('Please sign in before investing'));
+    var code = String((obj && (obj.productCode || obj.product_code)) || '').trim();
+    if (!code) {
+      return Promise.reject(new Error('This plan is not available yet. Add it to investment_products first.'));
+    }
+    var principal = parseFloat(obj && (obj.principal != null ? obj.principal : obj.amount)) || 0;
+    if (!(principal > 0)) return Promise.reject(new Error('Enter a valid amount.'));
+    return DB.openInvestment(code, principal, (obj && obj.coin) || 'USDT').then(function (row) {
+      _notifyChange('ai_orders');
+      return row;
+    });
+  }
 
   function addAIOrder(obj) {
     var o = {
@@ -3532,6 +3516,7 @@
     updateTrade: updateTrade,
     getAIOrders: getAIOrders,
     addAIOrder: addAIOrder,
+    openInvestment: openInvestment,
     updateAIOrder: updateAIOrder,
     buildAISchedules: buildAISchedules,
     aiProcess: aiProcess,

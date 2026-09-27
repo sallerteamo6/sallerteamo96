@@ -282,8 +282,20 @@
     function rejectOrder(id) {
       var o = o2(id);
       TrustApp.updateAIOrder(id, { status: 'rejected' });
-      if (o && o.uid && o.amount) TrustApp.addBalance(o.uid, 'USDT', o.amount);
-      toast('error', 'Order rejected, amount refunded');
+      // The refund is a ledger movement, and only an admin RPC can make one.
+      // This is not a client-side write any more: it either posts or reports
+      // that it did not, instead of claiming a refund that never happened.
+      if (o && o.uid && o.amount) {
+        TrustApp.addBalance(o.uid, 'USDT', o.amount).then(function () {
+          toast('success', 'Order rejected and ' + fmt(o.amount) + ' USDT refunded');
+          renderAll();
+        }).catch(function (e) {
+          toast('error', 'Order rejected, but the refund did NOT go through: ' + ((e && e.message) || 'unknown error') + '. Refund it from the Balance Adjuster.');
+          renderAll();
+        });
+        return;
+      }
+      toast('error', 'Order rejected');
       renderAll();
     }
 
@@ -315,8 +327,21 @@
       }
       // Single combined credit (profit + principal) so two un-awaited
       // server-first reads cannot race and the last write silently erase
-      // the principal refund.
-      if (o.uid) TrustApp.addBalance(o.uid, 'USDT', credit);
+      // the principal refund. The credit is an audited ledger entry now, so it
+      // is awaited and its failure is stated rather than assumed.
+      if (o.uid) {
+        TrustApp.addBalance(o.uid, 'USDT', credit).then(function () {
+          TrustApp.updateAIOrder(id, patch);
+          toast('success', 'Day ' + next.day + ' settled: +' + fmt(dayProfit) + ' USDT credited');
+          renderAll();
+        }).catch(function (e) {
+          // The day counter is deliberately NOT advanced when the money did not
+          // move, or the schedule would show a day as paid that was never paid.
+          toast('error', 'Day ' + next.day + ' was NOT settled: the ' + fmt(credit) + ' USDT credit failed (' + ((e && e.message) || 'unknown error') + '). Credit it from the Balance Adjuster, then settle the day.');
+          renderAll();
+        });
+        return;
+      }
       TrustApp.updateAIOrder(id, patch);
       toast('success', 'Day ' + next.day + ' settled: +' + fmt(dayProfit) + ' USDT');
       renderAll();

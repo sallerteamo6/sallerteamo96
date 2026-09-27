@@ -1608,6 +1608,22 @@ var TrustDB = (function () {
         .sort(function (a, b) { return new Date(b.created_at || 0) - new Date(a.created_at || 0); });
     },
 
+    // addAIOrder kept its v1 field names, and open_investment needs the product
+    // CODE, which those names never carried - so every call was rejected with
+    // "unknown investment product" and the page reported success anyway. The
+    // code-keyed entry point is what the AI page uses now.
+    openInvestment: function (code, principal, coin) {
+      var self_ = this;
+      this._needUid();
+      return this.rpc('open_investment', {
+        p_product_code: String(code),
+        p_principal: Number(principal),
+        p_coin: coin || 'USDT'
+      }).then(function (id) {
+        return self_._refreshTable('investments').then(function () { return id; });
+      });
+    },
+
     addAIOrder: function (data) {
       var self_ = this;
       this._needUid();

@@ -260,12 +260,16 @@
 
     function fmt(n) { return (parseFloat(n) || 0).toFixed(2); }
 
+    // `code` is the investment_products.code the server prices against. The rows
+    // in 05_seed.sql are AIQ_7, AIQ_15 and AIQ_30; the other plans below have no
+    // database product yet, so the server rejects them with a named error
+    // instead of the page quietly reporting a success that never happened.
     var products = [
-      { id: 5, name: 'AI Quant Demo', period: 1, rateMin: 2.0, rateMax: 2.0, min: 10, max: 1000, desc: '1-day demo plan, daily return 2.0%' },
-      { id: 1, name: 'AI Quant Trial', period: 7, rateMin: 2.5, rateMax: 2.5, min: 100, max: 10000, desc: '7-day trial plan, daily return 2.5%' },
-      { id: 2, name: 'AI Quant Standard', period: 30, rateMin: 3.0, rateMax: 3.0, min: 1000, max: 50000, desc: '30-day standard plan, daily return 3.0%' },
-      { id: 3, name: 'AI Quant Professional', period: 90, rateMin: 4.0, rateMax: 4.0, min: 5000, max: 100000, desc: '90-day professional plan, daily return 4.0%' },
-      { id: 4, name: 'AI Quant Premium', period: 180, rateMin: 5.0, rateMax: 5.0, min: 10000, max: 0, desc: '180-day premium plan, daily return 5.0%' }
+      { id: 5, code: '', name: 'AI Quant Demo', period: 1, rateMin: 2.0, rateMax: 2.0, min: 10, max: 1000, desc: '1-day demo plan, daily return 2.0%' },
+      { id: 1, code: 'AIQ_7', name: 'AI Quant Trial', period: 7, rateMin: 2.5, rateMax: 2.5, min: 100, max: 10000, desc: '7-day trial plan, daily return 2.5%' },
+      { id: 2, code: 'AIQ_30', name: 'AI Quant Standard', period: 30, rateMin: 3.0, rateMax: 3.0, min: 1000, max: 50000, desc: '30-day standard plan, daily return 3.0%' },
+      { id: 3, code: '', name: 'AI Quant Professional', period: 90, rateMin: 4.0, rateMax: 4.0, min: 5000, max: 100000, desc: '90-day professional plan, daily return 4.0%' },
+      { id: 4, code: '', name: 'AI Quant Premium', period: 180, rateMin: 5.0, rateMax: 5.0, min: 10000, max: 0, desc: '180-day premium plan, daily return 5.0%' }
     ];
     var uid = TrustApp.getUserId();
     var userBalance = TrustApp.getBalance(uid, 'USDT');
@@ -286,6 +290,7 @@
       }
     }
     var current = null;
+    var buyBusy = false;
 
     function pad2(n) { return (n < 10 ? '0' : '') + n; }
     function fmtTime(ts) {
@@ -420,22 +425,32 @@ function setMaxAmount() {
       if (amt < current.min) { toast('error', TrustApp.t('ai.errMin')); return; }
       if (current.max > 0 && amt > current.max) { toast('error', TrustApp.t('ai.errMax')); return; }
       if (amt > userBalance) { toast('error', TrustApp.t('funds.insufficient').replace('{c}', 'USDT')); return; }
-      TrustApp.addBalance(uid, 'USDT', -amt);
-      userBalance -= amt;
-      TrustApp.addAIOrder({
+      // No client-side debit here. open_investment posts the principal to the
+      // ledger in the same transaction that creates the order, so a second
+      // client-side write would be a double charge at best and a silent no-op
+      // at worst. Await the server so a refusal is reported instead of a
+      // success toast for an order that was never created.
+      if (buyBusy) return;
+      buyBusy = true;
+      TrustApp.openInvestment({
         uid: uid,
-        account: (TrustApp.accountByUid(uid) || {}).account || ('ID ' + uid),
-        productId: current.id,
-        product: current.name,
+        productCode: current.code,
+        principal: amt,
+        coin: 'USDT',
         period: current.period,
-        rateMin: current.rateMin,
-        rateMax: current.rateMax,
-        amount: amt,
-        status: 'pending'
+        product: current.name,
+        account: (TrustApp.accountByUid(uid) || {}).account || ('ID ' + uid)
+      }).then(function (row) {
+        buyBusy = false;
+        closeBuy();
+        toggleOrders();
+        userBalance = TrustApp.getBalance(uid, 'USDT');
+        toast('success', TrustApp.t('ai.buySuccess'));
+        return row;
+      }).catch(function (e) {
+        buyBusy = false;
+        toast('error', (e && e.message) || 'The investment could not be opened');
       });
-      closeBuy();
-      toggleOrders();
-      toast('success', TrustApp.t('ai.buySuccess'));
     }
     function closeBuy() { document.getElementById('buyOverlay').style.display = 'none'; }
 
