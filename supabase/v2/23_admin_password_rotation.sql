@@ -67,10 +67,12 @@ begin
     return null;
   end if;
 
-  -- 'bf$...' is bcrypt, written by admin_set_passphrase below. A bare 64-character
-  -- hex string is the legacy unsalted sha256, and is still accepted so an existing
-  -- install is not locked out by this file.
-  if left(stored_hash, 3) = 'bf$' then
+  -- A hash beginning with '$' is bcrypt, written by admin_set_passphrase below.
+  -- A bare 64-character hex string is the legacy unsalted sha256, and is still
+  -- accepted so an existing install is not locked out by this file. No marker is
+  -- stored in front of the salt: crypt() has to be able to parse it, and a
+  -- leading 'bf$' stops it doing exactly that. See migration 25.
+  if left(stored_hash, 1) = '$' then
     ok := (crypt(pass, stored_hash) = stored_hash);
   else
     ok := (encode(digest(pass, 'sha256'), 'hex') = stored_hash);
@@ -174,7 +176,7 @@ begin
   -- The current passphrase must be right, whatever the caller's standing. NULL
   -- is the failure signal, the same as admin_login, so the response does not
   -- reveal whether an operator exists.
-  if left(stored_hash, 3) = 'bf$' then
+  if left(stored_hash, 1) = '$' then
     if crypt(p_current, stored_hash) is distinct from stored_hash then
       return null;
     end if;
@@ -187,7 +189,7 @@ begin
   new_secret := encode(gen_random_bytes(32), 'hex');
 
   update public.admin_credentials
-     set passphrase_hash = 'bf$' || crypt(p_new, gen_salt('bf')),
+     set passphrase_hash = crypt(p_new, gen_salt('bf')),
          token_secret    = new_secret,
          updated_at      = now()
    where id = true;

@@ -2027,6 +2027,34 @@
     try { sessionStorage.removeItem(ADMIN_UNLOCK_KEY); } catch (e) {}
   }
 
+  // ---- Already-verified-this-tab ------------------------------------------
+  // Switching between admin pages re-ran the whole check on every navigation:
+  // restore the session, wait for the connection, then re-read the user list over
+  // the network. That is several seconds of "Checking admin access" between every
+  // two admin pages, for a result that has not changed.
+  //
+  // So a successful verification is remembered for the tab, and the next admin
+  // page in the same tab opens straight away. The check still runs - in the
+  // background - so a revoked operator is locked out seconds later rather than
+  // never, and a failure clears the flag again.
+  //
+  // This is not a hole. The lock is a screen, not the boundary: the data is behind
+  // row-level security and behind admin_users(), which validates the token in the
+  // database. Somebody holding a stale flag with no valid token sees an empty
+  // panel, never anybody else's balances. What the flag skips is a wait, not a
+  // check.
+  var ADMIN_VERIFIED_KEY = 'trustAdminVerified';
+
+  function adminVerifiedInTab() {
+    try { return sessionStorage.getItem(ADMIN_VERIFIED_KEY) === '1'; } catch (e) { return false; }
+  }
+  function markAdminVerifiedInTab() {
+    try { sessionStorage.setItem(ADMIN_VERIFIED_KEY, '1'); } catch (e) {}
+  }
+  function clearAdminVerifiedInTab() {
+    try { sessionStorage.removeItem(ADMIN_VERIFIED_KEY); } catch (e) {}
+  }
+
   // ---- Server-verified admin passphrase ------------------------------------
   // The browser never stores the correct passphrase. It sends whatever the
   // operator typed to public.admin_login(), which compares it against a sha256
@@ -2082,6 +2110,7 @@
     }
     setAdminToken('');
     clearAdminUnlockedInTab();
+    clearAdminVerifiedInTab();
   }
 
   var _adminRefresh = null;
@@ -2099,6 +2128,8 @@
         if (oldWarning) oldWarning.remove();
         var lock = document.getElementById('adminLock');
         setAdminLockState(lock, 'open');
+        // Verified, so the next admin page in this tab opens without the wait.
+        markAdminVerifiedInTab();
         notifyAdminUsersLoaded();
         // A failure in another section must not hide the loaded user list.
         return Promise.allSettled(tables.map(function (table) { return DB.pullBlob(table); }));
@@ -2220,9 +2251,21 @@
   function initAdminLock() {
     var lock = document.getElementById('adminLock');
     if (!lock) return;
-    // Ask nothing until the answer is known.
-    setAdminLockState(lock, 'checking');
     try {
+      // Already verified earlier in this tab: open now, and let the check below
+      // run behind the page. This is what removes the wait when moving between
+      // admin pages. The lock is a screen, not the boundary - the data is behind
+      // row-level security and behind admin_users(), which validates the token in
+      // the database - so a stale flag shows an empty panel, never anybody else's
+      // balances, and the background check re-locks a moment later if it should.
+      var knownGood = adminVerifiedInTab();
+
+      // Ask nothing until the answer is known.
+      setAdminLockState(lock, knownGood ? 'open' : 'checking');
+      if (knownGood) {
+        var lockNow = document.getElementById('adminLock');
+        if (lockNow) lockNow.style.display = 'none';
+      }
       // Session restore is async and the users table may not have loaded yet.
       // Deciding early would fail the is_admin check and prompt a real admin,
       // so wait for both before deciding. The lock is visible by default
@@ -2244,7 +2287,13 @@
             // branch used to raise the lock on any failure, which locked a real
             // admin out of a page they were already entitled to, and did it
             // silently: the page simply asked for a password it did not need.
-            if (account) { setAdminLockState(lock, 'open'); return; }
+            //
+            // Already-verified-this-tab is treated the same way. A token that has
+            // genuinely stopped working is caught inside fetchAdminUsers, which
+            // shows the lock itself; what reaches here is a refresh that did not
+            // complete, and locking somebody out over a dropped connection is not
+            // a security improvement when the panel would have been empty anyway.
+            if (account || knownGood) { setAdminLockState(lock, 'open'); return; }
             setAdminLockState(lock, 'ask');
           });
           return;

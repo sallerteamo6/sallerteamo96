@@ -558,18 +558,37 @@ var TrustDB = (function () {
       var body = Object.assign({ action: action }, payload || {});
       return fetch(this.walletAuthUrl(), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: this.anon },
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: this.anon,
+          // Supabase verifies the JWT on every Edge Function call before the
+          // function body runs, and a request with no bearer token is answered
+          // 401 at the gateway - so the wallet appeared to connect and then did
+          // nothing at all, with the real cause never reaching the page. The anon
+          // key is itself a valid JWT, so sending it is enough. The function is
+          // meant to be reached without a session: it authenticates the member by
+          // their signature, not by a token.
+          'Authorization': 'Bearer ' + this.anon
+        },
         body: JSON.stringify(body)
       }).then(function (res) {
         return res.text().then(function (text) {
           var json = null;
           try { json = text ? JSON.parse(text) : null; } catch (e) { json = null; }
           if (!res.ok || !json || json.ok !== true) {
-            // A missing function answers 404 with an HTML or JSON error page.
-            // Say what that means, because "wallet sign-in is not available on
-            // this build" sent people looking for a setting that was not there.
-            if (res.status === 404 || res.status === 401 || res.status === 403) {
-              throw new Error('Wallet sign-in has not been set up on the server yet. Use email and password, or ask the operator to deploy the wallet-login function.');
+            // 404 is the common one: the function was never deployed, or the URL
+            // is wrong. 401/403 with no JSON body is the gateway refusing the
+            // request before it reaches the code, which on its own means verify_jwt
+            // is on. Both used to be reported as "not set up", which sent people
+            // looking for a setting that already existed.
+            if (res.status === 404) {
+              throw new Error('Wallet sign-in has not been deployed on this server yet. Run: supabase functions deploy wallet-login');
+            }
+            if (res.status === 401 || res.status === 403) {
+              var detail = (json && (json.error || json.msg || json.message)) || '';
+              throw new Error(detail
+                ? detail
+                : 'The wallet sign-in function rejected this request. Check that verify_jwt is false in supabase/functions/wallet-login/config.toml');
             }
             var msg = (json && (json.error || json.msg || json.message)) || ('Wallet sign-in failed (' + res.status + ')');
             var e = new Error(msg);

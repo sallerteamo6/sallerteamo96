@@ -2,7 +2,15 @@
 
 1. Keep a backup of your current website and database.
 2. If you have not already applied `supabase/v2/14_admin_data_fix.sql`, run it in Supabase SQL Editor first. It requires the existing v2 schema and admin-password setup.
-3. Run `supabase/v2/15_live_delivery.sql` if not already installed, then `supabase/v2/16_admin_session_fixes.sql`, then `supabase/v2/17_profit_mode_and_settlement.sql`, then `supabase/v2/18_all_markets_and_auto_settle.sql`, then `supabase/v2/19_settlement_enum_fix.sql`, then `supabase/v2/20_payouts_multi_trade_numeric_fix.sql`, then `supabase/v2/21_quote_currency_usdt.sql`, then `supabase/v2/22_ai_settlement_cron.sql`, then `supabase/v2/23_admin_password_rotation.sql`, then the NEW `supabase/v2/24_wallet_login_challenges.sql` - in that order, each in full. These upgrades preserve records, balances, UIDs, and the admin password. Do not rerun schema/seed/reset scripts on a live project.
+3. Run `supabase/v2/15_live_delivery.sql` if not already installed, then `supabase/v2/16_admin_session_fixes.sql`, then `supabase/v2/17_profit_mode_and_settlement.sql`, then `supabase/v2/18_all_markets_and_auto_settle.sql`, then `supabase/v2/19_settlement_enum_fix.sql`, then `supabase/v2/20_payouts_multi_trade_numeric_fix.sql`, then `supabase/v2/21_quote_currency_usdt.sql`, then `supabase/v2/22_ai_settlement_cron.sql`, then `supabase/v2/23_admin_password_rotation.sql`, then `supabase/v2/24_wallet_login_challenges.sql`, then the NEW `supabase/v2/25_admin_password_salt_fix.sql` - in that order, each in full. These upgrades preserve records, balances, UIDs, and the admin password. Do not rerun schema/seed/reset scripts on a live project.
+
+**If you have already applied 23, apply 25 as soon as you can.** Migration 23 could lock the operator out of the panel; 25 is the repair. Check where you stand:
+
+```sql
+select left(passphrase_hash, 4) from public.admin_credentials;
+-- $2b$  fine
+-- bf$   run 25, or the admin password will not work
+```
 4. Deploy the wallet sign-in function (only if you want Connect Wallet to work): run `supabase functions deploy wallet-login`, then `supabase secrets set --env-file .env.wallet`. That file needs `SUPABASE_SERVICE_KEY` (the service_role key from Project Settings -> API) and `SITE_URL` (your site address with the scheme). Without it, Connect Wallet says it is not set up and points people at email sign-in.
 5. Replace the website files with this folder's contents. Preserve your production `scripts/config.js` if its settings differ.
 6. Press Ctrl+Shift+R and sign in again on both customer and admin pages.
@@ -151,6 +159,28 @@ That refusal was correct, and the reason is the point. Signing in with a wallet 
 Until the function is deployed the button now says *"Wallet sign-in is not set up on this server yet. Please sign in with your email and password."* instead of connecting and then refusing.
 
 `tests/wallet-login.test.cjs` drives the whole flow, including a signature the server rejects, and asserts that no signature recovery exists in the page or in `scripts/db.js` - that absence is the security property.
+
+## Three bugs, one of them mine
+
+**Migration 25. The admin password change locked the operator out.**
+
+Migration 23 stored the new passphrase as `'bf$' || crypt(p_new, gen_salt('bf'))`. pgcrypto's `crypt()` takes a crypt(3) salt, which has to *begin* with the algorithm marker - `$2b$`, `$2a$`, `$5$`. Prefixing it with `bf$` means the salt is handed over as `bf$$2b$12$...`, which is not a salt `crypt` recognises, so it raises or returns NULL and the comparison can never be true.
+
+So the form reported success, the old password stopped working, and then the new one was rejected too. Nobody could get in, and nothing on screen said why. The marker existed only so `admin_login` could tell a bcrypt hash from a legacy sha256, and it was never needed: a bcrypt hash always starts with `$`, and a sha256 of a passphrase is 64 hex characters.
+
+**Nothing was lost.** The bcrypt hash underneath those three characters is untouched, so migration 25 strips exactly the prefix that was added and the password that was just set starts working again. It is safe to re-run, and it also accepts the broken form on the way in, so somebody who applied only 23 is not left outside:
+
+- `$2b$...` a correct bcrypt hash
+- `bf$$2b$...` the broken form, stripped and accepted
+- 64 hex characters the original sha256
+
+Migration 23 is corrected as well, so a fresh install never hits it. A test asserts nothing is written in front of the salt in *either* file.
+
+**Wallet connected but never logged in.** `DB.walletAuth` sent only an `apikey` header. Supabase verifies the JWT on every Edge Function call *at the gateway, before the code runs*, and a request with no bearer token is answered 401 there — so the wallet connected, the request was refused before `wallet-login` ever saw it, and the reason never reached the page. The anon key is itself a valid JWT, so it is now sent as a bearer token, and `supabase/functions/wallet-login/config.toml` sets `verify_jwt = false` to match. 404 and 401 are now reported as what they are: 404 says the deploy command, 401 names `verify_jwt`.
+
+**"Checking admin access" between every two admin pages.** Each navigation re-ran session restore, waited for the connection, then re-read the user list over the network — several seconds, for a result that had not changed. A successful check is now remembered for the tab, and the next admin page opens straight away with no checking state; the check still runs behind the page, so a revoked operator is re-locked seconds later rather than never.
+
+This skips a wait, not a check. The lock is a screen, not the boundary: the data is behind row-level security and behind `admin_users()`, which validates the token in the database. Someone holding a stale flag with no valid token sees an empty panel, never somebody else's balances. The flag is set only after the user list has actually loaded, and dropped whenever the admin state is cleared.
 
 ## The admin password can be changed from the panel, and admins are not asked for it
 

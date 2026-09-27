@@ -111,7 +111,7 @@ assert.match(app, /var _wallet = null; \/\/ in-memory only/,
 // ---- 6. Failures are explained ---------------------------------------------
 assert.match(app, /if \(e && e\.status === 404\)[\s\S]{0,200}email and password/,
   'a function that is not deployed says so, and points at the way in that works');
-assert.match(dbjs, /Wallet sign-in has not been set up on the server yet/);
+assert.match(dbjs, /Wallet sign-in has not been deployed on this server yet/);
 const errText = fn('walletLoginErrorText');
 assert.match(errText, /cancelled in the wallet/i, 'a rejected signature is named as such');
 assert.match(errText, /Failed to fetch|NetworkError/, 'a network failure is not shown as a rejection');
@@ -144,6 +144,28 @@ assert.ok(!/password/.test(fnSrc.split('return json({ ok: true, address: addr')[
 assert.match(cfg, /WALLET_AUTH_URL/);
 assert.match(dbjs, /\/functions\/v1\/wallet-login/,
   'the default is where `supabase functions deploy wallet-login` places it');
+
+// ---- 8b. The call has to survive the function gateway ------------------------
+// Supabase verifies the JWT on every Edge Function call before the code runs, and
+// answers 401 at the gateway when there is no bearer token. walletAuth() sent only
+// `apikey`, so the wallet connected, the request came back 401, and nothing
+// reached the page that said why: the report was "it connects but doesn't log in".
+const walletAuthSrc = dbjs.slice(dbjs.indexOf('walletAuth: function'), dbjs.indexOf('adoptWalletSession: function'));
+assert.match(walletAuthSrc, /'Authorization': 'Bearer ' \+ this\.anon/,
+  'the anon key is sent as a bearer token so the gateway lets the request through');
+// The function is deliberately unauthenticated, so that is stated in the config
+// rather than left to be discovered at runtime.
+let conf = '';
+try { conf = fs.readFileSync(path.join(root, 'supabase', 'functions', 'wallet-login', 'config.toml'), 'utf8'); }
+catch (e) { console.error('FAIL: no config.toml for the wallet-login function'); process.exit(1); }
+assert.match(conf, /\[functions\.wallet-login\]/, 'the function is configured');
+assert.match(conf, /verify_jwt\s*=\s*false/,
+  'verify_jwt is off, or the function cannot be reached by a visitor who has not signed in yet');
+// 404 and 401 are different problems and were reported as one.
+assert.match(dbjs, /status === 404\)[\s\S]{0,200}supabase functions deploy wallet-login/,
+  'a function that was never deployed says the command to run');
+assert.match(dbjs, /status === 401[\s\S]{0,400}verify_jwt/,
+  'a request refused at the gateway names verify_jwt, which is what it is');
 
 // ---- 9. Run the client flow against a fake function -------------------------
 // Driven end to end so the wiring is proven, not just grepped: a nonce comes

@@ -1,0 +1,21 @@
+# The wallet-login Edge Function.
+#
+# verify_jwt = false is required, and it is not a shortcut around authentication.
+#
+# Supabase verifies the JWT on every function call at the gateway, before the code
+# runs. A visitor asking for a wallet sign-in challenge has no session yet - that
+# is the whole point, they are trying to log in - so they can only present the
+# anon key. Turning this off lets the request reach the function, which then
+# proves who the caller is the only way that actually means anything: it recovers
+# the signer from an Ethereum signature and checks it against the address the
+# challenge was issued for.
+#
+# Nothing is exposed by this. Every capability the function has still requires
+# either a valid unexpired signature or the service_role key, and neither can be
+# produced by reading anything from this page.
+#
+# The client also sends the anon key as a bearer token, so the function works
+# either way. This file makes that belt into braces rather than the only thing
+# holding it up.
+[functions.wallet-login]
+verify_jwt = false

@@ -1,5 +1,5 @@
 const fs=require('node:fs'), vm=require('node:vm'), assert=require('node:assert/strict'), path=require('node:path');
-const root=path.join(__dirname,'..'), source=fs.readFileSync(path.join(root,'app.js'),'utf8');
+const root=path.join(__dirname,'..'), source=fs.readFileSync(path.join(root,'app.js'),'utf8'), app=source;
 function fn(name){const start=source.indexOf('  function '+name+'(');return source.slice(start,source.indexOf('\n  }',start)+4);}
 
 // A stand-in for the lock overlay that records what the operator would see. The
@@ -20,10 +20,16 @@ function makeLock(idle) {
  const lock=makeLock(), nodes={adminLock:lock}, banners=[];
  const context={console,Date,Promise,setTimeout,clearTimeout,_adminRefresh:null,_verifiedAdminToken:'',_adminUsers:null,
    adminToken:()=> '9999999999.signature',notifyAdminUsersLoaded(){},dbUserToApp:u=>u,
+   // Real implementations where they exist, so the tab flags behave as they do in
+   // the app rather than as a stub that always agrees.
    document:{getElementById:id=>nodes[id]||null,createElement:()=>({setAttribute(){},style:{}}),body:{prepend:b=>banners.push(b)}},
    DB:{_pageTables:()=>['users','balances','loans'],_authUser:null,isAdmin:false,getUserStr:()=>null,getUsers:()=>[],pullBlob:async()=>true}};
+ const store={};
+ context.sessionStorage={getItem:k=> (k in store?store[k]:null),setItem:(k,v)=>{store[k]=String(v);},removeItem:k=>{delete store[k];}};
  vm.createContext(context);
- for(const name of ['isRealAdmin','hasAdminReadAccess','fetchAdminUsers','setAdminLockState','initAdminLock'])
+ for(const name of ['adminUnlockedInTab','markAdminUnlockedInTab','clearAdminUnlockedInTab',
+                    'adminVerifiedInTab','markAdminVerifiedInTab','clearAdminVerifiedInTab',
+                    'isRealAdmin','hasAdminReadAccess','fetchAdminUsers','setAdminLockState','initAdminLock'])
    vm.runInContext(fn(name),context);
  assert.equal(context.hasAdminReadAccess(),false,'unvalidated token alone grants no access');
  await context.fetchAdminUsers();
@@ -70,7 +76,7 @@ function makeLock(idle) {
    const c={console,Date,Promise,setTimeout,clearTimeout,adminToken:()=>'',
      getToken:()=> 'jwt',getUserId:()=> 'someone',accountByUid:()=>row,
      restoreSession:async()=>({}),whenDbReady:async()=>true,
-     fetchAdminUsers:load,notifyAdminUsersLoaded(){},isRealAdmin:()=>isAdmin,
+     fetchAdminUsers:load,notifyAdminUsersLoaded(){},adminVerifiedInTab:()=>false,isRealAdmin:()=>isAdmin,
      document:{getElementById:id=>n[id]||null,createElement:()=>({setAttribute(){},style:{}}),body:{prepend(){}}}};
    c.DB={_authUser:isAdmin?{id:'a'}:{id:'u'},isAdmin};
    vm.createContext(c);
@@ -86,7 +92,7 @@ function makeLock(idle) {
    const c={console,Date,Promise,setTimeout,clearTimeout,adminToken:()=>'',
      getToken:()=> 'jwt',getUserId:()=> 'a',accountByUid:()=>null,
      restoreSession:()=>new Promise(()=>{}),whenDbReady:()=>new Promise(()=>{}),
-     fetchAdminUsers:async()=>[],notifyAdminUsersLoaded(){},isRealAdmin:()=>true,
+     fetchAdminUsers:async()=>[],notifyAdminUsersLoaded(){},adminVerifiedInTab:()=>false,isRealAdmin:()=>true,
      document:{getElementById:id=>({adminLock:deciding,adminPassInput:deciding.__input,adminLockErr:null}[id]||null),createElement:()=>({setAttribute(){},style:{}}),body:{prepend(){}}}};
    c.DB={_authUser:{id:'a'},isAdmin:true};vm.createContext(c);
    for(const name of ['setAdminLockState','initAdminLock']) vm.runInContext(fn(name),c);
@@ -193,10 +199,10 @@ function makeLock(idle) {
  // Rotating the signing key is what signs other tabs out, and is why a new token
  // comes back.
  assert.match(sqlCode,/token_secret\s*=\s*new_secret/,'the signing key rotates with the password');
- assert.match(sqlCode,/set passphrase_hash = 'bf\$' \|\| crypt\(p_new, gen_salt\('bf'\)\)/,
-   'the new password is stored as salted bcrypt, not a bare sha256');
+ assert.match(sqlCode,/set passphrase_hash = crypt\(p_new, gen_salt\('bf'\)\)/,
+   'the new password is stored as salted bcrypt, with nothing in front of the salt');
  // An existing install still holds a bare sha256 hash; it must keep working.
- assert.match(sqlCode,/left\(stored_hash, 3\) = 'bf\$' then[\s\S]*?encode\(digest\(pass, 'sha256'\), 'hex'\) = stored_hash/,
+ assert.match(sqlCode,/left\(stored_hash, 1\) = '\$' then[\s\S]*?encode\(digest\(pass, 'sha256'\), 'hex'\) = stored_hash/,
    'admin_login accepts both the legacy hash and bcrypt, so nothing is locked out');
  assert.ok(!/revoke execute[^;]*from (anon|authenticated)/.test(sqlCode),'no call is left unreachable');
  assert.match(sqlCode,/revoke all on function public\.admin_set_passphrase\(text, text, text\) from public;/,
@@ -204,7 +210,90 @@ function makeLock(idle) {
  // The table itself still cannot be written from the client.
  assert.match(sqlCode,/revoke insert, update, delete on public\.admin_credentials from anon, authenticated/);
 
+ // ---- Migration 25: the salt must not be prefixed ----------------------------
+ // Migration 23 stored 'bf$' || crypt(p_new, gen_salt('bf')). crypt() takes a
+ // crypt(3) salt, which has to start with the algorithm marker, so that prefix
+ // made every new hash unverifiable: the form reported success, the old password
+ // stopped working, and the new one was rejected too - a locked-out operator with
+ // no way back in. Migration 25 strips the three characters and installs the
+ // corrected functions; 23 itself is corrected so a fresh install never hits it.
+ const sql25=fs.readFileSync(path.join(root,'supabase','v2','25_admin_password_salt_fix.sql'),'utf8');
+ const sql25Code=sql25.replace(/\/\*[\s\S]*?\*\//g,'').split('\n').map(l=>l.replace(/--.*$/,'')).join('\n');
+ // Nothing may put anything in front of the salt, in either file.
+ for (const [label, src] of [['23', sqlCode], ['25', sql25Code]]) {
+   assert.ok(!/passphrase_hash\s*=\s*'[^']*'\s*\|\|\s*crypt/.test(src),
+     'migration '+label+': nothing may be written in front of the bcrypt salt');
+   assert.ok(!/crypt\([^,]+,\s*'bf\$/.test(src),
+     'migration '+label+': crypt() is never handed a prefixed salt');
+ }
+ assert.match(sql25Code,/set passphrase_hash = substring\(passphrase_hash from 4\)/,
+   '25 repairs the stored hash by removing only the prefix that was added');
+ assert.match(sql25Code,/where id = true\s*\n\s*and left\(passphrase_hash, 3\) = 'bf\$'/,
+   'the repair only touches a row that actually carries the prefix, so it is safe to re-run');
+ assert.match(sql25Code,/and left\(substring\(passphrase_hash from 4\), 4\) in \('\$2a\$', '\$2b\$', '\$2y\$'\)/,
+   'the repair checks what is left is a real bcrypt hash before trusting it');
+ // The three formats the operator may actually be sitting on must all verify.
+ for (const f of ['admin_login','admin_set_passphrase']) {
+   const body = (f==='admin_login'?sql25Code:sql25Code).split('create or replace function public.'+f)[1].split('\nend $$')[0];
+   assert.match(body, /left\(stored_hash, 3\) = 'bf\$'/,
+     f+': the broken prefixed form is still accepted, or somebody who applied only 23 stays locked out');
+   assert.match(body, /left\(stored_hash, 1\) = '\$'/,
+     f+': a correctly stored bcrypt hash is recognised');
+   assert.match(body, /encode\(digest\(/,
+     f+': the original sha256 is still accepted');
+ }
+
+ // ---- Switching admin pages must not re-check from scratch -------------------
+ // Every navigation re-ran restoreSession + whenDbReady + a network re-read of the
+ // user list, which is several seconds of "Checking admin access" between two
+ // pages that were both already authorised.
+ assert.match(app,/ADMIN_VERIFIED_KEY = 'trustAdminVerified'/, 'a successful check is remembered for the tab');
+ assert.match(app,/function adminVerifiedInTab\(\)/);
+ assert.match(app,/setAdminLockState\(lock, knownGood \? 'open' : 'checking'\)/,
+   'a tab that already verified opens at once and never shows the checking state');
+ assert.match(app,/if \(account \|\| knownGood\)/,
+   'a refresh that did not complete must not re-lock somebody already verified');
+ // ...and the flag is not a free pass: it is set only on success and dropped on
+ // lock, so a revoked operator is re-locked rather than trusted indefinitely.
+ const setMark = app.indexOf('markAdminVerifiedInTab();');
+ assert.ok(setMark > app.indexOf("_adminUsers = DB.getUsers().map(dbUserToApp)"),
+   'the flag is set only after the user list has actually loaded');
+ assert.match(app,/clearAdminVerifiedInTab\(\)/);
+ assert.match(app,/function clearAdminUsers\(\)[\s\S]{0,800}clearAdminVerifiedInTab\(\)/,
+   'clearing the admin state also clears the flag');
+ assert.match(app,/&& !isRealAdmin\(\)\) \{/, 'an expired token still locks a passphrase operator');
+ // The lock remains a screen, not the boundary: the data is protected in the
+ // database, which is what makes skipping the wait safe.
+ assert.match(app,/row-level security and behind admin_users\(\)/);
+
+ // ---- Verified once in a tab, no second check on the next admin page ---------
+ // This is the wait the report was about: several seconds of "Checking admin
+ // access" between every two admin pages.
+ async function runSecondPage(verified) {
+   const l=makeLock();const n={adminLock:l,adminPassInput:l.__input,adminLockErr:null};
+   const c={console,Date,Promise,setTimeout,clearTimeout,adminToken:()=>'9999999999.signature',
+     getToken:()=> 'jwt',getUserId:()=> 'someone',accountByUid:()=>({uid:'a',is_admin:true}),
+     // Never resolves: a second page must not be waiting on this at all.
+     restoreSession:()=>new Promise(()=>{}),whenDbReady:()=>new Promise(()=>{}),
+     fetchAdminUsers:async()=>[{uid:'a'}],notifyAdminUsersLoaded(){},isRealAdmin:()=>true,
+     adminVerifiedInTab:()=>verified,markAdminVerifiedInTab(){},clearAdminVerifiedInTab(){},
+     document:{getElementById:id=>n[id]||null,createElement:()=>({setAttribute(){},style:{}}),body:{prepend(){}}}};
+   c.DB={_authUser:{id:'a'},isAdmin:true};vm.createContext(c);
+   for(const name of ['setAdminLockState','initAdminLock']) vm.runInContext(fn(name),c);
+   c.initAdminLock();
+   await tick();   // far shorter than the network round trip the real check needs
+   return l;
+ }
+ let fast=await runSecondPage(true);
+ assert.equal(fast.style.display,'none',
+   'a second admin page in a tab that already verified opens immediately, with no checking pause');
+ assert.equal(/Checking access/i.test(fast.__p.textContent), false,
+   'and never shows the checking state');
+ let slow=await runSecondPage(false);
+ assert.notEqual(slow.style.display,'none',
+   'a tab that has not verified still waits rather than opening on a guess');
+
  console.log('PASS: verified admin access, empty result, partial failure, session fallback, expired-token priority, ' +
-   'a real account admin never asked for the passphrase, a failed refresh not locking out an admin, ' +
-   'rotating the admin password from the panel, and legacy and bcrypt hashes both accepted');
+   'a real account admin never asked for the passphrase, a failed refresh not locking out an admin, rotating the ' +
+   'admin password from the panel, all three stored hash formats accepted, and no re-check when switching admin pages');
 })().catch(e=>{console.error(e);process.exitCode=1;});
