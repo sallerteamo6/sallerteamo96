@@ -19,8 +19,19 @@
   //  (The trailing /rest/v1/ is stripped automatically below.)
   // ---------------------------------------------------------------------
   var DB_URL = 'https://mpiqktgpgmbsljqgypzk.supabase.co/rest/v1/';
-  // The `anon` / `public` key. Safe to ship: RLS is what protects the data.
-  var DB_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1waXFrdGdwZ21ic2xqcWd5cHprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA0MDUzMjUsImV4cCI6MjEwNTk4MTMyNX0.Nj41fJYu4iSU9r7dn-8Y3XugHeomgNStQSgG8iqxbrc';
+  // The publishable (public) key. Safe to ship: RLS is what protects the data.
+  //
+  // 2026-09-27: this used to be the legacy `anon` JWT key, and it no longer works.
+  // Every request through it was refused by the project gateway with
+  //   401 {"code":"UNAUTHORIZED_INVALID_API_KEY","message":"Invalid API key"}
+  // on /rest/v1, /auth/v1 and /functions/v1 alike, so the site could not read or
+  // write anything. Replaced with the project's current `sb_publishable_` key,
+  // which answers 200 on the same requests. Verified over 5 consecutive runs:
+  // legacy key 401, publishable key 200, identical URL and headers.
+  //
+  // If sign-in stops working again, check this line first. It is the one value here
+  // that can be invalidated on the server without any file in this project changing.
+  var DB_ANON_KEY = 'sb_publishable_4Fr10m670_qELHT0H9Kw_g_Czg3EF5D';
 
   // When true the app renders in read-only mode and no write path is offered.
   var READONLY = false;
