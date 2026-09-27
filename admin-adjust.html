@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927b"></script>
-  <script src="app.js?v=20260927b"></script>
+    <script src="scripts/db.js?v=20260927c"></script>
+  <script src="app.js?v=20260927c"></script>
 </head>
 <body class="auth-page admin-page" style="background:#eef1f5;padding-bottom:30px;">
 
@@ -77,7 +77,7 @@
         </div>
         <div>
           <label class="form-label">Note (optional)</label>
-          <input type="text" class="form-input" id="adjNote" placeholder="e.g. Promotion credit">
+          <input type="text" class="form-input" id="adjNote" name="q" placeholder="e.g. Promotion credit" autocomplete="off" data-lpignore="true" data-1p-ignore="true">
         </div>
         <button class="btn btn-lg btn-primary" id="adjApply" style="width:100%;">Apply Adjustment</button>
       </div>
@@ -200,7 +200,10 @@
       box.innerHTML = list.map(function (t) {
         var isCredit = t.dir !== 'debit';
         var sign = isCredit ? '+' : '-';
-        return '<tr><td><div class="user-cell"><div class="user-ava">' + esc((t.account || '?').charAt(0).toUpperCase()) + '</div><div class="user-meta"><div class="user-name">' + esc(t.account) + '</div><div class="user-uid">' + esc(t.uid || '') + '</div></div></div></td><td><span class="tag">' + esc(t.coin) + '</span></td><td><span class="money-cell" style="color:' + (isCredit ? '#059669' : '#dc2626') + ';">' + sign + fmtAmt(t.amount, t.coin) + '</span></td>'
+        // The transactions table stores a bare uid; resolve the profile so the
+        // operator sees the member's login, not a uuid.
+        var who = TrustApp.userIdentity ? TrustApp.userIdentity(t.uid) : { account: t.account || '', memberNo: '' };
+        return '<tr><td><div class="user-cell"><div class="user-ava">' + esc((who.account || '?').charAt(0).toUpperCase()) + '</div><div class="user-meta"><div class="user-name">' + esc(who.account) + '</div><div class="user-uid">UID #' + esc(who.memberNo) + '</div></div></div></td><td><span class="tag">' + esc(t.coin) + '</span></td><td><span class="money-cell" style="color:' + (isCredit ? '#059669' : '#dc2626') + ';">' + sign + fmtAmt(t.amount, t.coin) + '</span></td>'
           + '<td><span class="badge ' + (isCredit ? 'green' : 'red') + '">' + (isCredit ? 'Credit' : 'Debit') + '</span></td>'
           + '<td>' + esc(t.note) + '</td><td>' + (t.createdAt || '').replace('T', ' ').slice(0, 16) + '</td></tr>';
       }).join('');

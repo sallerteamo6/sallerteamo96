@@ -106,7 +106,13 @@ begin
     from public.products
    where upper(symbol) = upper(coalesce(p_symbol, '')) and is_active;
   if v_product.id is null then
-    raise exception 'unknown market' using errcode = '22023';
+    -- Named the tradable markets rather than a bare "unknown market": the front
+    -- end lists more coins than are actually for sale, so the operator reading
+    -- this needs to know which symbols the products table holds.
+    raise exception 'unknown market %, available: %', p_symbol,
+      coalesce((select string_agg(p.symbol, ', ' order by p.sort_order)
+                from public.products p where p.is_active), '(none published)')
+      using errcode = '22023';
   end if;
 
   select pd.payout_pct into v_payout
@@ -115,7 +121,11 @@ begin
      and pd.seconds = p_duration_sec
      and pd.is_active;
   if v_payout is null then
-    raise exception 'unknown duration' using errcode = '22023';
+    raise exception 'unknown duration % for market %, available: %', p_duration_sec, v_product.symbol,
+      coalesce((select string_agg(pd.seconds::text, ', ' order by pd.seconds)
+                from public.product_durations pd
+               where pd.product_id = v_product.id and pd.is_active), '(none)')
+      using errcode = '22023';
   end if;
   if p_amount < v_product.min_amount then
     raise exception 'minimum amount is %', v_product.min_amount using errcode = '22023';
@@ -383,10 +393,170 @@ end $$;
 revoke all on function public.admin_set_profit_mode(text, uuid, boolean) from public;
 grant execute on function public.admin_set_profit_mode(text, uuid, boolean) to anon, authenticated;
 
--- The User Management page reads the switch straight out of app_settings
--- rather than through another function: the table is public-read under RLS and
--- db.js already caches it, so a read RPC would be a second code path for the
--- same two keys and one more thing to keep in step.
+-- ---------------------------------------------------------------------------
+-- AI Quant daily settlement.
+--
+-- update_investment_progress (03_functions.sql) only moves the counter, so the
+-- page's "settle day" button had nothing to call that paid the member: it
+-- credited the balance from the browser, which fails silently for anyone who is
+-- not an administrator. This moves the money into the database, the same way
+-- contracts do.
+--
+-- Idempotent: the row is locked and settled_days only ever moves forward, so a
+-- double click, a retry after a timeout, or two admins clicking at once pay the
+-- same days once. Only the days that were newly advanced are paid.
+-- ---------------------------------------------------------------------------
+create or replace function public.settle_investment_day(
+  p_investment_id bigint,
+  p_settled_days  integer,
+  p_note          text default null
+) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare
+  v        public.investments;
+  v_from   integer;
+  v_to     integer;
+  v_days   integer;
+  v_paid   numeric(24,8) := 0;
+  v_coin   text := 'USDT';
+  v_bal    numeric(24,8);
+  v_profit numeric(24,8);
+  v_matured boolean := false;
+  v_sched  jsonb;
+  v_item   jsonb;
+  i        integer;
+  v_actor  uuid;
+begin
+  select * into v from public.investments where id = p_investment_id for update;
+  if not found then
+    raise exception 'unknown investment' using errcode = 'P0002';
+  end if;
+  if not (public.is_admin() or v.uid = auth.uid()) then
+    raise exception 'not your investment' using errcode = '42501';
+  end if;
+  if v.status <> 'active' then
+    raise exception 'investment is %', v.status using errcode = '22023';
+  end if;
+  if p_settled_days is null or p_settled_days < v.settled_days then
+    raise exception 'settled days cannot go backwards' using errcode = '22023';
+  end if;
 
+  if public.is_admin() then v_actor := auth.uid(); end if;
+
+  v_from := v.settled_days;
+  v_to   := least(greatest(p_settled_days, v_from), v.period_days);
+  v_days := v_to - v_from;
+  if v_days <= 0 then
+    -- Nothing new to pay. Report the stored state so a retry is a no-op rather
+    -- than an error the caller has to special-case.
+    return jsonb_build_object(
+      'id', v.id, 'settled_days', v.settled_days, 'period_days', v.period_days,
+      'paid', 0, 'profit', v.profit, 'status', v.status, 'credited', false,
+      'balance', (select b.amount from public.balances b where b.uid = v.uid and b.coin = v_coin),
+      'already_settled', true);
+  end if;
+
+  -- Pay the days that were just advanced. The stored schedule is used when it
+  -- is present, because open_investment drew the per-day amounts once and the
+  -- page should not be able to restate them; otherwise the drawn rate applies.
+  v_paid := 0;
+  v_sched := coalesce(v.schedules, '[]'::jsonb);
+  for i in 1..jsonb_array_length(v_sched) loop
+    v_item := v_sched -> (i - 1);
+    if coalesce((v_item ->> 'day')::integer, 0) > v_from
+       and (v_item ->> 'day')::integer <= v_to then
+      v_paid := v_paid + coalesce((v_item ->> 'profit')::numeric, 0);
+    end if;
+  end loop;
+  if v_paid = 0 then
+    v_paid := round(v.principal * v.rate / 100, 8) * v_days;
+  end if;
+
+  v_matured := (v_to >= v.period_days);
+
+  update public.investments
+     set settled_days = v_to,
+         profit       = v.profit + v_paid,
+         status       = case when v_matured then 'matured' else 'active' end
+   where id = p_investment_id
+  returning * into v;
+
+  if v_paid <> 0 then
+    v_bal := public.post_ledger(v.uid, v_coin, v_paid, 'adjustment', 'investments',
+                                 v.id::text,
+                                 coalesce(p_note, 'investment day ' || v_from || '-' || v_to));
+  end if;
+
+  insert into public.audit_log(actor,action,entity,entity_id,before,after)
+    values (v_actor, 'settle_investment_day', 'investments', v.id::text,
+            jsonb_build_object('settled_days', v_from),
+            jsonb_build_object('settled_days', v_to, 'paid', v_paid));
+
+  return jsonb_build_object(
+    'id', v.id, 'settled_days', v_to, 'period_days', v.period_days,
+    'paid', v_paid, 'profit', v.profit, 'status', v.status, 'credited', true,
+    'matured', v_matured, 'already_settled', false,
+    'balance', coalesce(v_bal, (select b.amount from public.balances b
+                                 where b.uid = v.uid and b.coin = v_coin)));
+end $$;
+revoke all on function public.settle_investment_day(bigint, integer, text) from public;
+grant execute on function public.settle_investment_day(bigint, integer, text) to authenticated;
+
+-- Cancels an investment and refunds the principal. Admin only, idempotent, and
+-- the refund goes through the ledger rather than the browser.
+create or replace function public.cancel_investment(
+  p_investment_id bigint,
+  p_note          text default null
+) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare
+  v       public.investments;
+  v_coin  text := 'USDT';
+  v_refund numeric(24,8) := 0;
+  v_bal   numeric(24,8);
+  v_actor uuid;
+begin
+  if not public.is_admin() then
+    raise exception 'administrator access is required' using errcode = '42501';
+  end if;
+  v_actor := auth.uid();
+
+  select * into v from public.investments where id = p_investment_id for update;
+  if not found then
+    raise exception 'unknown investment' using errcode = 'P0002';
+  end if;
+  if v.status = 'cancelled' then
+    return jsonb_build_object('id', v.id, 'status', v.status, 'refunded', 0,
+                              'already_cancelled', true);
+  end if;
+  if v.status = 'matured' then
+    raise exception 'a matured investment has already paid out' using errcode = '22023';
+  end if;
+
+  -- Unsettled days plus the principal: the member is made whole for the time
+  -- they did not get to keep.
+  v_refund := v.principal + round(v.principal * v.rate / 100, 8) * (v.period_days - v.settled_days);
+
+  update public.investments set status = 'cancelled' where id = p_investment_id returning * into v;
+
+  v_bal := public.post_ledger(v.uid, v_coin, v_refund, 'adjustment', 'investments',
+                              v.id::text, coalesce(p_note, 'investment cancelled'));
+
+  insert into public.audit_log(actor,action,entity,entity_id,before,after)
+    values (v_actor, 'cancel_investment', 'investments', v.id::text,
+            jsonb_build_object('status', 'active', 'settled_days', v.settled_days),
+            jsonb_build_object('status', 'cancelled', 'refunded', v_refund));
+
+  return jsonb_build_object('id', v.id, 'status', v.status, 'refunded', v_refund,
+                            'credited', true, 'already_cancelled', false,
+                            'balance', v_bal);
+end $$;
+revoke all on function public.cancel_investment(bigint, text) from public;
+grant execute on function public.cancel_investment(bigint, text) to authenticated;
+
+-- The page used to read `next.time` and `schededs[k].status` off the schedule.
+-- open_investment writes `due_at` and no status, so the countdown never found a
+-- pending day. Both are derived on the client from the settled day counter,
+-- which is the authoritative one.
 notify pgrst, 'reload schema';
 commit;

@@ -875,6 +875,7 @@ var TrustDB = (function () {
     _loadTable: function (table, keyField) {
       table = this._canonical(table);
       var self_ = this;
+      self_._liveTables = self_._liveTables || {};
       self_._loadSeq = self_._loadSeq || {};
       var mySeq = (self_._loadSeq[table] || 0) + 1;
       self_._loadSeq[table] = mySeq;
@@ -941,6 +942,8 @@ var TrustDB = (function () {
 
     _applyRows: function (table, rows, startTs) {
       var self_ = this;
+      self_._liveTables = self_._liveTables || {};
+      self_._liveTables[table] = true;
       var keyField = this._keyField(table);
       // Map the table onto its cache slot. This has to cover every table in
       // _query(), not just the v1 names: an unmapped name lands in the
@@ -1113,8 +1116,13 @@ var TrustDB = (function () {
       if (/loan/.test(path)) return ['users','loans','balances'];
       if (/authentication|advanced-auth|admin-verify/.test(path)) return ['users','verifications'];
       if (/admin\.html$/.test(path)) return ['users','transactions','loans','verifications','chat_messages','balances'];
-      if (/trade|orders|admin-feed/.test(path)) return ['users','balances','contracts'];
-      if (/ai\.html|admin-quants/.test(path)) return ['users','balances','investments'];
+      // products carries the real payout odds and the minimum stake, which the
+      // order form has to show before an order is placed; without it the page
+      // falls back to hard-coded numbers and then fails at settlement.
+      if (/trade|orders|admin-feed/.test(path)) return ['users','balances','contracts','products'];
+      // investment_products carries the plan name and rate, so the order shows
+      // which product it belongs to instead of a bare "AI Quant".
+      if (/ai\.html|admin-quants/.test(path)) return ['users','balances','investments','investment_products'];
       return ['users','balances'];
     },
 
@@ -1538,6 +1546,14 @@ var TrustDB = (function () {
       ));
     },
 
+    // Whether a table has actually been read yet. The difference matters for
+    // the public reference tables: an empty `products` array means "not loaded
+    // yet" on first paint, and a page must not conclude from that no markets
+    // exist and block a legitimate order.
+    hasTable: function (table) {
+      return !!(this._liveTables && this._liveTables[this._canonical(table)]);
+    },
+
     // Odds and the minimum stake, read from products/product_durations, so the
     // modal can show what the order will actually pay before it is placed.
     // The database stays the authority: open_trade re-reads the same rows.
@@ -1642,10 +1658,33 @@ var TrustDB = (function () {
     updateAIOrder: function (id, patch) {
       var days = patch && (patch.settledDays != null ? patch.settledDays : patch.settled_days);
       if (days == null) {
-        return Promise.reject(new Error('Only settled_days can be updated; use admin_settle_investment to pay out'));
+        return Promise.reject(new Error('Only settled_days can be updated; use settleInvestmentDay to pay out'));
       }
-      return this.rpc('update_investment_progress', {
-        p_investment_id: Number(id), p_settled_days: Number(days)
+      return this.settleInvestmentDay(id, days, (patch && patch.note) || null);
+    },
+
+    // Settles the days up to p_settledDays and pays them through the ledger.
+    // The database advances the counter, so this cannot pay the same day twice.
+    settleInvestmentDay: function (id, settledDays, note) {
+      var self_ = this;
+      return this.rpc('settle_investment_day', {
+        p_investment_id: Number(id),
+        p_settled_days: Number(settledDays),
+        p_note: note || null
+      }).then(function (res) {
+        return Promise.all([self_._refreshTable('investments'), self_._refreshTable('balances')])
+          .then(function () { return res; });
+      });
+    },
+
+    // Cancels and refunds the principal plus the unsettled days. Admin only.
+    cancelInvestment: function (id, note) {
+      var self_ = this;
+      return this.rpc('cancel_investment', {
+        p_investment_id: Number(id), p_note: note || null
+      }).then(function (res) {
+        return Promise.all([self_._refreshTable('investments'), self_._refreshTable('balances')])
+          .then(function () { return res; });
       });
     },
 

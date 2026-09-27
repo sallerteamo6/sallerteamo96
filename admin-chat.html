@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927b"></script>
-  <script src="app.js?v=20260927b"></script>
+    <script src="scripts/db.js?v=20260927c"></script>
+  <script src="app.js?v=20260927c"></script>
   <style>
     .chat-layout{display:flex;gap:14px;align-items:flex-start;}
     .chat-users{width:280px;flex:none;background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:0 2px 12px rgba(19,31,48,.06);overflow:hidden;}
@@ -129,7 +129,7 @@
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
             </button>
             <input type="file" id="attachInput" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar,.csv" multiple style="display:none;">
-            <input type="text" class="form-input" id="chatReply" placeholder="Type a reply as support...">
+            <input type="text" class="form-input" id="chatReply" name="q" placeholder="Type a reply as support..." autocomplete="off" autocapitalize="sentences" spellcheck="true" data-lpignore="true" data-1p-ignore="true">
             <button class="btn btn-sm" id="chatSend" style="background:#1652f0;color:#fff;padding:12px 18px;">Send</button>
           </div>
         </div>

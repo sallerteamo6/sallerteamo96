@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927b"></script>
-  <script src="app.js?v=20260927b"></script>
+    <script src="scripts/db.js?v=20260927c"></script>
+  <script src="app.js?v=20260927c"></script>
   <style>
     .admin-quants-page .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:1rem}
     .admin-quants-page .modal-content{background:#fff;border-radius:16px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto}
@@ -166,10 +166,17 @@
       var txt = abs >= 1000000000 ? (abs / 1000000000).toFixed(2) + 'B' : abs >= 1000000 ? (abs / 1000000).toFixed(1) + 'M' : abs >= 1000 ? (abs / 1000).toFixed(1) + 'K' : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       return '$' + txt;
     }
+    // v2's investments table has no account column, so the profile is resolved
+    // from the users table: the handle the member signs in with, not the uuid.
     function acctName(o) {
       if (o.account) return o.account;
+      if (TrustApp.userIdentity) return TrustApp.userIdentity(o.uid).account;
       var u = TrustApp.accountByUid ? TrustApp.accountByUid(o.uid) : null;
       return (u && u.account) || ('' + o.uid);
+    }
+    function acctMemberNo(o) {
+      if (TrustApp.userIdentity) return TrustApp.userIdentity(o.uid).memberNo;
+      return '';
     }
     function pad2(n) { return (n < 10 ? '0' : '') + n; }
     function fmtTime(ts) {
@@ -192,11 +199,17 @@
       return (d > 0 ? d + 'd ' : '') + pad2(h) + ':' + pad2(m) + ':' + pad2(s) + ' left';
     }
     function actionBtns(o) {
+      if (o.status === 'running') {
+        var done = (o.settledDays || 0) >= (o.period || 0);
+        return '<span class="wd-actions">'
+          + (done ? '' : '<button class="action-btn ab-blue" onclick="settleDay(\'' + esc(o.id) + '\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>Settle Day</button>')
+          + '<button class="action-btn ab-red" onclick="rejectOrder(\'' + esc(o.id) + '\')">Cancel &amp; Refund</button></span>';
+      }
+      if (o.status === 'completed') {
+        return '<span class="wd-actions"><span class="muted">Paid out in full</span></span>';
+      }
       if (o.status === 'pending') {
         return '<span class="wd-actions ab-group"><button class="action-btn ab-green" onclick="approveOrder(\'' + esc(o.id) + '\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Approve</button><button class="action-btn ab-red" onclick="rejectOrder(\'' + esc(o.id) + '\')">Reject</button></span>';
-      }
-      if (o.status === 'running') {
-        return '<span class="wd-actions"><button class="action-btn ab-blue" onclick="settleDay(\'' + esc(o.id) + '\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>Settle Day</button></span>';
       }
       return '<span class="muted">--</span>';
     }
@@ -244,7 +257,7 @@
         var profitTxt = o.status === 'rejected' ? '0.00' : (o.profit > 0 ? '+' : '') + fmt(o.profit);
         return '<tr data-id="' + esc(o.id) + '">'
           + '<td><b style="color:#131f30;">' + esc(o.id) + '</b><div class="muted" style="font-size:11px;">' + fmtTime(o.createdAt) + '</div></td>'
-          + '<td><div class="user-cell"><div class="user-ava">' + esc((acctName(o) || '?').charAt(0).toUpperCase()) + '</div><div class="user-meta"><div class="user-name">' + esc(acctName(o)) + '</div><div class="user-uid">' + esc(o.uid || '') + '</div></div></div></td>'
+          + '<td><div class="user-cell"><div class="user-ava">' + esc((acctName(o) || '?').charAt(0).toUpperCase()) + '</div><div class="user-meta"><div class="user-name">' + esc(acctName(o)) + '</div><div class="user-uid">UID #' + esc(acctMemberNo(o)) + '</div></div></div></td>'
           + '<td>' + esc(o.product) + '</td>'
           + '<td><span class="money-cell">' + fmt(o.amount) + ' USDT</span></td>'
           + '<td>' + progress + '</td>'
@@ -255,96 +268,73 @@
       }).join('');
     }
 
+    // Approval is a no-op against v2: open_investment already created the
+    // investment as 'active' and already drew the rate and the schedule, so
+    // there is nothing left to start. The previous version wrote a status,
+    // startAt, endAt and schedules that the server rejected outright (the RPC
+    // only ever accepted settled_days), then showed a success toast.
+    // Auto-approval is what the configuration says, so the honest behaviour is
+    // to report the order is already running and when it ends.
     function approveOrder(id) {
       var o = o2(id);
-      var cfg = TrustApp.getConfig();
-      var intervalHours = parseFloat(cfg.aiQuantSettleIntervalHours);
-      if (!isFinite(intervalHours) || intervalHours < 1) intervalHours = 24;
-      var startAt = new Date().toISOString();
-      TrustApp.updateAIOrder(id, {
-        status: 'running',
-        startAt: startAt,
-        endAt: new Date(Date.now() + (o ? o.period : 7) * intervalHours * 3600000).toISOString(),
-        schedules: TrustApp.buildAISchedules ? TrustApp.buildAISchedules(o ? o.period : 7, intervalHours, startAt) : (o ? o.schedules : []),
-        settledDays: 0,
-        profit: 0,
-        principal: o ? o.amount : 0
-      });
-      toast('success', 'Order approved and running');
+      if (!o) { toast('error', 'That investment could not be found'); return; }
+      if (o.status === 'running') {
+        var end = o.endAt ? fmtTime(o.endAt) : '--';
+        toast('success', 'This investment is already running and ends ' + end);
+      } else {
+        toast('success', 'This investment is already active: ' + o.settledDays + '/' + o.period + ' days settled');
+      }
       renderAll();
     }
     function o2(id) {
       var all = (TrustApp.getAIOrders ? TrustApp.getAIOrders() : []) || [];
-      for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
+      for (var i = 0; i < all.length; i++) if (String(all[i].id) === String(id)) return all[i];
       return null;
     }
 
+    // Cancellation, and the refund with it, are the server's job: one
+    // transaction that marks the row cancelled and posts the principal plus the
+    // unsettled days back through the ledger.
     function rejectOrder(id) {
       var o = o2(id);
-      TrustApp.updateAIOrder(id, { status: 'rejected' });
-      // The refund is a ledger movement, and only an admin RPC can make one.
-      // This is not a client-side write any more: it either posts or reports
-      // that it did not, instead of claiming a refund that never happened.
-      if (o && o.uid && o.amount) {
-        TrustApp.addBalance(o.uid, 'USDT', o.amount).then(function () {
-          toast('success', 'Order rejected and ' + fmt(o.amount) + ' USDT refunded');
-          renderAll();
-        }).catch(function (e) {
-          toast('error', 'Order rejected, but the refund did NOT go through: ' + ((e && e.message) || 'unknown error') + '. Refund it from the Balance Adjuster.');
-          renderAll();
-        });
-        return;
-      }
-      toast('error', 'Order rejected');
-      renderAll();
+      if (!o) { toast('error', 'That investment could not be found'); return; }
+      if (!confirm('Cancel this investment and refund the member? Unsettled days are refunded with the principal.')) return;
+      TrustApp.cancelInvestment(id, 'investment cancelled by admin').then(function (res) {
+        var refunded = (parseFloat(res && res.refunded) || 0);
+        toast('success', 'Cancelled and refunded ' + fmt(refunded) + ' USDT to ' + acctName(o));
+        renderAll();
+      }).catch(function (e) {
+        toast('error', 'Cancellation failed, nothing was refunded: ' + ((e && e.message) || 'unknown error'));
+        renderAll();
+      });
     }
 
+    // Settle the next un-settled day. The rate and the per-day amounts were drawn
+    // once when the investment opened and are stored with it, so this does not
+    // re-roll a rate; it tells the server how many days are done and the server
+    // pays exactly those days, once.
     function settleDay(id) {
       var o = o2(id);
       if (!o || o.status !== 'running') return;
-      var scheds = o.schedules || [];
       var next = null;
+      var scheds = o.schedules || [];
       for (var i = 0; i < scheds.length; i++) if (scheds[i].status === 0) { next = scheds[i]; break; }
-      if (!next) return;
-      var rate = Math.round((o.rateMin + Math.random() * (o.rateMax - o.rateMin)) * 100) / 100;
-      var dayProfit = Math.round(o.amount * rate) / 100;
-      next.status = 1;
-      next.rate = rate;
-      next.profit = dayProfit;
+      if (!next) { toast('error', 'Every day of this investment is already settled'); return; }
       var settledDays = (o.settledDays || 0) + 1;
-      var totalProfit = Math.round(((o.profit || 0) + dayProfit) * 100) / 100;
-      var patch = {
-        schedules: scheds,
-        settledDays: settledDays,
-        profit: totalProfit,
-        principal: Math.round((o.amount + totalProfit) * 100) / 100
-      };
-      var credit = dayProfit;
-      if (settledDays >= o.period) {
-        patch.status = 'completed';
-        patch.endAt = new Date().toISOString();
-        credit = Math.round((credit + o.amount) * 100) / 100;
-      }
-      // Single combined credit (profit + principal) so two un-awaited
-      // server-first reads cannot race and the last write silently erase
-      // the principal refund. The credit is an audited ledger entry now, so it
-      // is awaited and its failure is stated rather than assumed.
-      if (o.uid) {
-        TrustApp.addBalance(o.uid, 'USDT', credit).then(function () {
-          TrustApp.updateAIOrder(id, patch);
-          toast('success', 'Day ' + next.day + ' settled: +' + fmt(dayProfit) + ' USDT credited');
-          renderAll();
-        }).catch(function (e) {
-          // The day counter is deliberately NOT advanced when the money did not
-          // move, or the schedule would show a day as paid that was never paid.
-          toast('error', 'Day ' + next.day + ' was NOT settled: the ' + fmt(credit) + ' USDT credit failed (' + ((e && e.message) || 'unknown error') + '). Credit it from the Balance Adjuster, then settle the day.');
-          renderAll();
-        });
-        return;
-      }
-      TrustApp.updateAIOrder(id, patch);
-      toast('success', 'Day ' + next.day + ' settled: +' + fmt(dayProfit) + ' USDT');
-      renderAll();
+      TrustApp.settleInvestmentDay(id, settledDays, 'investment day ' + o.settledDays + '-' + settledDays).then(function (res) {
+        var paid = (parseFloat(res && res.paid) || 0);
+        if (res && res.already_settled) {
+          toast('error', 'That day was already settled; no further payment was made');
+        } else {
+          toast('success', 'Day ' + settledDays + ' settled: +' + fmt(paid) + ' USDT credited to ' + acctName(o));
+        }
+        renderAll();
+      }).catch(function (e) {
+        // The counter did not move, so the schedule cannot show a paid day that
+        // was never paid.
+        toast('error', 'Day ' + settledDays + ' was NOT settled and nothing was paid: ' + ((e && e.message) || 'unknown error'));
+        renderAll();
+      });
     }
 
     function openDetail(id) {

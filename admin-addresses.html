@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927b"></script>
-  <script src="app.js?v=20260927b"></script>
+    <script src="scripts/db.js?v=20260927c"></script>
+  <script src="app.js?v=20260927c"></script>
   <style>
     .addr-add{width:100%;padding:12px;background:#1652f0;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:14px;}
     .addr-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #f0f2f6;}
@@ -92,9 +92,9 @@
     <div class="ca-modal">
       <h3 id="caTitle">Add Coin</h3>
       <label>Coin Symbol</label>
-      <input type="text" id="caCoin" placeholder="e.g. XRP">
+      <input type="text" id="caCoin" name="q" placeholder="e.g. XRP" autocomplete="off" autocapitalize="characters" spellcheck="false" data-lpignore="true" data-1p-ignore="true">
       <label>Network</label>
-      <input type="text" id="caNet" placeholder="e.g. TRC-20, ERC-20, Bitcoin">
+      <input type="text" id="caNet" name="q" placeholder="e.g. TRC-20, ERC-20, Bitcoin" autocomplete="off" data-lpignore="true" data-1p-ignore="true">
       <label>Deposit Address</label>
       <textarea id="caAddr" placeholder="Enter the wallet address users will send to"></textarea>
       <div class="ca-actions">

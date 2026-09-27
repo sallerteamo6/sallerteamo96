@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927b"></script>
-  <script src="app.js?v=20260927b"></script>
+    <script src="scripts/db.js?v=20260927c"></script>
+  <script src="app.js?v=20260927c"></script>
 </head>
 <body class="auth-page admin-page" style="background:#eef1f5;padding-bottom:30px;">
 
@@ -188,6 +188,22 @@
       document.getElementById('chipApproved').textContent = approved + ' approved';
       document.getElementById('chipValue').textContent = fmtMoney(value) + ' approved';
     }
+    // v2's loans table stores a bare uid, so the profile is resolved here: the
+    // account the member signs in with, plus the six-digit member number. The
+    // uuid is only shown when the profile is genuinely missing, because an
+    // operator still needs it to identify the row.
+    function loanUser(l) {
+      var ident = TrustApp.userIdentity ? TrustApp.userIdentity(l.uid) : null;
+      var account = (ident && ident.account) || l.account || '';
+      var memberNo = (ident && ident.memberNo) || '';
+      return { account: account, memberNo: memberNo, initial: (account || '?').charAt(0).toUpperCase() };
+    }
+    function loanUserCell(l) {
+      var who = loanUser(l);
+      return '<div class="user-cell"><div class="user-ava">' + esc(who.initial) + '</div>'
+        + '<div class="user-meta"><div class="user-name">' + esc(who.account) + '</div>'
+        + '<div class="user-uid">UID #' + esc(who.memberNo) + '</div></div></div>';
+    }
     function byNew(a, b) {
       var ta = a.createdAt || a.created_at || '', tb = b.createdAt || b.created_at || '';
       if (ta && tb && ta !== tb) return ta < tb ? 1 : -1;
@@ -204,7 +220,7 @@
         pendBox.innerHTML = '<tr><td colspan="6"><div class="empty-state"><span class="es-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg></span>No pending loan requests</div></td></tr>';
       } else {
         pendBox.innerHTML = pend.map(function (l) {
-          return '<tr data-id="' + esc(l.id) + '"><td><div class="user-cell"><div class="user-ava">' + esc((l.account || '?').charAt(0).toUpperCase()) + '</div><div class="user-meta"><div class="user-name">' + esc(l.account) + '</div><div class="user-uid">' + esc(l.uid || '') + '</div></div></div></td><td><span class="money-cell">' + fmtMoney(l.amount) + '</span></td><td>' + l.days + ' Days</td><td>' + l.rate + '%</td><td><span class="money-cell">' + fmtMoney(l.interest) + '</span></td><td>' + approveBtns + '</td></tr>';
+          return '<tr data-id="' + esc(l.id) + '"><td>' + loanUserCell(l) + '</td><td><span class="money-cell">' + fmtMoney(l.amount) + '</span></td><td>' + l.days + ' Days</td><td>' + l.rate + '%</td><td><span class="money-cell">' + fmtMoney(l.interest) + '</span></td><td>' + approveBtns + '</td></tr>';
         }).join('');
       }
       var histBox = document.getElementById('historyRows');
@@ -213,7 +229,7 @@
       } else {
         histBox.innerHTML = loans.slice(0, 30).map(function (l) {
           var tm = (l.createdAt || '').replace('T', ' ').slice(0, 16);
-          return '<tr><td><div class="user-cell"><div class="user-ava">' + esc((l.account || '?').charAt(0).toUpperCase()) + '</div><div class="user-meta"><div class="user-name">' + esc(l.account) + '</div><div class="user-uid">' + esc(l.uid || '') + '</div></div></div></td><td><span class="money-cell">' + fmtMoney(l.amount) + '</span></td><td>' + l.days + ' Days</td><td><span class="money-cell">' + fmtMoney(l.interest) + '</span></td><td>' + badgeFor(l) + '</td><td>' + tm + '</td></tr>';
+          return '<tr><td>' + loanUserCell(l) + '</td><td><span class="money-cell">' + fmtMoney(l.amount) + '</span></td><td>' + l.days + ' Days</td><td><span class="money-cell">' + fmtMoney(l.interest) + '</span></td><td>' + badgeFor(l) + '</td><td>' + tm + '</td></tr>';
         }).join('');
       }
     }

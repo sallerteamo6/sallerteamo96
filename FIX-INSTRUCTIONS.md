@@ -12,6 +12,33 @@
 
 The double-encoded text was in **every** shipped page, not only `trade.html`, and had spread to the point where some pages were mostly garbage: `setup.html` 156 KB of which 151 KB was mojibake, `export-local.html` 31 KB of which 30 KB, `admin-chat.html` a 4 KB unread-badge marker, plus a CSS comment. All of it is gone. Each site now has the character it should have had, written as an HTML entity, a CSS escape or a JS escape so an editor re-encode cannot turn it into garbage again.
 
+## Loans, markets, AI Quant and the admin search box
+
+**A loan row now shows who applied.** Every v2 child table (`loans`, `investments`, `transactions`, `contracts`) stores a bare `uid` and has no `account` column, so the admin pages read `row.account`, get nothing, and fall back to printing the uuid - which is what put `e488bbf9-ac1c-4386-...` where the member's name should be. `TrustApp.userIdentity(uid)` now resolves the profile: the account the member signs in with (email, username or wallet) as the name, and the six-digit `uid_code` as the UID. The uuid is only shown if the profile is genuinely missing, because an operator still needs it to identify the row. Applied to Loan Management, AI Quant and the Balance Adjuster history.
+
+**"unknown market" on Confirm Order is prevented and explained.** The home page lists more coins than `products` contains, so a coin could be visible and priced but not tradable, and `open_trade` answered `{"code":"22023","message":"unknown market"}` after the user had typed an amount. The order form now reads `products` / `product_durations` (added to the trade page's table list) and refuses **before** anything touches the balance, naming the markets that *are* available. The server message lists them too, so an operator reading the log is not left guessing. The check deliberately does nothing while the reference table is still loading, so it cannot refuse a valid order in the first second after the page opens.
+
+**AI Quant now starts, appears in history, and appears for the admin.** `dbAiOrderToApp` was reading v1 field names off a v2 `investments` row, which silently produced zeros and a status nothing matched:
+
+| read | v2 column | effect before |
+|------|-----------|---------------|
+| `amount` | `principal` | 0 - the order showed no amount and every payout computed as 0 |
+| `period` | `period_days` | always fell back to 7 |
+| `rateMin` / `rateMax` | one drawn `rate` | both 0, so the plan showed no rate |
+| `product` | `product_id` -> `investment_products.name` | always the literal "AI Quant" |
+| `status` | `active` / `matured` / `cancelled` | never matched `running`, so **the Settle Day button could never fire** |
+
+The schedule had the same problem: the page looked for `schedules[i].status` and `.time`, and `open_investment` writes `{day, rate, profit, due_at}` with no status, so every order read as "finalising" with no day to settle. Both are now derived from the authoritative `settled_days` counter.
+
+There was also no server path to pay an AI day at all: `update_investment_progress` only moves the counter, and the page credited the balance from the browser, which silently fails for anyone who is not an administrator. Two functions were added:
+
+- `settle_investment_day(id, settled_days, note)` - owner or admin, locks the row, pays **only the days newly advanced** from the stored schedule through `post_ledger`, and is idempotent, so a double click or a retry pays a day once. Marks the investment `matured` on the last day.
+- `cancel_investment(id, note)` - admin only; refunds the principal plus the unsettled days through the ledger, idempotent, and refuses to touch an already-matured investment.
+
+Approving an order is now a no-op report, because `open_investment` already created it as `active` with its rate and schedule drawn. The previous Approve wrote a status, `startAt`, `endAt` and schedule the server rejected outright, then showed a success toast. Reject is now **Cancel & Refund** and goes through `cancel_investment`.
+
+**The admin search box no longer fills itself.** Chrome autofills a text input whose placeholder mentions an email, and it used the signed-in operator's own address - so the User Management list came up filtered to that one admin and looked as if every other user had vanished. Same visible symptom as the card-list bug, completely different cause. The input is now `type="search"` with `autocomplete="off"`, a non-email `name`, and LastPass / 1Password / Bitwarder ignore hints; and because `autocomplete="off"` is advisory and Chrome ignores it on this kind of field, `initSearchAutofillGuard` also clears a value the operator never typed. A value they *did* type is never touched, and an empty filter means "show everyone", so clearing is always safe. The same attributes were added to the admin chat reply, the balance-adjustment note and the coin-address fields, which were equally exposed.
+
 ## Nothing is allowed to claim money moved when it did not
 
 `TrustApp.addBalance` called the admin-only `admin_adjust_balance` RPC, and on rejection returned a locally computed total as if it had succeeded:
@@ -88,11 +115,13 @@ All JavaScript files changed here and all inline page scripts passed syntax chec
 - `node tests/delivery.test.cjs`
 - `node tests/stability.test.cjs`
 - `node tests/trade-settlement.test.cjs`
+- `node tests/loans-ai-markets.test.cjs`
 - `node tests/admin-list.browser.test.cjs` (real browser; skips with a notice if none is installed)
+- `node tests/autofill.browser.test.cjs` (real browser; skips with a notice if none is installed)
 
-They include execution of the User Management edit/modal, manual approval, role, status and archive handlers, the per-user and all-users Profit Mode toggles, matching withdrawal selection, delayed auth restoration, failed limit saves, and unchanged-data redraw suppression. They also cover UUID/UID mapping, admin access and expired-token priority, pagination, withdrawal destination/type, KYC fields, chat aliases and incoming events, operator replies, simultaneous reads, rejected writes, language persistence, single server-controlled balance changes, the result modal rendering the server's profit and detail rows, an unsettled order reporting its reason instead of a number, every shipped page being free of the double-encoded text, no page writing a balance from the browser, the legacy trade re-upload staying disabled, and the admin card rebuild being non-destructive and click-stable in a real browser.
+They include execution of the User Management edit/modal, manual approval, role, status and archive handlers, the per-user and all-users Profit Mode toggles, matching withdrawal selection, delayed auth restoration, failed limit saves, and unchanged-data redraw suppression. They also cover UUID/UID mapping, admin access and expired-token priority, pagination, withdrawal destination/type, KYC fields, chat aliases and incoming events, operator replies, simultaneous reads, rejected writes, language persistence, single server-controlled balance changes, the result modal rendering the server's profit and detail rows, an unsettled order reporting its reason instead of a number, every shipped page being free of the double-encoded text, no page writing a balance from the browser, the legacy trade re-upload staying disabled, a loan row resolving to the member's login and member number, an untradable market being refused before the balance is touched, AI Quant reading v2's `investments` with countable schedule days, the admin card rebuild being non-destructive and click-stable in a real browser, and the admin filter box resisting autofill in a real browser.
 
-The live database was not accessed. The new SQL was reviewed but could not be executed here. The browser test covers the admin list only; the trade and settlement screens were verified by driving their functions against mocked server responses, not by loading a funded order. This is not a complete audit of trading, exchange, or investment settlement features. The exchange feature is knowingly non-functional rather than falsely reported as working; see above.
+The live database was not accessed. The new SQL was reviewed and its function signatures and grants were checked to match, but it could not be executed here. The browser tests cover the admin list and the filter box only; the trade, loan and AI Quant screens were verified by driving their functions against mocked server responses, not by loading a funded order. This is not a complete audit of trading, exchange, or investment settlement features. The exchange feature is knowingly non-functional rather than falsely reported as working; see above.
 
 ## Live acceptance check after installation
 
@@ -110,8 +139,12 @@ Use a customer browser and a separate admin browser. Apply `17_profit_mode_and_s
 10. On a phone-width admin window, expand a user row, wait through several list refreshes, and confirm the expanded details stay expanded and the other users are still listed. Tap a second row and confirm the first row is unaffected. Confirm the Edit and Manually approve buttons in a card still work.
 11. Open the AI Quant page. Buying a 7-day or 30-day plan must debit the principal and create the order. The 1-day, 90-day and 180-day plans should say they are not available rather than reporting a success - add them to `investment_products` if you want to sell them.
 12. On the exchange page, confirm the button says swapping is not available and no balance changes.
-13. On the AI Quant admin page, settle one day and confirm the credit reaches the member's balance. Withdraw or revoke the admin session and retry: the day must NOT advance and the message must say to refund from the Balance Adjuster.
-14. Test a failed/offline submission. It must show an error and preserve the input; do not assume a request failed solely because its response timed out—check its history before retrying.
+13. On the AI Quant admin page, settle one day and confirm the credit reaches the member's balance. Click Settle Day twice for the same day and confirm the second call reports "already settled" and pays nothing. Cancel & Refund must return the principal plus the unsettled days exactly once.
+14. On the AI Quant page, buy a 7-day plan and confirm it appears in your own order history with the plan name, the amount, the rate, a day counter, and a "settles in" countdown rather than "finalising".
+15. Apply for a loan, then open Loan Management as admin and confirm the row shows the member's email and six-digit UID, not a uuid. Check the AI Quant and Balance Adjuster histories for the same.
+16. Trade a coin that is not in `products` (for example one only listed on the home page). Confirm the order is refused with the list of tradable markets, and that the balance is unchanged.
+17. Sign in as an admin, open User Management, and confirm the search box is empty on load - not filled with your own gmail address - and that all users are listed.
+18. Test a failed/offline submission. It must show an error and preserve the input; do not assume a request failed solely because its response timed out-check its history before retrying.
 
 
 Reference for realtime setup: https://supabase.com/docs/guides/realtime/postgres-changes

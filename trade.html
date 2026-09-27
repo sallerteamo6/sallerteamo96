@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927b"></script>
-  <script src="app.js?v=20260927b"></script>
+    <script src="scripts/db.js?v=20260927c"></script>
+  <script src="app.js?v=20260927c"></script>
 </head>
 <body>
   <div id="app">
@@ -360,13 +360,50 @@
       if (t.payout_pct != null) {
         odds = t.payout_pct;
         var lbl = document.getElementById('oddsLabel');
-        if (lbl) lbl.textContent = (t.payout_pct % 1 === 0 ? t.payout_pct : t.payout_pct.toFixed(2)) + '%';
+        if (lbl) lbl.textContent = num2(odds) + '%';
       }
       if (t.min_amount > 0) {
         minAmount = t.min_amount;
         var amt = document.getElementById('amountInput');
         if (amt) amt.min = String(t.min_amount);
       }
+    }
+
+    // Markets the database actually sells. The coin list on the home page is
+    // longer than `products`, so a coin can be visible and priced but not
+    // tradable; open_trade would answer "unknown market" and the amount the user
+    // typed would look lost. This checks first and says which markets are open.
+    function tradableMarkets() {
+      var out = [];
+      try {
+        var list = (window.DB && DB._cache && DB._cache.products) || [];
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].is_active === false) continue;
+          if (out.indexOf(String(list[i].symbol || '').toUpperCase()) === -1) out.push(String(list[i].symbol || '').toUpperCase());
+        }
+      } catch (e) {}
+      return out;
+    }
+
+    function marketCheck() {
+      if (!TrustApp.getTradeTerms) return null;
+      var t = null;
+      try { t = TrustApp.getTradeTerms(symbol, durationSec); } catch (e) { t = null; }
+      if (t && t.payout_pct != null) return null;
+      // The reference tables are still loading. That is not the same as "this
+      // market does not exist", and blocking here would refuse a valid order
+      // during the first second after the page opens. Let the server decide.
+      var loaded = false;
+      try { loaded = !!(window.DB && DB.hasTable && DB.hasTable('products')); } catch (e) {}
+      if (!loaded) return null;
+      var list = tradableMarkets();
+      if (!list.length) {
+        return 'Trading is not available right now. No markets are published on the server yet. Nothing was taken from your balance.';
+      }
+      if (t) {
+        return symbol + '/' + quoteUnit + ' is not offered for ' + durationSec + 's. Available markets: ' + list.join(', ') + '. Nothing was taken from your balance.';
+      }
+      return symbol + '/' + quoteUnit + ' cannot be traded. Available markets: ' + list.join(', ') + '. Nothing was taken from your balance.';
     }
 
     function confirmOrder() {
@@ -378,6 +415,10 @@
       }
       if (!(amt > 0)) { toast('error', 'Please enter a valid amount.'); return; }
       if (amt < minAmount) { toast('error', 'Amount must be at least ' + minAmount); return; }
+      // Refuse before touching the balance, so an untradable market never looks
+      // like a lost deposit.
+      var badMarket = marketCheck();
+      if (badMarket) { toast('error', badMarket); return; }
       var uid = TrustApp.getUserId();
       if (!uid) { toast('error', 'Please sign in before trading'); return; }
       var bal = TrustApp.getBalance(uid, quoteUnit);

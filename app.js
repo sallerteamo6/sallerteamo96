@@ -1565,11 +1565,46 @@
     };
   }
 
+  // Who a row belongs to.
+  //
+  // Every v2 child table (loans, investments, transactions, contracts) stores a
+  // bare uid and has no `account` column, so a page that rendered `row.account`
+  // fell back to the uuid and the admin saw "e488bbf9-ac1c-..." where the
+  // member's login should be. This resolves the profile instead: the account
+  // they actually sign in with, and the six-digit member number from
+  // uid_code, with the uuid kept only as a last resort.
+  function userIdentity(uid) {
+    var id = uid == null ? '' : String(uid);
+    var u = accountByUid(id) || {};
+    var account = u.account || '';
+    var email = u.email || '';
+    var memberNo = String(u.uid_code || u.uidCode || '');
+    if (!memberNo && id) memberNo = id.slice(0, 8);
+    if (!account) account = email || id;
+    return {
+      uid: id,
+      account: account,
+      email: email,
+      memberNo: memberNo || '--',
+      // The login handle to show: the account string, which is the email,
+      // username or 0x-wallet the member registered with.
+      label: account || '--',
+      initials: (account || '?').charAt(0).toUpperCase(),
+      isAdmin: isUserAdmin(id)
+    };
+  }
+
+  // v1's `row.account` on a child row, resolved. Drop-in for the pages that used
+  // to read account/uid straight off the row.
+  function ownerAccount(uid) { return userIdentity(uid).account; }
+  function ownerMemberNo(uid) { return userIdentity(uid).memberNo; }
+
   function dbLoanToApp(l) {
     return {
       id: l.id,
       uid: l.uid,
-      account: l.account || '',
+      account: ownerAccount(l.uid),
+      memberNo: ownerMemberNo(l.uid),
       amount: parseFloat(l.principal != null ? l.principal : l.amount) || 0,
       days: parseInt(l.days, 10) || 0,
       rate: parseFloat(l.rate) || 0,
@@ -1618,30 +1653,105 @@
     };
   }
 
+  // v2's investments table is nothing like the v1 ai_orders shape the pages were
+  // written against, and reading it with v1 field names silently produced zeros:
+  //   amount      -> there is no `amount`, the column is `principal`
+  //   period      -> there is no `period`, it is `period_days`
+  //   rateMin/Max -> there is no band per order, the rate is drawn once, `rate`
+  //   product     -> there is no name on the row, it is a product_id
+  //   status      -> v2 is active|matured|cancelled, the pages test
+  //                  pending|running|completed|rejected
+  // Because amount came back 0 the admin page showed an empty order, and because
+  // status never matched 'running' the daily settlement button could never fire -
+  // which is why AI Quant looked like it never started. This maps v2 onto the
+  // shape the pages use, and enriches from the cached product list.
+  function aiProductById(id) {
+    try {
+      var list = (DB && DB._cache && DB._cache.investmentProducts) || [];
+      for (var i = 0; i < list.length; i++) {
+        if (String(list[i].id) === String(id)) return list[i];
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function normAiStatus(s) {
+    if (s === 'active') return 'running';
+    if (s === 'matured') return 'completed';
+    if (s === 'cancelled') return 'rejected';
+    return s || 'pending';
+  }
+
   function dbAiOrderToApp(o) {
     var scheds = o.schedules;
     if (typeof scheds === 'string') {
       try { scheds = JSON.parse(scheds); } catch (e) { scheds = []; }
     }
+    if (!Array.isArray(scheds)) scheds = [];
+    var prod = aiProductById(o.product_id) || {};
+    var principal = o.principal != null ? parseFloat(o.principal) : (parseFloat(o.amount) || 0);
+    var rate = parseFloat(o.rate) || 0;
+    var ident = userIdentity(o.uid);
+    var settled = parseInt(o.settled_days != null ? o.settled_days : o.settledDays, 10) || 0;
+    var period = parseInt(o.period != null ? o.period : o.period_days, 10) || 0;
+
+    // The pages look for scheds[i].status (0 = still to come) and scheds[i].time,
+    // but open_investment writes {day, rate, profit, due_at} and no status, so
+    // the "settles in" countdown never found a pending day and every order read
+    // as finalising. Derive both from settled_days, which is the counter the
+    // database actually keeps.
+    var norm = scheds.map(function (s) {
+      var day = parseInt(s && s.day, 10) || 0;
+      var due = (s && (s.due_at || s.dueAt)) || null;
+      return {
+        day: day,
+        rate: parseFloat(s && s.rate) || rate,
+        profit: parseFloat(s && s.profit) || 0,
+        due_at: due,
+        time: due,
+        status: day > 0 && day <= settled ? 1 : 0
+      };
+    });
+    // A schedule the database did not store still has to be countable, or a
+    // short term would have no day to settle.
+    if (!norm.length && period > 0) {
+      var startTs = Date.parse(o.start_at || o.startAt || '') || Date.now();
+      for (var d = 1; d <= period; d++) {
+        norm.push({
+          day: d,
+          rate: rate,
+          profit: Math.round(principal * rate) / 100,
+          due_at: new Date(startTs + d * 86400000).toISOString(),
+          time: new Date(startTs + d * 86400000).toISOString(),
+          status: d <= settled ? 1 : 0
+        });
+      }
+    }
+
     return {
       id: String(o.id),
       uid: o.uid,
-      account: o.account || o.uid || '',
-      productId: 1,
-      product: o.product || (o.symbol || 'AI Quant'),
-      period: parseInt(o.period, 10) || 7,
-      rateMin: parseFloat(o.rate_min) || 0,
-      rateMax: parseFloat(o.rate_max) || 0,
-      amount: parseFloat(o.amount) || 0,
-      principal: o.principal != null ? parseFloat(o.principal) : (parseFloat(o.amount) || 0),
+      account: o.account || ident.account,
+      memberNo: ident.memberNo,
+      productId: o.product_id != null ? o.product_id : null,
+      productCode: prod.code || '',
+      product: o.product || prod.name || 'AI Quant',
+      period: period,
+      // v2 draws one rate for the whole term, so the band collapses to that
+      // rate. The pages use rateMin/rateMax to label the plan.
+      rateMin: rate,
+      rateMax: rate,
+      amount: principal,
+      principal: principal,
       profit: parseFloat(o.profit) || 0,
-      settledDays: parseInt(o.settled_days, 10) || 0,
-      status: o.status || 'pending',
-      startAt: o.start_at || null,
-      endAt: o.end_at || null,
-      createdAt: o.created_at,
-      created_at: o.created_at,
-      schedules: scheds || []
+      settledDays: settled,
+      status: normAiStatus(o.status),
+      dbStatus: o.status || 'active',
+      startAt: o.start_at || o.startAt || null,
+      endAt: o.end_at || o.endAt || null,
+      createdAt: o.created_at || o.createdAt,
+      created_at: o.created_at || o.createdAt,
+      schedules: norm
     };
   }
 
@@ -2401,6 +2511,30 @@
     });
   }
 
+  // Settle AI Quant days through the server, which pays them and moves the
+  // counter in one transaction. The page used to credit the balance itself and
+  // then call a stub that only accepted settled_days, so the day advanced in the
+  // UI and no money was ever paid.
+  function settleInvestmentDay(id, settledDays, note) {
+    if (!dbActive()) return Promise.reject(new Error('Connection is not ready. Please retry.'));
+    if (!id) return Promise.reject(new Error('There is no investment to settle'));
+    return DB.settleInvestmentDay(id, settledDays, note).then(function (res) {
+      _notifyChange('ai_orders');
+      _notifyChange('user_balances');
+      return res;
+    });
+  }
+
+  function cancelInvestment(id, note) {
+    if (!dbActive()) return Promise.reject(new Error('Connection is not ready. Please retry.'));
+    if (!id) return Promise.reject(new Error('There is no investment to cancel'));
+    return DB.cancelInvestment(id, note).then(function (res) {
+      _notifyChange('ai_orders');
+      _notifyChange('user_balances');
+      return res;
+    });
+  }
+
   function addAIOrder(obj) {
     var o = {
       id: genId('AI'),
@@ -3098,6 +3232,51 @@
     document.addEventListener('keydown', function handler(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', handler); } });
   }
 
+  /* Keep the browser out of the admin filter boxes.
+     Chrome autofills a `type="text"` input whose placeholder mentions an email,
+     and it fills it with the signed-in operator's own address. On User
+     Management that meant the list came up pre-filtered to one admin, so the
+     page looked like every other user had vanished - the same symptom as the
+     card-list bug, from a completely different cause.
+     `autocomplete="off"` alone is advisory and Chrome ignores it, so the value
+     is also cleared once the page has settled if the operator never typed it.
+     An empty filter means "show everyone", so clearing is always safe. */
+  function initSearchAutofillGuard(inputId) {
+    if (typeof document === 'undefined') return;
+    var el = document.getElementById(inputId);
+    if (!el) return;
+    el.setAttribute('autocomplete', 'off');
+    el.setAttribute('autocapitalize', 'none');
+    el.setAttribute('autocorrect', 'off');
+    el.setAttribute('spellcheck', 'false');
+    if (!el.getAttribute('name')) el.setAttribute('name', 'q');
+    // LastPass / 1Password / Bitwarden honour these and otherwise offer to fill
+    // the same field.
+    el.setAttribute('data-lpignore', 'true');
+    el.setAttribute('data-1p-ignore', 'true');
+    el.setAttribute('data-form-type', 'other');
+
+    var typed = false;
+    var mark = function () { typed = true; };
+    ['keydown', 'paste', 'input', 'drop'].forEach(function (evt) {
+      el.addEventListener(evt, mark, true);
+    });
+
+    var clear = function () {
+      if (typed) return;
+      if (!el.value) return;
+      el.value = '';
+      try { el.dispatchEvent(new window.Event('input', { bubbles: true })); } catch (e) {}
+    };
+    // Once on parse, once after load (Chrome fills late), and once more after a
+    // beat to catch the credential manager's second pass.
+    try { clear(); } catch (e) {}
+    if (typeof window !== 'undefined') {
+      window.addEventListener('load', function () { setTimeout(clear, 0); setTimeout(clear, 600); });
+      window.addEventListener('pageshow', function () { setTimeout(clear, 0); });
+    }
+  }
+
   var adminTablesInited = false;
 
   function isAdminMobile() {
@@ -3450,6 +3629,7 @@
     showImageLightbox: showImageLightbox,
     makeAdminTablesMobile: makeAdminTablesMobile,
     initAdminTablesMobile: initAdminTablesMobile,
+    initSearchAutofillGuard: initSearchAutofillGuard,
     initAdminNavDrawer: initAdminNavDrawer,
     initAdminBottomNav: initAdminBottomNav,
     liveTick: liveTick,
@@ -3517,6 +3697,11 @@
     getAIOrders: getAIOrders,
     addAIOrder: addAIOrder,
     openInvestment: openInvestment,
+    settleInvestmentDay: settleInvestmentDay,
+    cancelInvestment: cancelInvestment,
+    userIdentity: userIdentity,
+    ownerAccount: ownerAccount,
+    ownerMemberNo: ownerMemberNo,
     updateAIOrder: updateAIOrder,
     buildAISchedules: buildAISchedules,
     aiProcess: aiProcess,
