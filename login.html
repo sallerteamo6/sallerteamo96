@@ -10,11 +10,11 @@
   <link rel="apple-touch-icon" href="img/logo.png">
   <title>Trust</title>
   <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="styles-auth.css?v=20260927-wallet4">
+  <link rel="stylesheet" href="styles-auth.css?v=20260927-wallet5">
   <script src="scripts/config.js?v=20260927k"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-  <script src="scripts/db.js?v=20260927-wallet4"></script>
-  <script src="app.js?v=20260927-wallet4"></script>
+  <script src="scripts/db.js?v=20260927-wallet5"></script>
+  <script src="app.js?v=20260927-wallet5"></script>
 </head>
 <body>
   <div id="app">
@@ -118,8 +118,10 @@
       if (wtxt) wtxt.textContent = 'Connecting...';
       // connectWallet includes sign-in. Polling getWallet() and calling
       // walletLogin again replaced the first nonce while the user was signing.
+      // ownFeedback: this page draws the outcome in walletMsg below the button,
+      // so connectWallet must not also toast the same sentence.
       walletAttempt = Promise.resolve().then(function () {
-        return TrustApp.connectWallet({ redirect: false, onStatus: function (text) {
+        return TrustApp.connectWallet({ redirect: false, ownFeedback: true, onStatus: function (text) {
           if (wtxt) wtxt.textContent = text;
           sayWallet('warn', text);
         } });

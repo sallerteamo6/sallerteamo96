@@ -701,19 +701,25 @@
       status('Confirm sign-in in your wallet...');
       return walletLogin(addr);
     }).then(function (result) {
+      // A page that renders the outcome itself passes ownFeedback, and then must
+      // not also get a toast. login.html draws a persistent line under the button
+      // with a retry on it, and the toast repeated the identical sentence on top
+      // of it, so one failure was reported twice. Pages with no line of their own
+      // keep the toast, which is the only feedback they would otherwise have.
+      var own = !!options.ownFeedback;
       if (!result || !result.ok) {
         var message = (result && result.msg) || 'Wallet sign-in failed. Try again.';
-        toast('error', message);
+        if (!own) toast('error', message);
         return { ok: false, msg: message };
       }
-      toast('success', t('wallet.loginSuccess') || 'Wallet login successful');
+      if (!own) toast('success', t('wallet.loginSuccess') || 'Wallet login successful');
       if (options.redirect !== false) setTimeout(function () {
         window.location.href = walletReturnUrl();
       }, 400);
       return result;
     }).catch(function (error) {
       var message = walletLoginErrorText(error);
-      toast('error', message);
+      if (!options.ownFeedback) toast('error', message);
       return { ok: false, msg: message };
     }).then(function (result) { finish(); return result; });
     return _connectPromise;

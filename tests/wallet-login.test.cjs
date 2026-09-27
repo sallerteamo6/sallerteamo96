@@ -277,19 +277,53 @@ test('suspended wallet cannot be reactivated by login', async () => {
 });
 
 test('login page awaits one connection and its retry button retries wallet auth', async () => {
-  let resolve; let calls = 0; let retry;
-  const button = {disabled: false, textContent: ''};
+  let resolve; let calls = 0; let retry; let opts;
+  const button = {disabled: false, textContent: '', classList: {toggle() {}}};
   const c = {Promise, walletAttempt: null, document: {getElementById: () => button},
-    say: (kind, msg, label, fn) => {retry = fn;},
-    TrustApp: {connectWallet: () => {calls++; return new Promise(r => {resolve = r;});}}, setTimeout() {}};
+    // The page gives the wallet its own status line rather than sharing the
+    // password form's, so doWalletLogin reports through sayWallet.
+    say: () => {}, sayWallet: (kind, msg, label, fn) => { if (label) retry = fn; },
+    TrustApp: {connectWallet: (o) => {calls++; opts = o; return new Promise(r => {resolve = r;});}},
+    walletReturnUrl: () => 'index.html', setTimeout() {}};
   vm.createContext(c); vm.runInContext(pageFn('doWalletLogin'), c);
   const a = c.doWalletLogin(), b = c.doWalletLogin();
   assert.equal(a, b); await Promise.resolve(); assert.equal(calls, 1);
   assert.equal(button.disabled, true);
+  // The page renders the outcome itself, so connectWallet must not also toast the
+  // same sentence. Without this the failure appeared twice on the login page.
+  assert.equal(opts.ownFeedback, true);
   resolve({ok: false, msg: 'cancelled'}); await a;
   assert.equal(button.disabled, false); assert.equal(retry, c.doWalletLogin);
   const again = retry(); await Promise.resolve(); assert.equal(calls, 2);
   resolve({ok: true}); await again; assert.equal(button.textContent, 'Signed in');
+});
+
+test('a page with no status line of its own still gets the toast', async () => {
+  // index.html calls connectWallet with no options, so the toast is the only
+  // feedback it gets and must not have been lost when the duplicate was removed.
+  const c = client(server());
+  const out = await c.connectWallet({redirect: false});
+  assert.equal(out.ok, true);
+  assert.ok(c.toasts.some((x) => x.kind === 'success'), 'expected a success toast, got ' + JSON.stringify(c.toasts));
+});
+
+test('ownFeedback suppresses the toast that duplicated the page status line', async () => {
+  // The same failure, reported two ways. Without the opt-out the login page showed
+  // the identical sentence twice: once as a 2.5s toast, once in the persistent
+  // line under the button.
+  const plain = client(server({suspended: true}));
+  const plainOut = await plain.connectWallet({redirect: false});
+  const own = client(server({suspended: true}));
+  const ownOut = await own.connectWallet({redirect: false, ownFeedback: true});
+
+  assert.equal(plainOut.ok, false);
+  assert.equal(ownOut.ok, false);
+  // Both must still report the same failure, and the opted-out page must get it
+  // in the return value it renders itself rather than losing it.
+  assert.equal(ownOut.msg, plainOut.msg);
+  assert.match(ownOut.msg, /suspended/);
+  assert.ok(plain.toasts.some((x) => x.kind === 'error'), 'the default path must still toast');
+  assert.deepEqual(own.toasts, [], 'ownFeedback must suppress the toast entirely');
 });
 
 test('wallet redirect only allows the same website', () => {
