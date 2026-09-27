@@ -1301,17 +1301,23 @@
     if (walletBtn && walletBalance && walletBalanceAmount) {
       if (uid) {
         var b = TrustApp.getBalances ? TrustApp.getBalances(uid) : {};
-        var total = 0;
-        Object.keys(b).forEach(function (c) {
-          var bal = parseFloat(b[c]) || 0;
-          if (c === 'USDT') total += bal;
-          else {
-            var d = TrustApp.findCoin ? TrustApp.findCoin(c) : null;
-            var price = d ? (parseFloat(d.price) || 0) : 0;
-            total += bal * price;
-          }
-        });
-        walletBalanceAmount.textContent = '$ ' + total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        // The total is priced by the database, not by the market list below.
+        // That list comes from /api/market/all, falls back to a hard-coded
+        // snapshot when the fetch fails, and is nudged by a random fraction on a
+        // timer - so the header and the account page disagreed about the same
+        // balances. See DB.portfolioValue. The '$ ...' placeholder stays until the
+        // real figure arrives rather than showing a number that is about to
+        // change.
+        walletBalanceAmount.textContent = '$ ...';
+        if (window.DB && DB.portfolioValue) {
+          DB.portfolioValue(b).then(function (v) {
+            if (!TrustApp.getUserId()) return;   // signed out mid-flight
+            walletBalanceAmount.textContent =
+              '$ ' + v.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          }).catch(function () {});
+        } else {
+          walletBalanceAmount.textContent = '$ 0.00';
+        }
         walletBtn.style.display = 'none';
         walletBalance.style.display = 'flex';
       } else if (getToken()) {
@@ -2481,15 +2487,7 @@
     }).then(function (row) { _notifyChange('transactions'); return dbTxnToApp(row); });
   }
 
-  function usdValue(coin) {
-    if (coin === 'USDT' || coin === 'USDC' || coin === 'TUSD') return 1;
-    try {
-      var d = typeof findCoin === 'function' ? findCoin(coin) : null;
-      return d ? (parseFloat(d.price) || 0) : 0;
-    } catch (e) { return 0; }
-  }
-
-  function setTxnStatus(id, status) {
+    function setTxnStatus(id, status) {
     if (!dbActive()) return Promise.reject(new Error('Connection is not ready'));
     return DB.setTransactionStatus(id,status === 'confirmed' ? 'approved' : status).then(function () {
       return Promise.all([DB.pullBlob('transactions'),DB.pullBlob('balances')]);

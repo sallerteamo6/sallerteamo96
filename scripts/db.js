@@ -481,6 +481,92 @@ var TrustDB = (function () {
         });
     },
 
+    // =====================================================================
+    //  One total, one price source.
+    // =====================================================================
+    //  Found live: the account page said $201,278.61 and the header on the home
+    //  page said $201,193.29 for the same balances at the same time.
+    //
+    //  Two reasons, and the second is the serious one.
+    //
+    //  The first is that the two pages read two different feeds. This reads
+    //  public.prices, the same table the exchange applies. The header read
+    //  TrustApp.findCoin(), which is the market list app.js fetches from
+    //  AppConfig.apiBaseUrl (/api/market/all) and which falls back to a
+    //  hard-coded snapshot in the file when that fetch fails - BTC 77,000. A
+    //  fallback that differs by $7,000 is not a fallback, it is a wrong number
+    //  shown without any indication that it is wrong.
+    //
+    //  The second is that the market list is not a price feed at all. liveTick
+    //  multiplies every price by (1 + (random() - 0.5) * 0.002) on a timer, so
+    //  the figure the header totals with is a random walk seeded from whatever
+    //  the last successful fetch returned. The account page shows the exchange's
+    //  real rate. Neither is wrong on its own terms, but they cannot agree, and
+    //  two different numbers for one balance is the whole problem.
+    //
+    //  So a total is computed here, once, from public.prices, and both pages
+    //  call this. The market list keeps its own prices for the market table; it
+    //  no longer has a say in what anybody's portfolio is worth.
+    //
+    //  Cached for the same 30 seconds the account page uses, so two tabs of the
+    //  same site are at most one tick apart rather than being unrelated numbers.
+    //  =====================================================================
+    _valuePriceCache: null,
+    _valuePriceAt: 0,
+    VALUE_TTL_MS: 30000,
+
+    // The prices behind a total, fetched at most once per VALUE_TTL_MS.
+    valuePrices: function (force) {
+      var self = this;
+      var fresh = this._valuePriceCache && (Date.now() - this._valuePriceAt) < this.VALUE_TTL_MS;
+      if (fresh && !force) return Promise.resolve(this._valuePriceCache);
+      if (this._valuePricePending && !force) return this._valuePricePending;
+
+      this._valuePricePending = this.getExchangePrices()
+        .then(function (map) {
+          self._valuePriceCache = map || {};
+          self._valuePriceAt = Date.now();
+          self._valuePricePending = null;
+          return self._valuePriceCache;
+        })
+        .catch(function () {
+          // Keep whatever was last known rather than reporting zero. A total of
+          // $0.00 on a fetch failure reads as "you have nothing", which is worse
+          // than a slightly old number, so the caller is told the prices are old
+          // instead of being handed a confident wrong figure.
+          self._valuePricePending = null;
+          return self._valuePriceCache || {};
+        });
+      return this._valuePricePending;
+    },
+
+    // What a set of balances is worth, in USDT, at the price the exchange would
+    // actually use. `unpriced` is the part of it that no live price covers, so a
+    // page can say so rather than quietly valuing it at a seeded figure.
+    portfolioValue: function (balances, force) {
+      var bal = balances || {};
+      return this.valuePrices(force).then(function (map) {
+        var total = 0;
+        var unpriced = 0;
+        var newest = 0;
+        Object.keys(bal).forEach(function (sym) {
+          var amount = parseFloat(bal[sym]) || 0;
+          if (!amount) return;
+          if (sym === 'USDT') { total += amount; return; }
+          var p = map[sym];
+          if (p && p.price > 0) {
+            total += amount * p.price;
+            if (p.ageSec > newest) newest = p.ageSec;
+          } else {
+            // No price for this coin. Valued at zero and reported, because
+            // guessing here is how a portfolio total becomes a lie.
+            unpriced += amount;
+          }
+        });
+        return { total: total, unpriced: unpriced, ageSec: newest, at: this._valuePriceAt };
+      }.bind(this));
+    },
+
     // p_coinIn / p_amountIn / p_coinOut only. There is deliberately no rate
     // parameter, so there is nowhere for one to be smuggled in.
     exchangeCoins: function (coinIn, amountIn, coinOut) {

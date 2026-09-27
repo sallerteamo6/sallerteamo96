@@ -9,11 +9,11 @@
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="img/logo.png">
   <title>Trust</title>
-  <link rel="stylesheet" href="styles.css?v=20260927-wallet8">
-  <script src="scripts/config.js?v=20260927-wallet8"></script>
+  <link rel="stylesheet" href="styles.css?v=20260927-wallet11">
+  <script src="scripts/config.js?v=20260927-wallet11"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927-wallet8"></script>
-  <script src="app.js?v=20260927-wallet8"></script>
+    <script src="scripts/db.js?v=20260927-wallet11"></script>
+  <script src="app.js?v=20260927-wallet11"></script>
 </head>
 <body>
   <div id="app">
@@ -215,9 +215,25 @@
     setInterval(function () {
       TrustApp.liveTick(currentTab, updatePrices);
     }, 2000);
+
+    // The market table's prices are only fetched once per page load, and
+    // liveTick nudges them by a random fraction every two seconds, so left
+    // alone they random-walk away from the real market over a long session.
+    // Re-fetching on a timer pulls them back to actual prices; the two-second
+    // animation on top is what makes the movement visible between fetches.
+    setInterval(function () {
+      TrustApp.fetchMarket(function () {
+        renderMarket();
+      });
+    }, 60000);
     TrustApp.fetchMarket(function () {
       renderMarket();
     });
+
+    // The header total is priced from public.prices on a 30 second cache, so it
+    // has to be re-rendered on the same cadence or it sits at whatever it was
+    // when the page loaded while the account page keeps moving.
+    setInterval(refreshHeaderUI, 30000);
 
     if (AppConfig.advancedAuthEnabled) {
       var adv = document.querySelector('.menu-advanced-auth');
@@ -226,26 +242,15 @@
     // Central UI refresh: header wallet balance, Connect-Wallet visibility,
     // side-menu admin button. updateMenuUser() handles all of it reactively,
     // so we just re-invoke it whenever the session/db state changes.
-    function renderWalletBalance() {
-      if (!TrustApp.isLoggedIn()) return;
-      var uid = TrustApp.getUserId();
-      var el = document.getElementById('walletBalanceAmount');
-      if (!el || !uid) return;
-      var b = TrustApp.getBalances(uid);
-      var total = 0;
-      Object.keys(b).forEach(function (sym) {
-        var bal = parseFloat(b[sym]) || 0;
-        if (!bal) return;
-        if (sym === 'USDT') { total += bal; return; }
-        var d = TrustApp.findCoin ? TrustApp.findCoin(sym) : null;
-        var price = d ? (parseFloat(d.price) || 0) : 0;
-        total += bal * price;
-      });
-      el.textContent = '$ ' + total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
+    //
+    // The header total used to be recomputed here from TrustApp.findCoin(),
+    // which is a second implementation of a number app.js already computes, from
+    // a different feed. That is how the header and the account page ended up
+    // quoting different totals for the same balances: this one is deleted, and
+    // updateMenuUser() prices the header from public.prices - the same table the
+    // exchange and the account page use. See DB.portfolioValue in scripts/db.js.
     function refreshHeaderUI() {
       if (TrustApp.updateMenuUser) TrustApp.updateMenuUser();
-      renderWalletBalance();
     }
     refreshHeaderUI();
     // Keep the header + admin button correct once the session restores and
