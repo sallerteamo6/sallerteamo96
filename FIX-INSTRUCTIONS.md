@@ -2,7 +2,7 @@
 
 1. Keep a backup of your current website and database.
 2. If you have not already applied `supabase/v2/14_admin_data_fix.sql`, run it in Supabase SQL Editor first. It requires the existing v2 schema and admin-password setup.
-3. Run `supabase/v2/15_live_delivery.sql` if not already installed, then `supabase/v2/16_admin_session_fixes.sql`, then `supabase/v2/17_profit_mode_and_settlement.sql`, then `supabase/v2/18_all_markets_and_auto_settle.sql`, then `supabase/v2/19_settlement_enum_fix.sql`, then `supabase/v2/20_payouts_multi_trade_numeric_fix.sql`, then `supabase/v2/21_quote_currency_usdt.sql`, then the NEW `supabase/v2/22_ai_settlement_cron.sql` - in that order, each in full. These upgrades preserve records, balances, UIDs, and the admin password. Do not rerun schema/seed/reset scripts on a live project.
+3. Run `supabase/v2/15_live_delivery.sql` if not already installed, then `supabase/v2/16_admin_session_fixes.sql`, then `supabase/v2/17_profit_mode_and_settlement.sql`, then `supabase/v2/18_all_markets_and_auto_settle.sql`, then `supabase/v2/19_settlement_enum_fix.sql`, then `supabase/v2/20_payouts_multi_trade_numeric_fix.sql`, then `supabase/v2/21_quote_currency_usdt.sql`, then `supabase/v2/22_ai_settlement_cron.sql`, then the NEW `supabase/v2/23_admin_password_rotation.sql` - in that order, each in full. These upgrades preserve records, balances, UIDs, and the admin password. Do not rerun schema/seed/reset scripts on a live project.
 4. Replace the website files with this folder's contents. Preserve your production `scripts/config.js` if its settings differ.
 5. Press Ctrl+Shift+R and sign in again on both customer and admin pages.
 
@@ -117,6 +117,28 @@ The error in the screenshot named the real cause: the page sent **`ETHUSDT`** as
 With that fixed, `products` was still seeded with only 12 of the coins the front end offers, so the other 17 were correctly refused. **Migration 18 seeds all 29** - the 19 crypto pairs, 4 metals and 6 forex entries - each with the same 60s / 120s / 300s durations, written as one statement over the whole table so a product added by hand also gets its durations.
 
 The metals and forex pairs carry a `price_symbol` sentinel (`METAL_XAU`, `FX_EURUSD`, ...) that will never resolve on Binance. That is intentional and matches the rule already documented in `scripts/settle.mjs`: an unquotable product **blocks rather than guesses**, because settling on a wrong price pays real money to the wrong side. They still settle through the countdown path, which uses the price the page is displaying.
+
+## The admin password can be changed from the panel, and admins are not asked for it
+
+**Migration 23.**
+
+The Settings page had a working Current / New / Confirm form, and pressing Update Password returned *"The admin password is now stored in the database and cannot be changed from here"*. `changeAdminPassword()` in app.js was a stub that always failed and told the operator to paste an `UPDATE` into the Supabase SQL editor - which puts a credential into a query box for a routine security action.
+
+It now calls `admin_set_passphrase(current, new, token)` in the database. Use it as normal: type the current password and a new one of at least 8 characters.
+
+- **The current password is always required**, even for an account admin. A stolen session must not be able to take the panel over permanently by setting a password it now knows.
+- **Authority and the password are separate arguments.** A passphrase-only operator has no account, so the bearer token authorises them while the passphrase is what is being checked. Overloading one argument for both would make "which one was wrong" unanswerable.
+- **Wrong current password returns nothing at all**, the same silent signal `admin_login` uses, so the reply never reveals whether an operator exists.
+- **The signing key rotates with the password**, which signs out every other unlocked admin tab and any token that was copied. The function hands back a fresh token so the operator who just changed it is not locked out of the page they are standing on - the settings page stores it and clears the fields either way.
+- **The hash is now salted bcrypt.** A bare sha256 is a rainbow-table lookup away from the original for any password in a wordlist, and adding the means to rotate while keeping the weak hash would have been the wrong order of operations. `admin_login` accepts both formats and the stored value is self-describing, so a project whose credential is still a legacy sha256 keeps working untouched and is upgraded the first time it is rotated.
+
+**An account admin is no longer asked for the shared passphrase.** Three separate things were prompting them:
+
+1. The success test read only the bulk `users` cache, which can still be loading - a real admin read as an ordinary user. It now prefers `DB.isAdmin`, which comes from a dedicated self-only query and does not depend on that load. It also accepts `is_admin` arriving as `1` or `'t'`, not only strict `true`.
+2. Once inside that branch, a failed user-list refresh raised the lock over them. Being entitled to the page cannot depend on a read succeeding, so a genuine admin is never locked out by one - and an expired leftover token in sessionStorage no longer locks them out either.
+3. The lock is visible by default so a failed check leaves the page closed. The side effect was that the password form was on screen before the check ran, so every admin saw a prompt they should never be asked for on every page load. While the answer is being decided the panel now says "Checking access..." with the form disabled, and the form only appears if a passphrase is genuinely required.
+
+`tests/admin-access.test.cjs` drives the lock for each kind of caller and checks the form is never offered to somebody who does not need it.
 
 ## Nothing waits for a browser or an operator: what is written where
 

@@ -2021,7 +2021,7 @@
         var oldWarning = document.getElementById('realAdminWarn');
         if (oldWarning) oldWarning.remove();
         var lock = document.getElementById('adminLock');
-        if (lock) lock.style.display = 'none';
+        setAdminLockState(lock, 'open');
         notifyAdminUsersLoaded();
         // A failure in another section must not hide the loaded user list.
         return Promise.allSettled(tables.map(function (table) { return DB.pullBlob(table); }));
@@ -2041,10 +2041,13 @@
       }).catch(function (e) {
         _verifiedAdminToken = '';
         var message = String(e && e.message || e);
-        if (/invalid token|token expired/i.test(message)) {
+        // An expired token means the shared passphrase is needed again - but only
+        // for an operator who was relying on that token. A real account admin is
+        // authorised by their own row and must not be locked out of the panel by a
+        // stale token left in sessionStorage by an earlier unlock.
+        if (/invalid token|token expired/i.test(message) && !isRealAdmin()) {
           clearAdminUsers();
-          var lock = document.getElementById('adminLock');
-          if (lock) lock.style.display = 'flex';
+          setAdminLockState(document.getElementById('adminLock'), 'ask');
         }
         var banner = document.getElementById('adminDataError');
         if (!banner && document.body) {
@@ -2082,9 +2085,19 @@
   // Account permissions come from the active Supabase identity and profile.
   // The app's older cookie/session object can lag behind that identity.
   function isRealAdmin() {
-    if (typeof DB === 'undefined' || !DB || !DB._authUser) return false;
+    if (typeof DB === 'undefined' || !DB) return false;
+    // DB.isAdmin comes from a dedicated self-only query (users?id=eq.<uid>
+    // &select=id,is_admin) that runs on every session restore. The bulk users
+    // cache is a separate load that can still be in flight, and a cache that
+    // misses reads as "not an admin" - which is what made a real account admin
+    // get asked for the shared passphrase. Prefer the flag that does not depend
+    // on the bulk load having finished.
+    if (DB.isAdmin === true) return true;
+    if (!DB._authUser) return false;
     var row = DB.getUserStr(DB._authUser.id);
-    return !!(row && row.is_admin === true);
+    // Truthy rather than === true: the row can arrive as 1 or 't' depending on
+    // the column type, and a real admin must never be prompted over that.
+    return !!(row && (row.is_admin === true || row.is_admin === 1 || row.is_admin === 't' || row.is_admin === 'true'));
   }
 
   var _verifiedAdminToken = '';
@@ -2095,9 +2108,43 @@
       Number(token.split('.')[0]) > Date.now() / 1000);
   }
 
+  // The lock is visible by default so that a failed check leaves the page closed.
+  // The side effect is that the password form is on screen before the check has
+  // run, so an account admin saw a prompt they should never be asked for - on
+  // every admin page, on every load, for as long as the check took. The form is
+  // swapped for a neutral line while the answer is being decided, and only appears
+  // when the answer is that a passphrase really is required.
+  function setAdminLockState(lock, state) {
+    if (!lock) return;
+    if (state === 'open') { lock.style.display = 'none'; return; }
+    lock.style.display = 'flex';
+    var box = lock.querySelector('.admin-lock-box');
+    if (!box) return;
+    var input = document.getElementById('adminPassInput');
+    var btn = lock.querySelector('.admin-lock-btn');
+    var p = box.querySelector('p');
+    var err = document.getElementById('adminLockErr');
+    if (state === 'checking') {
+      if (p) {
+        if (p.getAttribute('data-idle') == null) p.setAttribute('data-idle', p.textContent);
+        p.textContent = 'Checking access...';
+      }
+      if (input) input.disabled = true;
+      if (btn) btn.disabled = true;
+      if (err) err.textContent = '';
+      return;
+    }
+    // 'ask': the passphrase is required, so put the form back the way it was.
+    if (p) p.textContent = p.getAttribute('data-idle') || 'Enter the admin password to continue';
+    if (input) input.disabled = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'Unlock'; }
+  }
+
   function initAdminLock() {
     var lock = document.getElementById('adminLock');
     if (!lock) return;
+    // Ask nothing until the answer is known.
+    setAdminLockState(lock, 'checking');
     try {
       // Session restore is async and the users table may not have loaded yet.
       // Deciding early would fail the is_admin check and prompt a real admin,
@@ -2112,7 +2159,17 @@
       var attempts = 0;
       var decide = function () {
         if (isRealAdmin() || adminToken()) {
-          fetchAdminUsers().then(function () { lock.style.display = 'none'; }).catch(function () { lock.style.display = 'flex'; });
+          var account = isRealAdmin();
+          fetchAdminUsers().then(function () { setAdminLockState(lock, 'open'); }).catch(function () {
+            // A genuine account admin is authorised by their own row, not by the
+            // shared passphrase, so a failed refresh of the user list is a data
+            // problem to report - never a reason to demand the passphrase. This
+            // branch used to raise the lock on any failure, which locked a real
+            // admin out of a page they were already entitled to, and did it
+            // silently: the page simply asked for a password it did not need.
+            if (account) { setAdminLockState(lock, 'open'); return; }
+            setAdminLockState(lock, 'ask');
+          });
           return;
         }
 
@@ -2127,7 +2184,7 @@
           }
         }
         // An old browser unlock flag is not proof of server authorization.
-        lock.style.display = 'flex';
+        setAdminLockState(lock, 'ask');
       };
       var gate = getToken() ? restoreSession().catch(function () { return null; }) : Promise.resolve(null);
       var ready = (typeof whenDbReady === 'function') ? whenDbReady(10000).catch(function () { return false; }) : Promise.resolve(false);
@@ -2161,7 +2218,7 @@
       }
 
       markAdminUnlockedInTab();
-      if (lock) lock.style.display = 'none';
+      setAdminLockState(lock, 'open');
       if (input) input.value = '';
 
       // An operator holding the passphrase is not an admin account, so the
@@ -2174,7 +2231,7 @@
         // A successful empty response is a valid empty user list.
       });
     }).catch(function (e) {
-      if (lock) lock.style.display = 'flex';
+      setAdminLockState(lock, 'ask');
       if (err) err.textContent = 'Could not load admin data. Apply 14_admin_data_fix.sql and retry.';
     });
   }
@@ -3115,17 +3172,60 @@
   }
 
   function changeAdminPassword(currentPassword, newPassword) {
-    // The passphrase now lives hashed in public.admin_credentials and is only
-    // reachable from SQL, so this cannot be a client-side operation any more.
-    // Saying so plainly beats appearing to succeed and silently doing nothing.
-    if (!newPassword) return { ok: false, msg: 'Enter a new password' };
-    if (String(newPassword).length < 8) return { ok: false, msg: 'New password must be at least 8 characters' };
-    return {
-      ok: false,
-      msg: 'The admin password is now stored in the database and cannot be changed from here. ' +
-           'To rotate it, run the UPDATE at the bottom of supabase/v2/13_admin_passphrase.sql ' +
-           'in the Supabase SQL editor. That also signs out every unlocked admin tab.'
-    };
+    // The passphrase is hashed in public.admin_credentials and only reachable from
+    // SQL through SECURITY DEFINER functions, so the browser never sees or stores
+    // it. Rotating it is still a database write, so it goes to the database: this
+    // used to be a stub that always refused and told the operator to paste an
+    // UPDATE into the SQL editor, which put a credential in a query box for a
+    // routine security action.
+    if (!currentPassword) return Promise.resolve({ ok: false, msg: 'Enter the current admin password' });
+    if (!newPassword) return Promise.resolve({ ok: false, msg: 'Enter a new password' });
+    if (String(newPassword).length < 8) {
+      return Promise.resolve({ ok: false, msg: 'The new password must be at least 8 characters' });
+    }
+    if (currentPassword === newPassword) {
+      return Promise.resolve({ ok: false, msg: 'The new password must be different from the current one' });
+    }
+    if (typeof DB === 'undefined' || !DB || !DB.rpc) {
+      return Promise.resolve({ ok: false, msg: 'Backend not ready, try again in a moment' });
+    }
+    // The current passphrase is always checked by the database. The token is sent
+    // alongside it so an operator who has no account - which is what the shared
+    // passphrase is for - can still rotate it.
+    return DB.rpc('admin_set_passphrase', {
+      p_current: String(currentPassword),
+      p_new: String(newPassword),
+      p_tok: adminToken() || null
+    }).then(function (tok) {
+      // NULL is the only failure signal, exactly as with admin_login, so the reply
+      // does not reveal whether an operator exists.
+      if (!tok) return { ok: false, msg: 'The current admin password is not correct' };
+      // Rotating also rotates the signing key, so every token already issued is now
+      // invalid - including this tab's. Storing the new one keeps the operator signed
+      // in on the page they are standing on and signs out every other tab.
+      setAdminToken(tok);
+      _verifiedAdminToken = '';
+      clearAdminUsers();
+      notifyAdminUsersLoaded();
+      return { ok: true, token: tok };
+    }).catch(function (e) {
+      return { ok: false, msg: adminPassphraseErrorText(e) };
+    });
+  }
+
+  // PostgREST reports a failed function as a JSON envelope
+  // {"code":"42501","message":"..."} and db.js passes that whole string through.
+  // Dumping it at an operator is not an explanation, so the real message is pulled
+  // out and the expected ones are put in words. The raw text is still returned for
+  // anything unrecognised, so nothing is silently lost.
+  function adminPassphraseErrorText(e) {
+    var raw = String((e && e.message) || e || '');
+    if (/"message"\s*:\s*"([^"]+)"/.test(raw)) raw = RegExp.$1;
+    if (/admin sign-in required/i.test(raw)) return 'Sign in as an admin before changing the password.';
+    if (/at least 8 characters/i.test(raw)) return 'The new password must be at least 8 characters.';
+    if (/different from the current/i.test(raw)) return 'The new password must be different from the current one.';
+    if (/no admin password is set/i.test(raw)) return 'No admin password has been set on this project yet.';
+    return raw || 'Could not change the admin password';
   }
 
   (function guardAuth() {

@@ -11,8 +11,8 @@
   <link rel="stylesheet" href="styles.css">
   <script src="scripts/config.js?v=20260926m"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927h"></script>
-  <script src="app.js?v=20260927h"></script>
+    <script src="scripts/db.js?v=20260927i"></script>
+  <script src="app.js?v=20260927i"></script>
 </head>
 <body class="auth-page admin-page" style="background:#eef1f5;padding-bottom:30px;">
 
@@ -64,7 +64,7 @@
           </div>
           <div>
             <label class="form-label">New Password</label>
-            <input type="password" class="form-input" id="newPass" placeholder="At least 6 characters" autocomplete="new-password">
+            <input type="password" class="form-input" id="newPass" placeholder="At least 8 characters" autocomplete="new-password">
           </div>
           <div>
             <label class="form-label">Confirm New Password</label>
@@ -107,20 +107,42 @@
     var hmEl = document.getElementById('hmAuth');
     if (hmEl) hmEl.textContent = 'Locked';
 
-    document.getElementById('savePass').onclick = function () {
+    var saveBtn = document.getElementById('savePass');
+    saveBtn.onclick = function () {
       var cur = document.getElementById('curPass').value;
       var nw = document.getElementById('newPass').value;
       var conf = document.getElementById('confPass').value;
       if (!cur || !nw) { toast('error', 'Please fill in all fields'); return; }
       if (nw !== conf) { toast('error', 'New passwords do not match'); return; }
-      if (String(nw).length < 6) { toast('error', 'New password must be at least 6 characters'); return; }
-      var res = TrustApp.changeAdminPassword(cur, nw);
-      if (!res.ok) { toast('error', res.msg); return; }
-      toast('success', 'Admin password updated');
-      document.getElementById('curPass').value = '';
-      document.getElementById('newPass').value = '';
-      document.getElementById('confPass').value = '';
-      setTimeout(function () { TrustApp.initAdminLock(); }, 300);
+      if (String(nw).length < 8) { toast('error', 'New password must be at least 8 characters'); return; }
+
+      // The change is a database write now, so the button has to wait for it.
+      // Double-submitting would send the rotation twice, and the second attempt
+      // would be refused because the current password no longer matches.
+      if (saveBtn.disabled) return;
+      saveBtn.disabled = true;
+      var label = saveBtn.textContent;
+      saveBtn.textContent = 'Updating...';
+
+      TrustApp.changeAdminPassword(cur, nw).then(function (res) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = label;
+        if (!res || !res.ok) { toast('error', (res && res.msg) || 'Could not change the password'); return; }
+        toast('success', 'Admin password updated. Other admin tabs have been signed out.');
+        // Cleared whichever way it went: a passphrase left sitting in a field on a
+        // page an operator may walk away from is the thing being managed here.
+        document.getElementById('curPass').value = '';
+        document.getElementById('newPass').value = '';
+        document.getElementById('confPass').value = '';
+        // Re-read the list under the new token, so the panel is not left showing
+        // data fetched under the old session.
+        setTimeout(function () { TrustApp.initAdminLock(); }, 300);
+      }).catch(function (e) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = label;
+        document.getElementById('curPass').value = '';
+        toast('error', (e && e.message) || 'Could not change the password');
+      });
     };
   </script>
 </body>
