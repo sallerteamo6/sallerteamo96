@@ -65,6 +65,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen,Ubunt
 .tab-btn.active{background:#1652f0;color:#fff}
 .tab-btn.active:before{content:"";position:absolute;top:-2px;left:-2px;right:-2px;bottom:-2px;background:linear-gradient(135deg,#3b82f6,#60a5fa,#93c5fd);border-radius:14px;z-index:-1;opacity:.4;filter:blur(4px)}
 .market-list{display:flex;flex-direction:column;gap:.75rem}
+/* A coin with no live price from the server. The row still renders, because the
+   account page lists the coin, but it is dimmed so nobody taps through expecting
+   a swap the exchange will refuse. */
+.market-item-noprice{opacity:.55}
+.market-item-noprice:hover{opacity:.8}
 .market-item{display:flex;justify-content:space-between;align-items:center;padding:.55rem;background:linear-gradient(135deg,#fff,#f8f9fa);border-radius:16px;transition:all .3s ease;border:1px solid rgba(0,0,0,.05);box-shadow:0 2px 8px rgba(0,0,0,.04);cursor:pointer}
 .market-item:hover{background:linear-gradient(135deg,#f8f9fa,#e9ecef);transform:translateY(-2px);box-shadow:0 4px 16px rgba(0,0,0,.08);border-color:rgba(59,130,246,.1)}
 .market-info{display:flex;align-items:center;gap:.75rem;flex:1;min-width:0}

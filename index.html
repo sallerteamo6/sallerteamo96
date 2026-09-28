@@ -9,11 +9,11 @@
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="img/logo.png">
   <title>Trust</title>
-  <link rel="stylesheet" href="styles.css?v=20260927-wallet13">
-  <script src="scripts/config.js?v=20260927-wallet13"></script>
+  <link rel="stylesheet" href="styles.css?v=20260927-wallet14">
+  <script src="scripts/config.js?v=20260927-wallet14"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927-wallet13"></script>
-  <script src="app.js?v=20260927-wallet13"></script>
+    <script src="scripts/db.js?v=20260927-wallet14"></script>
+  <script src="app.js?v=20260927-wallet14"></script>
 </head>
 <body>
   <div id="app">
@@ -204,12 +204,28 @@
           stale: sp.ageSec != null && sp.ageSec > 300
         };
       }
+      // No server price. The figure below is whatever the list feed last said, or
+      // the seeded snapshot, and the exchange will not honour it - so it is
+      // labelled rather than presented as a price. A member who taps through and
+      // finds the market unavailable deserves to have been told here first.
       return {
         price: d.price,
         change: typeof d.change === 'number' ? d.change : null,
         fromServer: false,
         stale: false
       };
+    }
+
+    // What the page should say about a row's price. Three cases, and the
+    // difference between them is what a member is about to be able to do:
+    //   live      - the price the exchange would apply
+    //   stale     - a real price the feed has stopped refreshing
+    //   unpriced  - no server price at all, so it cannot be traded
+    function priceNote(q) {
+      if (q.fromServer) {
+        return q.stale ? 'server price - feed is behind, too old to swap' : 'server price';
+      }
+      return 'indicative only - no live price for this coin, cannot be swapped';
     }
 
     function changeCell(ch) {
@@ -240,12 +256,7 @@
         var icon = d.i ? '<img src="img/' + d.i + '" alt="' + d.s + '">' : '<span class="coin-letter">' + d.s.charAt(0) + '</span>';
         var prefix = TrustApp.pricePrefix(d);
         var q = rowQuote(d);
-        // A stale server price is never shown as if it were current: the
-        // exchange would refuse it, and the table should say so first.
-        var title = q.fromServer
-          ? (q.stale ? 'price ' + Math.round((Date.now() - serverFetchedAt) / 1000) + 's ago - not tradable' : 'server price')
-          : 'indicative';
-        html += '<div class="market-item" data-coin="' + (d.pair || d.s) + '" title="' + title + '" onclick="location.href=\'' + TrustApp.marketToTradeQuery(d, currentTab) + '\'">'
+        html += '<div class="market-item' + (q.fromServer ? '' : ' market-item-noprice') + '" data-coin="' + (d.pair || d.s) + '" title="' + priceNote(q) + '" onclick="location.href=\'' + TrustApp.marketToTradeQuery(d, currentTab) + '\'">'
           + '<div class="market-info">'
           + '<div class="market-icon">' + icon + '</div>'
           + '<div class="market-details"><div class="market-symbol">' + d.s + '</div><div class="market-name">' + d.n + '</div></div>'

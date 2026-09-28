@@ -269,6 +269,16 @@
         { s: 'DOT', n: 'USDT', price: 0.8288, change: 8.43, dec: 6, i: 'DOT.png' },
         { s: 'LINK', n: 'USDT', price: 8.2402, change: 4.32, dec: 4, i: 'LINK.png' },
         { s: 'BCH', n: 'USDT', price: 209.218, change: 1.56, dec: 3, i: 'BCH.png' },
+        // SOL added: public.prices has priced it all along and the account page
+        // already lists it, so its absence here was the market table falling out
+        // of step with what the site can actually trade.
+        { s: 'SOL', n: 'USDT', price: 121.98, change: 2.84, dec: 2, i: 'SOL.png' },
+        // BSV is not in public.prices and cannot be: it is not quoted on Binance
+        // spot at all, and a price for it would have to be invented. The row is
+        // kept because the account page lists the coin and a member can hold it,
+        // and the home page dims it and labels it "indicative" rather than
+        // implying the exchange would honour it. Its price here is a seed value
+        // that the page never shows as a live quote.
         { s: 'BSV', n: 'USDT', price: 12.6931, change: 2.72, dec: 4, i: 'BSV.png' },
         { s: 'IOTA', n: 'USDT', price: 0.0686, change: 115.05, dec: 6, i: 'IOTA.png' },
         { s: 'ETC', n: 'USDT', price: 6.5757, change: 2.42, dec: 4, i: 'ETC.png' },
