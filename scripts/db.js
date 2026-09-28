@@ -481,6 +481,38 @@ var TrustDB = (function () {
         });
     },
 
+    // Prices plus the change against a 24-hour reference, in one read.
+    //
+    // This exists so the home page market table can show the same number as the
+    // exchange, the account and the balance adjuster. Those three read
+    // getExchangePrices(); if the table kept its own /api/market/all feed the
+    // price and the percentage beside it would describe two different services,
+    // and a member comparing the table with the exchange page would see two
+    // different values for the same coin.
+    //
+    // changePct is null when there is no reference yet, which is different from
+    // 0. Zero would read as "flat for 24 hours" and that is a claim nobody can
+    // make on the first day the feed has run. Pages render a dash for null.
+    getPriceChanges: function () {
+      if (typeof this.ENABLED === 'undefined') return Promise.resolve({});
+      return this.rpc('list_price_changes')
+        .then(function (rows) {
+          var out = {};
+          (rows || []).forEach(function (r) {
+            out[r.symbol] = {
+              price: parseFloat(r.price) || 0,
+              refPrice: r.ref_price == null ? null : parseFloat(r.ref_price),
+              changePct: r.change_pct == null ? null : parseFloat(r.change_pct),
+              ageSec: r.age_sec
+            };
+          });
+          return out;
+        })
+        // Not an error. The change column is an extra; a page that cannot have
+        // it should still show prices rather than show nothing.
+        .catch(function () { return {}; });
+    },
+
     // =====================================================================
     //  One total, one price source.
     // =====================================================================
