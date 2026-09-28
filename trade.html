@@ -8,11 +8,11 @@
   <meta name="color-scheme" content="light">
   <link rel="icon" type="image/png" href="favicon.png">
   <title>Trade - Trust</title>
-  <link rel="stylesheet" href="styles.css?v=20260927-wallet12">
-  <script src="scripts/config.js?v=20260927-wallet12"></script>
+  <link rel="stylesheet" href="styles.css?v=20260927-wallet16">
+  <script src="scripts/config.js?v=20260927-wallet16"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927-wallet12"></script>
-  <script src="app.js?v=20260927-wallet12"></script>
+    <script src="scripts/db.js?v=20260927-wallet16"></script>
+  <script src="app.js?v=20260927-wallet16"></script>
 </head>
 <body>
   <div id="app">
@@ -196,10 +196,23 @@
     var tab = params.get('tab') || 'crypto';
     var market = TrustApp.findCoin(pairIn) || TrustApp.findCoin(symbol);
     if (!market) {
-      market = { s: symbol, alias: 'USDT', n: 'USDT', price: parseFloat(params.get('p')) || 63500, change: 0, dec: 2, i: null, tab: tab };
+      market = { s: symbol, alias: 'USDT', n: 'USDT', price: 0, change: 0, dec: 2, i: null, tab: tab };
     }
+    // The ?p= parameter is deliberately ignored.
+    //
+    // Found live: the home page built its links as trade.html?...&p=<price>, and
+    // this line overwrote the live price with that number. A link is a fixed
+    // string - it says whatever the price was when the link was made - so opening
+    // a coin from a bookmark, a shared link or a search result showed a constant
+    // figure while the real market moved, and the order form quoted a price the
+    // server would never apply.
+    //
+    // The price comes from public.prices now (see refreshLivePrice below), which
+    // is the same table exchange_coins reads, so the figure on this page is the
+    // figure a trade would be entered at. Nothing is seeded: the page shows a
+    // dash until the feed answers rather than a plausible-looking number.
     var pParam = parseFloat(params.get('p'));
-    if (isFinite(pParam) && pParam > 0) market.price = pParam;
+    if (isFinite(pParam) && pParam > 0) { /* ignored on purpose, see above */ }
     var alias = market.n || market.alias || 'USDT';
     var dec = market.dec || 2;
     // The currency the stake is denominated in, taken from the market row and
@@ -1307,7 +1320,19 @@
     // chart and the entry price both read livePrice, so this is the only thing
     // that moves them off the market list.
     refreshLivePrice().then(function (v) {
-      if (v > 0) { price = v; priceBase = v; initChart(); }
+      if (v > 0) {
+        // The series is discarded and rebuilt, not just redrawn. It was seeded
+        // from the price the page started with, which is whatever the market
+        // list or the ?p= parameter said, so a chart drawn after the live price
+        // arrived still had its whole history anchored to a figure from
+        // elsewhere - visible as a chart whose last point is the real price and
+        // whose body belongs to another market.
+        price = v;
+        priceBase = v;
+        seriesByInterval = {};
+        series = seriesFor(currentInterval);
+        initChart();
+      }
     });
     setInterval(refreshLivePrice, 30000);
     // The sheet is a view of balances, so it is re-read whenever balances change

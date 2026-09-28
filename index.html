@@ -9,11 +9,11 @@
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="img/logo.png">
   <title>Trust</title>
-  <link rel="stylesheet" href="styles.css?v=20260927-wallet14">
-  <script src="scripts/config.js?v=20260927-wallet14"></script>
+  <link rel="stylesheet" href="styles.css?v=20260927-wallet16">
+  <script src="scripts/config.js?v=20260927-wallet16"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927-wallet14"></script>
-  <script src="app.js?v=20260927-wallet14"></script>
+    <script src="scripts/db.js?v=20260927-wallet16"></script>
+  <script src="app.js?v=20260927-wallet16"></script>
 </head>
 <body>
   <div id="app">
@@ -249,7 +249,46 @@
 
     function renderMarket() {
       var list = document.getElementById('marketList');
-      var data = TrustApp.MARKET[currentTab] || [];
+      var data = (TrustApp.MARKET[currentTab] || []).slice();
+      var priced = Object.keys(serverPrices).filter(function (s) { return serverPrices[s] && serverPrices[s].price > 0; });
+
+      // The crypto tab is driven by what the server can price, not by the list.
+      //
+      // The two sets are not the same, in both directions, and both mismatches
+      // were found on the page:
+      //
+      //   BSV was in the list and not in public.prices. It is not quoted on
+      //   Binance spot, so there is no price for it and inventing one would be
+      //   worse than showing none - it was the one row of twenty not live.
+      //
+      //   SOL was in public.prices and missing from the list. The browser
+      //   re-fetches the list from /api/market/all, which does not carry SOL, so
+      //   it overwrote the entry app.js had and a tradeable coin vanished from
+      //   the home page.
+      //
+      // So the rows come from the server's coin set, and each row's name, icon
+      // and decimal places are looked up in the list first and in app.js's own
+      // list second. Neither list decides what is shown; the price does.
+      if (currentTab === 'crypto' && priced.length) {
+        var merged = {};
+        data.concat(TrustApp.fallbackMarket ? TrustApp.fallbackMarket().crypto : []).forEach(function (d) {
+          if (d && d.s && !merged[d.s]) merged[d.s] = d;
+        });
+        var order = [];
+        data.forEach(function (d) { if (d && d.s && order.indexOf(d.s) === -1) order.push(d.s); });
+        priced.forEach(function (s) { if (order.indexOf(s) === -1) order.push(s); });
+
+        data = order.filter(function (s) { return priced.indexOf(s) !== -1; })
+          .map(function (s) {
+            var d = merged[s];
+            return d || { s: s, n: 'USDT', dec: 2, i: null };
+          })
+          // USDT is the quote currency, so a USDT row would link to USDT/USDT,
+          // which exchange_coins refuses as two identical coins. It is priced and
+          // it is a balance, but it is not a market.
+          .filter(function (d) { return d.s !== 'USDT'; });
+      }
+
       var html = '';
       for (var i = 0; i < data.length; i++) {
         var d = data[i];
