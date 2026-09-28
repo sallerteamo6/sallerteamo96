@@ -9,11 +9,11 @@
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="img/logo.png">
   <title>Trust</title>
-  <link rel="stylesheet" href="styles.css?v=20260927-wallet11">
-  <script src="scripts/config.js?v=20260927-wallet11"></script>
+  <link rel="stylesheet" href="styles.css?v=20260927-wallet13">
+  <script src="scripts/config.js?v=20260927-wallet13"></script>
   <script src="scripts/supabase-client.js?v=20260926m"></script>
-    <script src="scripts/db.js?v=20260927-wallet11"></script>
-  <script src="app.js?v=20260927-wallet11"></script>
+    <script src="scripts/db.js?v=20260927-wallet13"></script>
+  <script src="app.js?v=20260927-wallet13"></script>
 </head>
 <body>
   <div id="app">
@@ -160,6 +160,77 @@
 
     var prevPrice = {};
 
+    // ---------------------------------------------------------------------
+    //  Market table prices come from the server
+    // ---------------------------------------------------------------------
+    //  These used to come from the /api/market/all list the browser fetched,
+    //  which meant the home page, the exchange, the account and the balance
+    //  adjuster could each show a different number for the same coin - and
+    //  liveTick nudged this list by a random fraction every two seconds on top.
+    //  Now the crypto tab reads public.prices, the same table exchange_coins
+    //  applies, so there is one number and it is the number a swap would use.
+    //
+    //  The percentage is computed server-side too, from a reference price
+    //  captured once a day, rather than taken from the same list as the price.
+    //  A percentage derived from a different service than the price above it is
+    //  a table contradicting itself.
+    //
+    //  Metals and forex are not in public.prices - it holds crypto only, and
+    //  pricing them server-side needs a different upstream - so those two tabs
+    //  keep the list feed and are labelled as such rather than pretending.
+    // ---------------------------------------------------------------------
+    var serverPrices = {};      // symbol -> { price, changePct, ageSec }
+    var serverFetchedAt = 0;
+
+    function marketSymbol(d) { return (d.s || d.symbol || '').toUpperCase(); }
+
+    function serverPriceFor(d) {
+      var s = marketSymbol(d);
+      var p = serverPrices[s];
+      if (!p || !(p.price > 0)) return null;
+      return p;
+    }
+
+    // What the table shows for one row: the server price when there is one, the
+    // list price otherwise, and the percentage from whichever source the price
+    // came from. Never a mixture.
+    function rowQuote(d) {
+      var sp = serverPriceFor(d);
+      if (sp) {
+        return {
+          price: sp.price,
+          change: sp.changePct,
+          fromServer: true,
+          stale: sp.ageSec != null && sp.ageSec > 300
+        };
+      }
+      return {
+        price: d.price,
+        change: typeof d.change === 'number' ? d.change : null,
+        fromServer: false,
+        stale: false
+      };
+    }
+
+    function changeCell(ch) {
+      if (ch === null || ch === undefined || !isFinite(ch)) {
+        // No reference yet. A dash, because 0 would claim the market was flat.
+        return '<div class="change">' + t('index.hrs').replace(/\s*/g, '') + '</div>';
+      }
+      return '<div class="change ' + (ch >= 0 ? 'positive' : 'negative') + '">'
+        + (ch >= 0 ? '+' : '') + ch.toFixed(2) + '% <span class="time-period">' + t('index.hrs') + '</span></div>';
+    }
+
+    function fetchServerPrices() {
+      if (!window.DB || !DB.getPriceChanges) return Promise.resolve(false);
+      return DB.getPriceChanges().then(function (map) {
+        serverPrices = map || {};
+        serverFetchedAt = Date.now();
+        renderMarket();
+        return true;
+      }).catch(function () { return false; });
+    }
+
     function renderMarket() {
       var list = document.getElementById('marketList');
       var data = TrustApp.MARKET[currentTab] || [];
@@ -168,13 +239,19 @@
         var d = data[i];
         var icon = d.i ? '<img src="img/' + d.i + '" alt="' + d.s + '">' : '<span class="coin-letter">' + d.s.charAt(0) + '</span>';
         var prefix = TrustApp.pricePrefix(d);
-        html += '<div class="market-item" data-coin="' + (d.pair || d.s) + '" onclick="location.href=\'' + TrustApp.marketToTradeQuery(d, currentTab) + '\'">'
+        var q = rowQuote(d);
+        // A stale server price is never shown as if it were current: the
+        // exchange would refuse it, and the table should say so first.
+        var title = q.fromServer
+          ? (q.stale ? 'price ' + Math.round((Date.now() - serverFetchedAt) / 1000) + 's ago - not tradable' : 'server price')
+          : 'indicative';
+        html += '<div class="market-item" data-coin="' + (d.pair || d.s) + '" title="' + title + '" onclick="location.href=\'' + TrustApp.marketToTradeQuery(d, currentTab) + '\'">'
           + '<div class="market-info">'
           + '<div class="market-icon">' + icon + '</div>'
           + '<div class="market-details"><div class="market-symbol">' + d.s + '</div><div class="market-name">' + d.n + '</div></div>'
           + '</div>'
-          + '<div class="market-price"><div class="price">' + prefix + TrustApp.fmtPrice(d.price, d.dec) + '</div>'
-          + '<div class="change ' + (d.change >= 0 ? 'positive' : 'negative') + '">' + (d.change >= 0 ? '+' : '') + d.change.toFixed(2) + '% <span class="time-period">' + t('index.hrs') + '</span></div>'
+          + '<div class="market-price"><div class="price">' + prefix + TrustApp.fmtPrice(q.price, d.dec) + '</div>'
+          + changeCell(q.change)
           + '</div></div>';
       }
       list.innerHTML = html;
@@ -187,6 +264,9 @@
       renderMarket();
     }
 
+    // Flashes the price when it moves. The value shown is whatever rowQuote()
+    // chose, so a coin priced by the server cannot be animated with the list's
+    // number - that mismatch is what this whole change exists to remove.
     function updatePrices() {
       var items = document.querySelectorAll('#marketList .market-item');
       for (var i = 0; i < items.length; i++) {
@@ -197,30 +277,41 @@
         var ch = el.querySelector('.change');
         if (!pr || !ch) continue;
         var dkey = d.pair || d.s;
-        if (prevPrice[dkey] !== undefined && d.price !== prevPrice[dkey]) {
+        var q = rowQuote(d);
+        if (prevPrice[dkey] !== undefined && q.price !== prevPrice[dkey]) {
           pr.classList.remove('flash-up', 'flash-down');
-          pr.classList.add(d.price > prevPrice[dkey] ? 'flash-up' : 'flash-down');
+          pr.classList.add(q.price > prevPrice[dkey] ? 'flash-up' : 'flash-down');
           (function (node) {
             setTimeout(function () { node.classList.remove('flash-up', 'flash-down'); }, 800);
           })(pr);
         }
-        prevPrice[dkey] = d.price;
-        pr.textContent = TrustApp.pricePrefix(d) + TrustApp.fmtPrice(d.price, d.dec);
-        ch.className = 'change ' + (d.change >= 0 ? 'positive' : 'negative');
-        ch.childNodes[0].textContent = (d.change >= 0 ? '+' : '') + d.change.toFixed(2) + '%';
+        prevPrice[dkey] = q.price;
+        pr.textContent = TrustApp.pricePrefix(d) + TrustApp.fmtPrice(q.price, d.dec);
+        // A dash for a missing reference; a percentage only where it is known.
+        if (q.change === null || q.change === undefined || !isFinite(q.change)) {
+          ch.textContent = t('index.hrs').replace(/\s*/g, '');
+          ch.className = 'change';
+        } else {
+          ch.className = 'change ' + (q.change >= 0 ? 'positive' : 'negative');
+          ch.innerHTML = (q.change >= 0 ? '+' : '') + q.change.toFixed(2)
+            + '% <span class="time-period">' + t('index.hrs') + '</span>';
+        }
       }
     }
 
+    // First paint from the seeded list, so the table is never blank, then the
+    // server prices replace it as soon as they arrive.
     renderMarket();
+    fetchServerPrices();
+    setInterval(fetchServerPrices, 30000);
+
     setInterval(function () {
       TrustApp.liveTick(currentTab, updatePrices);
     }, 2000);
 
-    // The market table's prices are only fetched once per page load, and
-    // liveTick nudges them by a random fraction every two seconds, so left
-    // alone they random-walk away from the real market over a long session.
-    // Re-fetching on a timer pulls them back to actual prices; the two-second
-    // animation on top is what makes the movement visible between fetches.
+    // The list feed is still fetched, for the metals and forex tabs and for the
+    // icons and names on the crypto tab, but it no longer supplies a crypto
+    // price. Re-fetched on a timer so the two tabs do not drift out of date.
     setInterval(function () {
       TrustApp.fetchMarket(function () {
         renderMarket();
@@ -228,6 +319,12 @@
     }, 60000);
     TrustApp.fetchMarket(function () {
       renderMarket();
+    });
+
+    // Coming back to the tab should show the current price, not whatever was
+    // current when it was backgrounded.
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) fetchServerPrices();
     });
 
     // The header total is priced from public.prices on a 30 second cache, so it
